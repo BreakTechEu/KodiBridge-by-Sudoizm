@@ -23,7 +23,6 @@ from resources.lib.sudosync_core import (
     addon_settings,
     select_this_as_initial_base,
     sync_initial_base_selection,
-    sync_network_settings,
 )
 
 
@@ -46,7 +45,6 @@ def show_status():
 
     try:
         shared = sync_initial_base_selection(show_notification=False)
-        sync_network_settings()
         init = shared.get("initialization") or {}
         base_name = init.get("base_client_name") or "—"
         init_state = "zakończona" if init.get("completed") else "niezakończona"
@@ -410,7 +408,11 @@ def update_dialog():
 def main():
     action = sys.argv[1].lower() if len(sys.argv) > 1 else "status"
     try:
-        if action == "collect":
+        if action == "bootstrap":
+            from resources.lib.sudosync_bootstrap import run_bootstrap
+            if run_bootstrap():
+                xbmcgui.Dialog().ok("SudoSync", "Konfigurator zakończony pomyślnie. Środowisko gotowe.")
+        elif action == "collect":
             collect_and_write(show_notification=True)
         elif action in ("dryrun", "analyse", "analyze"):
             report = run_dry_run(show_notification=True)

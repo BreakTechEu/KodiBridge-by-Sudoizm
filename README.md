@@ -37,7 +37,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 
 1. **Download:**
    - Go to the **Releases** section on the right side of this repository.
-   - Download the latest `service.sudosync-1.1.1-beta.zip` package.
+   - Download the latest `service.sudosync-1.2.0-beta.zip` package.
 
 2. **Install in Kodi:**
    - In Kodi, navigate to: *Settings -> Add-ons -> Install from zip file*.

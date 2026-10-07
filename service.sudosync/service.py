@@ -18,7 +18,6 @@ from resources.lib.sudosync_core import (
     run_live_sync_cycle,
     live_local_changes_detected,
     sync_initial_base_selection,
-    sync_network_settings,
 )
 
 
@@ -78,29 +77,26 @@ def _is_playing_video():
 def main():
     monitor = SudoSyncMonitor()
     settings = addon_settings()
+    
+    from resources.lib.sudosync_bootstrap import check_and_enforce_updates_before_bootstrap, run_bootstrap
+
+    if check_and_enforce_updates_before_bootstrap():
+        log("Aktualizacja zainstalowana. SudoSync przerywa dzialanie obecnej instancji i czeka na restart.")
+        return
+
+    if not run_bootstrap():
+        log("Bootstrap konfiguracji zatrzymany. Zatrzymuje serwis.")
+        return
+
+    settings = addon_settings()
+
     snapshot_interval = settings["interval_seconds"]
     live_poll = settings.get("live_poll_seconds", 60)
     last_snapshot = 0.0
     last_live_poll = 0.0
 
-    if settings.get("check_updates", True):
-        try:
-            update_result = check_for_update(show_notification=not settings.get("auto_install_updates", False), manual=False)
-            if update_result.get("available") and settings.get("auto_install_updates", False):
-                installed = install_latest_update(show_dialogs=False)
-                if installed.get("installed"):
-                    xbmcgui.Dialog().notification(
-                        "SudoSync — zaktualizowano",
-                        "Zainstalowano {}. Nowa wersja ruszy po ponownym uruchomieniu Kodi.".format(installed.get("version")),
-                        xbmcgui.NOTIFICATION_INFO,
-                        10000,
-                    )
-        except Exception as exc:
-            log("Update check/install failed: {}".format(exc), xbmc.LOGWARNING)
-
     try:
         sync_initial_base_selection(show_notification=False)
-        sync_network_settings()
         shared = read_shared_config(settings["base_path"])
         init = shared.get("initialization") or {}
         if init.get("completed", False) and settings.get("live_sync_enabled", True):
@@ -188,7 +184,6 @@ def main():
                     monitor.user_update_dirty = False
 
             sync_initial_base_selection(show_notification=False)
-            sync_network_settings()
         except Exception as exc:
             log("Service cycle failed: {}".format(exc), xbmc.LOGERROR)
             # Avoid a hot failure loop on broken NAS/network.

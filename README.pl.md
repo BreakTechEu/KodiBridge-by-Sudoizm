@@ -37,7 +37,7 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 
 1. **Pobranie:**
    - Przejdź do sekcji **Releases** po prawej stronie repozytorium.
-   - Pobierz najnowszą paczkę `service.sudosync-1.1.1-beta.zip`.
+   - Pobierz najnowszą paczkę `service.sudosync-1.2.0-beta.zip`.
 
 2. **Instalacja w Kodi:**
    - W Kodi przejdź do: *Ustawienia -> Dodatki -> Zainstaluj z pliku zip*.

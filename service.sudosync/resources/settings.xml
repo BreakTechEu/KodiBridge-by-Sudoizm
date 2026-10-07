@@ -3,11 +3,16 @@
   <section id="service.sudosync">
     <category id="general" label="32000" help="">
       <group id="1" label="32001">
-        <setting id="base_path" type="string" label="32002" help="32003">
+        <setting id="action_bootstrap" type="action" label="Wybierz folder SudoSync / Konfigurator" help="Kliknij aby uruchomić konfigurację sieciową SudoSync.">
           <level>0</level>
-          <default>smb://192.168.69.100/Wideo/.SudoSync/</default>
-          <constraints><allowempty>false</allowempty></constraints>
-          <control type="edit" format="string"><heading>32002</heading></control>
+          <data>RunScript(service.sudosync, bootstrap)</data>
+          <control type="button" format="action" />
+        </setting>
+        <setting id="base_path" type="string" label="Obecna ścieżka bazowa (Tylko odczyt)" help="Użyj konfiguratora wyżej, aby zmienić tę ścieżkę.">
+          <level>0</level>
+          <default></default>
+          <constraints><allowempty>true</allowempty></constraints>
+          <control type="edit" format="string" />
         </setting>
         <setting id="client_name" type="string" label="32004" help="32005">
           <level>0</level>
