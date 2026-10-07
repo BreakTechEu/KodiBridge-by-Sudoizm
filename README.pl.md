@@ -53,6 +53,16 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 
 ---
 
+## Aktualizacja wtyczki
+
+> [!IMPORTANT]
+> **Ważna informacja dotycząca aktualizacji:**
+> Obecnie (czasowo) jedynym prawidłowym i nie psującym instalacji sposobem aktualizacji wtyczki jest umieszczenie nowej wersji (pliku `.zip`) bezpośrednio we wspólnym folderze sieciowym `.SudoSync` (np. `smb://.../.SudoSync/service.sudosync-X.X.X.zip`).
+>
+> SudoSync samoczynnie wykryje nowy pakiet w udziale sieciowym i przeprowadzi aktualizację (wyświetlając powiadomienie z pytaniem o instalację lub instalując go w tle, o ile włączono automatyczne aktualizacje w konfiguracji wtyczki). Nie należy instalować nowej wersji na istniejącą instalację poprzez standardową opcję Kodi „Zainstaluj z pliku zip”.
+
+---
+
 ## Kompatybilność
 
 - Kodi v19 Matrix, v20 Nexus oraz v21 Omega.

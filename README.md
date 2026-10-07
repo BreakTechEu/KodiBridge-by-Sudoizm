@@ -53,6 +53,16 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 
 ---
 
+## Updating the Add-on
+
+> [!IMPORTANT]
+> **Important Update Notice:**
+> Currently (temporarily), the only valid and safe way to update the add-on without breaking the existing installation is to place the new release package (`.zip`) directly into the shared `.SudoSync` network folder (e.g. `smb://.../.SudoSync/service.sudosync-X.X.X.zip`).
+>
+> SudoSync will detect the new package in the shared directory and handle the update (either prompting you or installing automatically if enabled in add-on settings). Do not reinstall over an existing setup using Kodi's standard "Install from zip file" dialog.
+
+---
+
 ## Compatibility
 
 - Kodi v19 Matrix, v20 Nexus, and v21 Omega.
