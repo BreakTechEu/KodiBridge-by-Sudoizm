@@ -23,6 +23,7 @@ from resources.lib.sudosync_core import (
     addon_settings,
     select_this_as_initial_base,
     sync_initial_base_selection,
+    sync_network_settings,
 )
 
 
@@ -45,6 +46,7 @@ def show_status():
 
     try:
         shared = sync_initial_base_selection(show_notification=False)
+        sync_network_settings()
         init = shared.get("initialization") or {}
         base_name = init.get("base_client_name") or "—"
         init_state = "zakończona" if init.get("completed") else "niezakończona"

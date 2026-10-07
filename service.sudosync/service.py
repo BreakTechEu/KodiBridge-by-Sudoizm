@@ -18,6 +18,7 @@ from resources.lib.sudosync_core import (
     run_live_sync_cycle,
     live_local_changes_detected,
     sync_initial_base_selection,
+    sync_network_settings,
 )
 
 
@@ -99,6 +100,7 @@ def main():
 
     try:
         sync_initial_base_selection(show_notification=False)
+        sync_network_settings()
         shared = read_shared_config(settings["base_path"])
         init = shared.get("initialization") or {}
         if init.get("completed", False) and settings.get("live_sync_enabled", True):
@@ -186,6 +188,7 @@ def main():
                     monitor.user_update_dirty = False
 
             sync_initial_base_selection(show_notification=False)
+            sync_network_settings()
         except Exception as exc:
             log("Service cycle failed: {}".format(exc), xbmc.LOGERROR)
             # Avoid a hot failure loop on broken NAS/network.
