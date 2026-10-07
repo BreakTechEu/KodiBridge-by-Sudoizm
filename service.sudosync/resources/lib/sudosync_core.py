@@ -363,38 +363,41 @@ def sync_initial_base_selection(show_notification=False):
 
 def sync_network_settings():
     """Ensure all Kodi instances on the same network share the same SudoSync ID config."""
-    addon = xbmcaddon.Addon(ADDON_ID)
-    settings = addon_settings()
-    config = read_shared_config(settings["base_path"])
-    net = config.get("network_settings")
+    try:
+        addon = xbmcaddon.Addon(ADDON_ID)
+        settings = addon_settings()
+        config = read_shared_config(settings["base_path"])
+        net = config.get("network_settings")
 
-    local_enabled = addon.getSetting("sudosync_id_enabled").strip().lower() == "true"
-    local_prefix = addon.getSetting("sudosync_id_prefix").strip()
+        local_enabled = addon.getSetting("sudosync_id_enabled").strip().lower() == "true"
+        local_prefix = addon.getSetting("sudosync_id_prefix").strip()
 
-    if not net:
-        if local_enabled and local_prefix:
-            def mutator(cfg):
-                cfg["network_settings"] = {
-                    "sudosync_id_enabled": local_enabled,
-                    "sudosync_id_prefix": local_prefix,
-                }
-                return True
-            update_shared_config(mutator, settings["base_path"])
-            log("Published local SudoSync ID settings to shared network config.")
-    else:
-        remote_enabled = bool(net.get("sudosync_id_enabled", False))
-        remote_prefix = str(net.get("sudosync_id_prefix") or "").strip()
+        if not net:
+            if local_enabled and local_prefix:
+                def mutator(cfg):
+                    cfg["network_settings"] = {
+                        "sudosync_id_enabled": local_enabled,
+                        "sudosync_id_prefix": local_prefix,
+                    }
+                    return True
+                update_shared_config(mutator, settings["base_path"])
+                log("Published local SudoSync ID settings to shared network config.")
+        else:
+            remote_enabled = bool(net.get("sudosync_id_enabled", False))
+            remote_prefix = str(net.get("sudosync_id_prefix") or "").strip()
 
-        changed = False
-        if local_enabled != remote_enabled:
-            addon.setSetting("sudosync_id_enabled", "true" if remote_enabled else "false")
-            changed = True
-        if local_prefix != remote_prefix:
-            addon.setSetting("sudosync_id_prefix", remote_prefix)
-            changed = True
+            changed = False
+            if local_enabled != remote_enabled:
+                addon.setSetting("sudosync_id_enabled", "true" if remote_enabled else "false")
+                changed = True
+            if local_prefix != remote_prefix:
+                addon.setSetting("sudosync_id_prefix", remote_prefix)
+                changed = True
 
-        if changed:
-            log("SudoSync ID network settings forced from shared config to match the network.")
+            if changed:
+                log("SudoSync ID network settings forced from shared config to match the network.")
+    except Exception as exc:
+        log("Nie udało się zsynchronizować ustawień sieciowych SudoSync ID: {}".format(exc), xbmc.LOGWARNING)
 
 
 def select_this_as_initial_base():
