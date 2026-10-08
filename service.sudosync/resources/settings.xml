@@ -98,6 +98,16 @@
             </dependency>
           </dependencies>
         </setting>
+        <setting id="rollback_sudosync_ids" type="action" label="Wycofaj ostatnio przypisane ID">
+          <level>0</level>
+          <data>RunScript(service.sudosync,rollbackids)</data>
+          <control type="button" format="action"><close>false</close></control>
+          <dependencies>
+            <dependency type="enable">
+              <condition operator="is" setting="sudosync_id_enabled">true</condition>
+            </dependency>
+          </dependencies>
+        </setting>
       </group>
       <group id="4" label="32040">
         <setting id="select_initial_base" type="action" label="32045" help="32046">

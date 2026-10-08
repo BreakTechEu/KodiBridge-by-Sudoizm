@@ -1,3 +1,10 @@
+# -------------------------------------------------------------------------
+# SudoSync for Kodi
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# -------------------------------------------------------------------------
 import os
 import sys
 import unittest
@@ -51,10 +58,12 @@ class TestSudoSync(unittest.TestCase):
         self.assertFalse(sudosync_merge._safe_mirror_cluster(cluster3))
 
     def test_remote_snapshot_schema(self):
+        import datetime
         valid = {
             "format": "SudoSync client snapshot",
             "schema_version": 2,
             "client": {"id": "12345678-1234-1234-1234-123456789012", "name": "Kodi"},
+            "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "movies": [],
             "episodes": [],
         }

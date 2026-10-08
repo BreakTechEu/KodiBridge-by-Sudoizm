@@ -50,6 +50,9 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
      smb://192.168.1.100/Wspoldzielony/.SudoSync/
      ```
    - W ustawieniach określ swój **Identyfikator sieciowy** (używany wewnętrznie do synchronizacji plików) oraz **Alias UI** (przyjazną nazwę wyświetlananą na ekranie).
+- **Kryptograficzne Bezpieczeństwo:** Mechanizm self-update weryfikuje aktualizacje pobierane z NAS używając podpisu RSA-2048. Niezaufane archiwum ZIP jest odrzucane i blokowane.
+- **Dziennik Zdarzeń (Journaling):** Synchronizacja początkowa używa mechanizmu transakcyjnego z dziennikiem postępu, pozwalając na bezpieczne wznowienie po nieoczekiwanym błędzie.
+- **Limity Bezpieczeństwa:** System wprowadza maksymalne limity pamięci, wielkości plików oraz liczby rekordów dla bezpieczeństwa klienta.
 
 ---
 
@@ -65,11 +68,13 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 
 ## Kompatybilność
 
-- Kodi v19 Matrix, v20 Nexus oraz v21 Omega.
+> **Ważne:** Wtyczka wspiera wyłącznie dwie najnowsze główne wersje Kodi (obecnie v20 Nexus oraz v21 Omega). Starsze wersje przestają być wspierane.
+
+- Kodi v20 Nexus oraz v21 Omega.
 - Wieloplatformowość: Windows, Android / Google TV, Linux, CoreELEC / LibreELEC.
 
 ---
 
 ## Licencja
 
-Projekt typu open-source udostępniany na licencji GPL-3.0.
+Projekt typu open-source udostępniany na licencji GPL-3.0. Jakiekolwiek komercyjne wykorzystanie oprogramowania wymaga uzyskania osobnej licencji komercyjnej. W tym celu należy skontaktować się z autorem.

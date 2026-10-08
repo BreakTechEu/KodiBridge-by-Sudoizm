@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function
+# -------------------------------------------------------------------------
+# SudoSync for Kodi
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# -------------------------------------------------------------------------
 
 import time
 
@@ -30,6 +37,24 @@ class SudoSyncMonitor(xbmc.Monitor):
         self.scan_refresh_pending = False
         self.playback_dirty = False
         self.user_update_dirty = False
+
+    def onSettingsChanged(self):
+        try:
+            from resources.lib.sudosync_core import addon_settings
+            from resources.lib.sudosync_bootstrap import read_sudosync_cfg, write_sudosync_cfg
+            
+            settings = addon_settings()
+            base = settings["base_path"]
+            status, cfg = read_sudosync_cfg(base)
+            if status == "VALID":
+                net = cfg.get("network_settings", {})
+                if net.get("sudosync_id_enabled") != settings["sudosync_id_enabled"] or net.get("sudosync_id_prefix") != settings["sudosync_id_prefix"]:
+                    net["sudosync_id_enabled"] = settings["sudosync_id_enabled"]
+                    net["sudosync_id_prefix"] = settings["sudosync_id_prefix"]
+                    cfg["network_settings"] = net
+                    write_sudosync_cfg(base, cfg)
+        except Exception:
+            pass
 
     def _mark_dirty(self):
         self.dirty = True

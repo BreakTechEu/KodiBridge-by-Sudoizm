@@ -9,3 +9,6 @@ GEMINI.md
 STATUS_PROJEKTU.md
 WIEDZA.md
 *.zip
+
+*.pem
+privkey.pem

@@ -186,7 +186,7 @@ msgstr "Pozwala tworzyć własne ID dla wideo niewystępujących w bazach online
 
 msgctxt "#32063"
 msgid "Network Name / Prefix (leave empty for auto)"
-msgstr "Nazwa sieci / Prefiks (puste = auto)"
+msgstr "Nazwa sieci / Prefiks (ZMIENIAJ TYLKO NA BAZIE)"
 
 msgctxt "#32064"
 msgid "Friendly name for the network. The internal NFO ID is generated once and remains permanent even if you rename this."

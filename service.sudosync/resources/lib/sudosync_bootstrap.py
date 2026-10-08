@@ -1,3 +1,10 @@
+# -------------------------------------------------------------------------
+# SudoSync for Kodi
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# -------------------------------------------------------------------------
 import os
 import time
 import json
@@ -23,13 +30,13 @@ def get_base_path():
 
 def set_base_path(path):
     set_addon_setting("base_path", path)
-    log("Ustalono nową ścieżkę bazową: {}".format(path))
+    log("Ustalono nowÄ… Ĺ›cieĹĽkÄ™ bazowÄ…: {}".format(path))
 
 def test_vfs_rw(test_dir):
     try:
         if not xbmcvfs.exists(test_dir):
             if not xbmcvfs.mkdirs(test_dir):
-                return False, "Nie można utworzyć katalogu .SudoSync"
+                return False, "Nie moĹĽna utworzyÄ‡ katalogu .SudoSync"
         
         test_file = test_dir + "rw_test.tmp"
         f = xbmcvfs.File(test_file, 'w')
@@ -43,16 +50,30 @@ def test_vfs_rw(test_dir):
         xbmcvfs.delete(test_file)
         
         if data != "test":
-            return False, "Błąd weryfikacji zapisu/odczytu"
+            return False, "BĹ‚Ä…d weryfikacji zapisu/odczytu"
             
         return True, "OK"
     except Exception as exc:
         return False, str(exc)
 
 def _read_json_file(filepath):
+    if not xbmcvfs.exists(filepath):
+        return "NOT_FOUND", None
     try:
-        if not xbmcvfs.exists(filepath):
-            return None
+        f = xbmcvfs.File(filepath, 'r')
+        data = f.read()
+        f.close()
+    except Exception as exc:
+        log("Cannot read JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
+        return "IO_ERROR", None
+
+    try:
+        import json
+        obj = json.loads(data)
+        return "VALID", obj
+    except json.JSONDecodeError as exc:
+        log("Cannot parse JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
+        return "INVALID", None
         f = xbmcvfs.File(filepath, 'r')
         data = f.read()
         f.close()
@@ -63,16 +84,35 @@ def _read_json_file(filepath):
 
 def _write_json_file(filepath, obj):
     try:
+        import json
         data = json.dumps(obj, indent=2, sort_keys=True)
-        # Atomowy zapis z tmp by uniknąć korupcji
+        # Bezpieczny zapis przez plik tymczasowy i kopiÄ™ zapasowÄ…
         tmp_file = filepath + ".tmp"
+        bak_file = filepath + ".bak"
+        
         f = xbmcvfs.File(tmp_file, 'w')
-        f.write(data)
+        result = f.write(data)
         f.close()
+        
+        if not result:
+            log("Nie udaĹ‚o siÄ™ zapisaÄ‡ peĹ‚nych danych do .tmp dla {}".format(filepath), xbmc.LOGERROR)
+            return False
+
         if xbmcvfs.exists(filepath):
+            if xbmcvfs.exists(bak_file):
+                xbmcvfs.delete(bak_file)
+            xbmcvfs.copy(filepath, bak_file)
             xbmcvfs.delete(filepath)
-        xbmcvfs.rename(tmp_file, filepath)
-        return True
+            
+        if xbmcvfs.rename(tmp_file, filepath):
+            if xbmcvfs.exists(tmp_file):
+                xbmcvfs.delete(tmp_file)
+            return True
+        else:
+            if xbmcvfs.exists(bak_file):
+                xbmcvfs.rename(bak_file, filepath)
+            return False
+            
     except Exception as exc:
         log("Cannot write JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
         return False
@@ -94,15 +134,16 @@ def is_legacy_installation(base_path):
 def run_migration_wizard(base_path):
     xbmcgui.Dialog().ok(
         "SudoSync - Migracja",
-        "Wykryto istniejącą instalację starszej wersji SudoSync w wybranym folderze.\n\nTwoje dotychczasowe dane i identyfikatory zostaną zachowane. SudoSync wyodrębni teraz ustawienia sieciowe do nowego pliku SudoSync.cfg."
+        "Wykryto istniejÄ…cÄ… instalacjÄ™ starszej wersji SudoSync w wybranym folderze.\n\nTwoje dotychczasowe dane i identyfikatory zostanÄ… zachowane. SudoSync wyodrÄ™bni teraz ustawienia sieciowe do nowego pliku SudoSync.cfg."
     )
     
-    # Wyciągamy ustawienia sieciowe, jeśli jakieś były w starym system/config.json
-    sys_config = _read_json_file(base_path + "system/config.json") or {}
+    # WyciÄ…gamy ustawienia sieciowe, jeĹ›li jakieĹ› byĹ‚y w starym system/config.json
+    _, sys_config = _read_json_file(base_path + "system/config.json")
+    sys_config = sys_config or {}
     old_net = sys_config.get("network_settings", {})
     
-    # Jeśli nie było starych, bierzemy lokalne preferencje z addon_data 
-    # (to może być przypadek gdy SudoSync ID włączono lokalnie, ale nie opublikowano do starej bazy)
+    # JeĹ›li nie byĹ‚o starych, bierzemy lokalne preferencje z addon_data 
+    # (to moĹĽe byÄ‡ przypadek gdy SudoSync ID wĹ‚Ä…czono lokalnie, ale nie opublikowano do starej bazy)
     addon = xbmcaddon.Addon(ADDON_ID)
     sudosync_id_enabled = old_net.get("sudosync_id_enabled", addon.getSetting("sudosync_id_enabled").strip().lower() == "true")
     sudosync_id_prefix = old_net.get("sudosync_id_prefix", addon.getSetting("sudosync_id_prefix").strip() or "NAS")
@@ -121,20 +162,20 @@ def run_migration_wizard(base_path):
     }
     
     if not write_sudosync_cfg(base_path, new_cfg):
-        xbmcgui.Dialog().ok("Błąd", "Nie udało się zapisać zmigrowanej konfiguracji do SudoSync.cfg")
+        xbmcgui.Dialog().ok("BĹ‚Ä…d", "Nie udaĹ‚o siÄ™ zapisaÄ‡ zmigrowanej konfiguracji do SudoSync.cfg")
         return False
         
-    xbmcgui.Dialog().notification("Migracja", "Migracja zakończona sukcesem.", xbmcgui.NOTIFICATION_INFO, 5000)
+    xbmcgui.Dialog().notification("Migracja", "Migracja zakoĹ„czona sukcesem.", xbmcgui.NOTIFICATION_INFO, 5000)
     return True
 
 def run_new_config_wizard(base_path):
     dialog = xbmcgui.Dialog()
-    if not dialog.yesno("SudoSync - Konfigurator sieciowy", "Skonfigurujemy teraz nowe środowisko synchronizacji SudoSync dla Twojej domeny.\n\nCzy chcesz domyślnie używać niezawodnego identyfikatora 'SudoSync ID' dla wideo pozbawionych standardowych ID (IMDb/TMDb)?", yeslabel="Tak (Zalecane)", nolabel="Nie, użyj IMDb"):
+    if not dialog.yesno("SudoSync - Konfigurator sieciowy", "Skonfigurujemy teraz nowe Ĺ›rodowisko synchronizacji SudoSync dla Twojej domeny.\n\nCzy chcesz domyĹ›lnie uĹĽywaÄ‡ niezawodnego identyfikatora 'SudoSync ID' dla wideo pozbawionych standardowych ID (IMDb/TMDb)?", yeslabel="Tak (Zalecane)", nolabel="Nie, uĹĽyj IMDb"):
         sudosync_id_enabled = False
         sudosync_id_prefix = ""
     else:
         sudosync_id_enabled = True
-        prefix = dialog.input("Podaj krótki prefiks dla tej sieci (np. NAS lub DOM):", type=xbmcgui.INPUT_ALPHANUM)
+        prefix = dialog.input("Podaj krĂłtki prefiks dla tej sieci (np. NAS lub DOM):", type=xbmcgui.INPUT_ALPHANUM)
         sudosync_id_prefix = prefix.strip() if prefix.strip() else "NAS"
         
     new_cfg = {
@@ -151,10 +192,10 @@ def run_new_config_wizard(base_path):
     }
     
     if not write_sudosync_cfg(base_path, new_cfg):
-        xbmcgui.Dialog().ok("Błąd", "Nie udało się zapisać nowej konfiguracji do SudoSync.cfg")
+        xbmcgui.Dialog().ok("BĹ‚Ä…d", "Nie udaĹ‚o siÄ™ zapisaÄ‡ nowej konfiguracji do SudoSync.cfg")
         return False
         
-    dialog.ok("Sukces", "Środowisko .SudoSync skonfigurowane poprawnie!\nTeraz synchronizacja może się rozpocząć.")
+    dialog.ok("Sukces", "Ĺšrodowisko .SudoSync skonfigurowane poprawnie!\nTeraz synchronizacja moĹĽe siÄ™ rozpoczÄ…Ä‡.")
     return True
 
 def apply_network_settings(cfg):
@@ -178,20 +219,20 @@ def apply_network_settings(cfg):
         changed = True
 
     if changed:
-        log("Konfiguracja sieciowa SudoSync ID została wymuszona na lokalnym kliencie.")
+        log("Konfiguracja sieciowa SudoSync ID zostaĹ‚a wymuszona na lokalnym kliencie.")
 
 def run_bootstrap():
-    """Zwraca True, jeśli bootstrap zakończony i można przejść do logiki operacyjnej, False w przypadku wstrzymania/błędu."""
-    log("Rozpoczęcie fazy BOOTSTRAP")
+    """Zwraca True, jeĹ›li bootstrap zakoĹ„czony i moĹĽna przejĹ›Ä‡ do logiki operacyjnej, False w przypadku wstrzymania/bĹ‚Ä™du."""
+    log("RozpoczÄ™cie fazy BOOTSTRAP")
     base_path = get_base_path()
     
     # 1. USTALENIE BASE PATH
-    # Jeżeli brak base_path LUB ścieżka to stara śmieciowa defaultowa domyślna SMB
+    # JeĹĽeli brak base_path LUB Ĺ›cieĹĽka to stara Ĺ›mieciowa defaultowa domyĹ›lna SMB
     if not base_path or base_path == "smb://192.168.69.100/Wideo/.SudoSync/" or not base_path.endswith("/"):
         dialog = xbmcgui.Dialog()
-        dialog.ok("SudoSync", "Musisz wskazać folder sieciowy (np. SMB/NFS), w którym SudoSync będzie przechowywać wspólną konfigurację i bazę dla wszystkich urządzeń Kodi w tej sieci.")
+        dialog.ok("SudoSync", "Musisz wskazaÄ‡ folder sieciowy (np. SMB/NFS), w ktĂłrym SudoSync bÄ™dzie przechowywaÄ‡ wspĂłlnÄ… konfiguracjÄ™ i bazÄ™ dla wszystkich urzÄ…dzeĹ„ Kodi w tej sieci.")
         
-        selected_path = dialog.browse(3, "Wybierz katalog współdzielony (np. Wideo)", "network")
+        selected_path = dialog.browse(3, "Wybierz katalog wspĂłĹ‚dzielony (np. Wideo)", "network")
         if not selected_path:
             log("User cancelled path selection.")
             return False
@@ -200,7 +241,7 @@ def run_bootstrap():
         if not selected_path.endswith('/'):
             selected_path += '/'
             
-        # Zabezpieczenie przed zagnieżdżaniem .SudoSync/.SudoSync
+        # Zabezpieczenie przed zagnieĹĽdĹĽaniem .SudoSync/.SudoSync
         if selected_path.endswith(".SudoSync/"):
             base_path = selected_path
         else:
@@ -208,35 +249,52 @@ def run_bootstrap():
             
         set_base_path(base_path)
         
-    # 2. TEST DOSTĘPU I READ/WRITE
-    log("Testowanie dostępu R/W do {}".format(base_path))
+    # 2. TEST DOSTÄPU I READ/WRITE
+    log("Testowanie dostÄ™pu R/W do {}".format(base_path))
     success, msg = test_vfs_rw(base_path)
     if not success:
-        xbmcgui.Dialog().ok("SudoSync - Brak Dostępu", "Nie udało się zapisać plików w wybranym folderze:\n{}\n\nSprawdź uprawnienia do zapisu lub wskaż inny udział w ustawieniach.".format(msg))
+        xbmcgui.Dialog().ok("SudoSync - Brak DostÄ™pu", "Nie udaĹ‚o siÄ™ zapisaÄ‡ plikĂłw w wybranym folderze:\n{}\n\nSprawdĹş uprawnienia do zapisu lub wskaĹĽ inny udziaĹ‚ w ustawieniach.".format(msg))
         return False
         
     # 3. SPRAWDZENIE SUDOSYNC.CFG
-    cfg = read_sudosync_cfg(base_path)
-    if cfg:
-        # WALIDACJA ISTNIEJĄCEGO SudoSync.cfg
+    status, cfg = read_sudosync_cfg(base_path)
+    if status == "VALID":
+        # WALIDACJA ISTNIEJÄ„CEGO SudoSync.cfg
         if not isinstance(cfg, dict):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Plik SudoSync.cfg nie jest prawidłowym słownikiem JSON.")
+            xbmcgui.Dialog().ok("BĹ‚Ä…d SudoSync.cfg", "Plik SudoSync.cfg nie jest prawidĹ‚owym sĹ‚ownikiem JSON.")
             return False
-        if cfg.get("schema_version") not in (1,):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Nieobsługiwana wersja schematu (schema_version) w SudoSync.cfg.")
+        if cfg.get("schema_version") not in (1, 2):
+            xbmcgui.Dialog().ok("BĹ‚Ä…d SudoSync.cfg", "NieobsĹ‚ugiwana wersja schematu (schema_version) w SudoSync.cfg.")
+            return False
+        if not isinstance(cfg.get("network_settings"), dict):
+            xbmcgui.Dialog().ok("BĹ‚Ä…d SudoSync.cfg", "Brak sekcji network_settings w SudoSync.cfg.")
+            return False
+        if not isinstance(cfg.get("network_settings", {}).get("sudosync_id_enabled"), bool):
+            xbmcgui.Dialog().ok("BĹ‚Ä…d SudoSync.cfg", "ZĹ‚y typ danych w sudosync_id_enabled.")
+            return False
+        if not isinstance(cfg.get("network_settings", {}).get("sudosync_id_prefix"), str):
+            xbmcgui.Dialog().ok("BĹ‚Ä…d SudoSync.cfg", "ZĹ‚y typ danych w sudosync_id_prefix.")
             return False
         if not cfg.get("configuration", {}).get("completed"):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Konfiguracja w SudoSync.cfg nie jest oznaczona jako ukończona.")
+            xbmcgui.Dialog().ok("BĹ‚Ä…d SudoSync.cfg", "Konfiguracja w SudoSync.cfg nie jest oznaczona jako ukoĹ„czona.")
             return False
             
-        log("SudoSync.cfg poprawnie zweryfikowany. Aplikowanie ustawień sieciowych.")
+        log("SudoSync.cfg poprawnie zweryfikowany. Aplikowanie ustawieĹ„ sieciowych.")
         apply_network_settings(cfg)
         return True
+    elif status in ("INVALID", "IO_ERROR"):
+        import time
+        corrupted_path = base_path + "SudoSync.cfg"
+        backup_path = base_path + "SudoSync.cfg.corrupted_" + str(int(time.time()))
+        if xbmcvfs.exists(corrupted_path):
+            xbmcvfs.copy(corrupted_path, backup_path)
+        xbmcgui.Dialog().ok("BĹ‚Ä…d Krytyczny", "Plik SudoSync.cfg jest uszkodzony lub nieczytelny. ZostaĹ‚a utworzona kopia zapasowa. Napraw plik rÄ™cznie lub usuĹ„ go, aby wymusiÄ‡ nowÄ… konfiguracjÄ™.")
+        return False
     else:
         # BRAK SUDOSYNC.CFG
         # 4. Sprawdzenie, czy to starsza instalacja
         if is_legacy_installation(base_path):
-            log("Wykryto starszą instalację bez SudoSync.cfg -> MIGRATION WIZARD")
+            log("Wykryto starszÄ… instalacjÄ™ bez SudoSync.cfg -> MIGRATION WIZARD")
             if not run_migration_wizard(base_path):
                 return False
         else:
@@ -245,35 +303,37 @@ def run_bootstrap():
                 return False
                 
         # 5. PONOWNY ODCZYT I WALIDACJA PO WIZARDZIE
-        cfg = read_sudosync_cfg(base_path)
-        if cfg and cfg.get("configuration", {}).get("completed"):
+        status, cfg = read_sudosync_cfg(base_path)
+        if status == "VALID" and cfg.get("configuration", {}).get("completed"):
             apply_network_settings(cfg)
             return True
             
-        xbmcgui.Dialog().ok("Błąd Krytyczny", "Nie udało się odczytać SudoSync.cfg pomimo jego zapisu.")
+        xbmcgui.Dialog().ok("BĹ‚Ä…d Krytyczny", "Nie udaĹ‚o siÄ™ odczytaÄ‡ SudoSync.cfg pomimo jego zapisu.")
         return False
 
 def check_and_enforce_updates_before_bootstrap():
     """Wymuszona aktualizacja przez bootstrap."""
     from resources.lib.sudosync_core import check_for_update, install_latest_update
-    # Sprawdzamy czy base_path jest na tyle zdatny (jeśli to puste albo stary dummy, to pominie)
+    # Sprawdzamy czy base_path jest na tyle zdatny (jeĹ›li to puste albo stary dummy, to pominie)
     base_path = get_base_path()
     if not base_path or base_path == "smb://192.168.69.100/Wideo/.SudoSync/":
-        return False # brak ścieżki do folderu aktualizacji
+        return False # brak Ĺ›cieĹĽki do folderu aktualizacji
         
     try:
-        # Wymuszamy ominięcie ustawień (ustawienia lokalne ignorujemy dla instalacji aktualizacji z NAS)
+        # Wymuszamy ominiÄ™cie ustawieĹ„ (ustawienia lokalne ignorujemy dla instalacji aktualizacji z NAS)
         result = check_for_update(show_notification=False, manual=False)
         if result.get("available"):
             installed = install_latest_update(show_dialogs=False)
             if installed.get("installed"):
                 xbmcgui.Dialog().notification(
                     "SudoSync zaktualizowano",
-                    "Zainstalowano {}. Zmiany będą aktywne po restarcie Kodi.".format(installed.get("version")),
+                    "Zainstalowano {}. Kodi zostanie zrestartowane, aby wczytac nowa wersje.".format(installed.get("version")),
                     xbmcgui.NOTIFICATION_INFO,
                     10000,
                 )
-                return True # zrestartowano addon
+                xbmc.sleep(2000)
+                xbmc.executebuiltin("RestartApp")
+                return True
     except Exception as exc:
-        log("Błąd wymuszonej aktualizacji: {}".format(exc), xbmc.LOGWARNING)
+        log("BĹ‚Ä…d wymuszonej aktualizacji: {}".format(exc), xbmc.LOGWARNING)
     return False

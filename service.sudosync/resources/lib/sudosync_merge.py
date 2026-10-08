@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 from __future__ import absolute_import, division, print_function
+# -------------------------------------------------------------------------
+# SudoSync for Kodi
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# -------------------------------------------------------------------------
 
 from collections import Counter, defaultdict
 import re
@@ -112,7 +119,7 @@ def _safe_mirror_cluster(cluster):
 
 def _display(record):
     if record.get("type") == "episode":
-        return "{} S{:02d}E{:02d} — {}".format(
+        return "{} S{:02d}E{:02d} â€” {}".format(
             record.get("showtitle") or "?",
             _safe_int(record.get("season"), 0),
             _safe_int(record.get("episode"), 0),

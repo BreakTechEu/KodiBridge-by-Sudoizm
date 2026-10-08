@@ -21,6 +21,9 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 - **Scraper & NFO Quarantine:** Newly scanned library items and NFO imports receive older internal versions to prevent accidental overwrites of existing shared playback progress.
 - **Experimental SudoSync ID:** Automatically assigns and securely injects unique identifiers into `.nfo` files for private home videos that lack standard online scraper IDs.
 - **Network ID vs UI Alias:** Distinctly separates internal network identifiers from user-friendly UI aliases to keep network mapping robust while displaying readable names.
+- **Cryptographic Security:** Self-updates via NAS are authenticated with a 2048-bit RSA signature. Untrusted or modified zip files are securely rejected.
+- **Journaled Initial Sync:** Network sync gracefully handles partial Kodi API errors with an incremental journaling system, allowing for safe recovery.
+- **Strong File Limits:** Automatic file size and record count limits prevent Kodi memory exhaustion.
 
 ---
 
@@ -65,11 +68,13 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 
 ## Compatibility
 
-- Kodi v19 Matrix, v20 Nexus, and v21 Omega.
+> **Notice:** This plugin exclusively supports the two most recent major versions of Kodi (currently v20 Nexus and v21 Omega). Older versions are no longer supported.
+
+- Kodi v20 Nexus and v21 Omega.
 - Multi-platform: Windows, Android / Google TV, Linux, CoreELEC / LibreELEC.
 
 ---
 
 ## License
 
-This project is open-source software licensed under the GPL-3.0 License.
+This project is open-source software licensed under the GPL-3.0 License. Any commercial use of the software requires a separate commercial license. Please contact the author for details.
