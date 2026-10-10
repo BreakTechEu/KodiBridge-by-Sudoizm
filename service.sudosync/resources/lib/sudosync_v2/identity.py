@@ -1,4 +1,4 @@
-""""Conservative media identity helpers for SudoSync v2."""
+"""Conservative media identity helpers for SudoSync v2."""
 from __future__ import absolute_import
 import re
 import unicodedata
