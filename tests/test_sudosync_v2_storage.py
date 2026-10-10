@@ -1,6 +1,10 @@
 """Tests for bounded JSON parsing and recoverable repository writes."""
+import os
+import sys
 import threading
 import unittest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
 
 from resources.lib.sudosync_v2.storage import (
     RepositoryError, SharedJsonRepository, decode_json, encode_json,
