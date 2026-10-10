@@ -1,4 +1,4 @@
-"""Conservative media identity helpers for SudoSync v2."""
+""""Conservative media identity helpers for SudoSync v2."""
 from __future__ import absolute_import
 import re
 import unicodedata
@@ -34,6 +34,9 @@ def strong_aliases(media_type, identifiers):
 
 def match_by_strong_identity(left_type, left_ids, right_type, right_ids):
     """True only when records share at least one well-formed typed strong ID."""
-    if left_type != right_type:
+    left_type = str(left_type or "").strip().lower()
+    right_type = str(right_type or "").strip().lower()
+    if left_type != right_type or left_type not in ("movie", "episode"):
         return False
     return bool(strong_aliases(left_type, left_ids).intersection(strong_aliases(right_type, right_ids)))
+"
