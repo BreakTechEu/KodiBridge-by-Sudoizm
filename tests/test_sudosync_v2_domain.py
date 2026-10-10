@@ -72,6 +72,20 @@ class TestMerge(unittest.TestCase):
         self.assertNotIn("userrating", result["target_state"])
         self.assertEqual([item["field"] for item in result["conflicts"]], ["userrating"])
 
+    def test_concurrent_writes_from_different_clients_conflict(self):
+        a = record(
+            state={"playcount": 1},
+            versions={"playcount": {"lc": 5, "seq": 2, "client_id": "A"}},
+        )
+        b = record(
+            state={"playcount": 2},
+            versions={"playcount": {"lc": 5, "seq": 2, "client_id": "B"}},
+        )
+        result = plan_field_merge([a, b])
+        self.assertNotIn("playcount", result["target_state"])
+        self.assertEqual(result["conflicts"][0]["field"], "playcount")
+        self.assertEqual(len(result["conflicts"][0]["values"]), 2)
+
     def test_merge_does_not_mutate_inputs(self):
         a = record(state={"resume": {"position": 12.5, "total": 90.0}})
         before = deepcopy(a)
