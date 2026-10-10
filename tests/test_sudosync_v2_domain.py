@@ -46,6 +46,9 @@ class TestIdentity(unittest.TestCase):
         self.assertIsNone(normalize_identifier("tmdb", "../123"))
         self.assertTrue(match_by_strong_identity("movie", {"imdb": "tt1234567"}, "movie", {"imdb": "TT1234567"}))
         self.assertFalse(match_by_strong_identity("movie", {"imdb": "tt1234567"}, "episode", {"imdb": "tt1234567"}))
+        self.assertTrue(match_by_strong_identity(" Movie ", {"imdb": "tt1234567"}, "movie", {"imdb": "TT1234567"}))
+        self.assertTrue(match_by_strong_identity("episode", {"tvdb": "12345"}, " EPISODE ", {"tvdb": "12345"}))
+        self.assertFalse(match_by_strong_identity("series", {"imdb": "tt1234567"}, "series", {"imdb": "tt1234567"}))
 
     def test_missing_or_invalid_ids_do_not_match(self):
         self.assertFalse(match_by_strong_identity("movie", {"title": "Same"}, "movie", {"title": "Same"}))
