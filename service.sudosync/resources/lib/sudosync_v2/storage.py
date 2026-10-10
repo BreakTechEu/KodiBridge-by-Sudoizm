@@ -6,7 +6,6 @@ a process-local mutex is not sufficient for multiple Kodi devices.
 """
 from __future__ import absolute_import
 import json
-import math
 import uuid
 
 
@@ -117,6 +116,8 @@ class SharedJsonRepository(object):
                     raise RepositoryError("Temporary JSON read-back does not match the requested value: " + path)
 
                 if self._backend.exists(path):
+                    # Do not replace a malformed or unreadable current file automatically.
+                    self._read_unlocked(path)
                     if self._backend.exists(backup) and not self._backend.delete(backup):
                         raise RepositoryError("Cannot remove previous backup: " + backup)
                     if not self._backend.rename(path, backup):
