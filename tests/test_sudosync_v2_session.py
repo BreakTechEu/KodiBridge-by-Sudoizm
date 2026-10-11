@@ -108,6 +108,22 @@ class TestSharedOperationCoordinator(unittest.TestCase):
             self.coordinator.acquire("living-room")
         self.assertFalse(self.backend.exists(self.path))
 
+    def test_recovery_requires_explicit_confirmation(self):
+        token = self.coordinator.acquire("living-room")
+        with self.assertRaisesRegex(SessionError, "Explicit confirmation"):
+            self.coordinator.recover_abandoned(token)
+        self.assertTrue(self.backend.exists(self.path))
+
+    def test_explicit_recovery_requires_matching_session_id(self):
+        token = self.coordinator.acquire("living-room")
+        with self.assertRaises(SessionOwnershipError):
+            self.coordinator.recover_abandoned("22345678-1234-4234-8234-123456789012", True)
+        self.assertTrue(self.backend.exists(self.path))
+        result = self.coordinator.recover_abandoned(token, True)
+        self.assertEqual(result["recovered_session_id"], token)
+        self.assertTrue(result["operator_confirmed_no_process_running"])
+        self.assertFalse(self.backend.exists(self.path))
+
     def test_failed_release_leaves_marker(self):
         token = self.coordinator.acquire("living-room")
         self.backend.fail_delete = True
