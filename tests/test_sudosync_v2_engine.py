@@ -64,6 +64,21 @@ class TestSyncEngine(unittest.TestCase):
         self.assertIsNone(stores["previous"])
         self.assertEqual(stores["peer_calls"], 1)
 
+    def test_initialization_preview_uses_explicit_base_without_publishing(self):
+        base = build_snapshot([raw_movie(20, 2)], [], B, "Base", generated_at=STAMP)
+        stores = {"previous": None}
+        engine = SyncEngine(
+            FakeKodi([raw_movie(10, 0)]), A, "Target",
+            load_previous_local=lambda: stores["previous"],
+            load_peer_snapshots=lambda: self.fail("initialization preview must not load peer list"),
+        )
+        result = engine.initialization_preview(base)
+        self.assertTrue(result["active"])
+        self.assertEqual(result["plan"]["change_count"], 1)
+        self.assertEqual(result["plan"]["changes"][0]["kodi_id"], 10)
+        self.assertEqual(result["plan"]["changes"][0]["changes"]["playcount"], 2)
+        self.assertIsNone(stores["previous"])
+
     def test_playback_defers_before_reading_library_or_peers(self):
         kodi = FakeKodi([raw_movie(10, 0)], playing=True)
         engine = SyncEngine(kodi, A, "Living Room", lambda: None, lambda: self.fail("must not load peers"))
