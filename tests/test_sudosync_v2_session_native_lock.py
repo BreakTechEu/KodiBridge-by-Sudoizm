@@ -6,11 +6,8 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
 
-from resources.lib.sudosync_v2.native_shared_lock import (
-    NativeSharedFileLockFactory, SharedFileLockBusy,
-)
+from resources.lib.sudosync_v2.native_shared_lock import NativeSharedFileLockFactory
 from resources.lib.sudosync_v2.session import SharedOperationCoordinator, SessionBusyError
-from resources.lib.sudosync_v2.storage import encode_json
 
 
 class MemoryBackend(object):
@@ -35,7 +32,7 @@ class MemoryBackend(object):
 
 
 class TestCoordinatorWithNativeLock(unittest.TestCase):
-    def test_second_coordinator_cannot_enter_while_first_holds_os_lock(self):
+    def test_active_marker_blocks_second_coordinator_until_release(self):
         with tempfile.TemporaryDirectory() as root:
             marker_path = os.path.join(root, ".active.json")
             backend = MemoryBackend()
