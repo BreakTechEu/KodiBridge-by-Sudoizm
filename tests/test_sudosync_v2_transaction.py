@@ -140,7 +140,7 @@ class TestTransactionRunner(unittest.TestCase):
             lambda journal: self.journals.append(journal),
             clock=lambda: STAMP,
         )
-        with self.assertRaisesRegex(TransactionError, "preflight failed"):
+        with self.assertRaisesRegex(TransactionError, "prepare or acquire"):
             runner.run(plan(), CLIENT, current_snapshot())
         self.assertFalse(self.coordinator.marker_retained)
         self.assertEqual(self.kodi.write_count, 0)

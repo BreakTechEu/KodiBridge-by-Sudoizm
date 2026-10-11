@@ -96,6 +96,14 @@ class TestRecoveryRunner(unittest.TestCase):
             clock=lambda: "2026-10-11T12:00:00Z",
         )
 
+    def test_prepared_journal_is_recovered_after_marker_was_created_before_applying_transition(self):
+        self.journals = [journal(status="prepared", item_status="pending")]
+        result = self.runner.recover_on_start(CLIENT_A)
+        self.assertEqual(result["status"], "recovered")
+        self.assertEqual(self.kodi.value, 2)
+        self.assertEqual(self.journals[-1]["status"], "committed")
+        self.assertEqual(self.coordinator.released, [SESSION])
+
     def test_same_kodi_resumes_partial_transaction_and_releases(self):
         result = self.runner.recover_on_start(CLIENT_A)
         self.assertEqual(result["status"], "recovered")

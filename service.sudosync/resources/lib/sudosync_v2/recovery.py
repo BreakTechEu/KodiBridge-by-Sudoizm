@@ -69,7 +69,7 @@ class RecoveryRunner(object):
             raise TransactionError("recovery journal format/schema is unsupported")
         if journal.get("client_id") != client_id or journal.get("session_id") != session_id:
             raise TransactionError("recovery journal owner/session does not match the active marker")
-        if journal.get("status") not in ("applying", "needs_recovery", "committed"):
+        if journal.get("status") not in ("prepared", "applying", "needs_recovery", "committed"):
             raise TransactionError("recovery journal is not in a recoverable state")
         items = journal.get("items")
         if not isinstance(items, list) or not items:
