@@ -51,6 +51,11 @@ class TestSnapshotBuilder(unittest.TestCase):
         for field in ("lastplayed", "resume", "userrating"):
             self.assertEqual(new[field], old[field])
 
+    def test_accepts_supported_kodi_lastplayed_formats(self):
+        for stamp in ("2026-10-11 10:00:00", "2026-10-11T10:00:00+02:00", "2026-10-11T08:00:00.123456Z"):
+            result = build_snapshot([movie(lastplayed=stamp)], [], CLIENT, "Living Room", generated_at=STAMP)
+            self.assertEqual(result["movies"][0]["state"]["lastplayed"], stamp)
+
     def test_rejects_conflicting_imdb_identifiers(self):
         with self.assertRaisesRegex(SnapshotBuildError, "conflicting IMDb"):
             build_snapshot([movie(imdbnumber="tt7654321")], [], CLIENT, "Living Room", generated_at=STAMP)
