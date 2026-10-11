@@ -63,6 +63,24 @@ class TestSharedOperationCoordinator(unittest.TestCase):
             id_factory=lambda: next(self.ids),
         )
 
+    def test_prepare_callback_runs_before_marker_is_created(self):
+        observed = []
+
+        def prepare(session_id):
+            observed.append((session_id, self.backend.exists(self.path)))
+
+        token = self.coordinator.acquire("living-room", prepare=prepare)
+        self.assertEqual(observed, [(token, False)])
+        self.assertTrue(self.backend.exists(self.path))
+
+    def test_prepare_failure_does_not_create_marker(self):
+        def prepare(session_id):
+            raise IOError("journal unavailable")
+
+        with self.assertRaisesRegex(SessionError, "Cannot prepare transaction"):
+            self.coordinator.acquire("living-room", prepare=prepare)
+        self.assertFalse(self.backend.exists(self.path))
+
     def test_only_one_operation_can_own_marker(self):
         token = self.coordinator.acquire("living-room")
         marker = decode_json(self.backend.files[self.path])

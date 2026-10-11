@@ -140,14 +140,9 @@ class TransactionRunner(object):
         if self._kodi.is_video_playing():
             return {"status": "deferred", "reason": "video_playing", "items": [], "backup_ref": None}
 
-        try:
-            session_id = self._coordinator.acquire(client_id)
-        except Exception as exc:
-            raise TransactionError("Cannot acquire exclusive synchronization session: {}".format(exc))
+        prepared = {}
 
-        # No library mutation has started yet; failures here may safely release
-        # the marker because the backup/journal preconditions were not met.
-        try:
+        def prepare_session(session_id):
             backup_ref = self._save_backup(current_snapshot, session_id)
             if not isinstance(backup_ref, str) or not backup_ref:
                 raise TransactionError("backup callback did not return a durable reference")
@@ -156,24 +151,44 @@ class TransactionRunner(object):
                 "schema_version": 1,
                 "session_id": session_id,
                 "client_id": client_id,
-                "status": "applying",
+                "status": "prepared",
                 "started_at": self._clock(),
                 "finished_at": "",
                 "backup_ref": backup_ref,
                 "items": items,
                 "error": "",
             }
+            # The backup and prepared journal must be durable before the active
+            # marker becomes visible. This closes the marker-without-journal
+            # crash window. No Kodi library writes are allowed in this callback.
+            self._persist_journal(deepcopy(journal))
+            prepared["journal"] = journal
+
+        try:
+            session_id = self._coordinator.acquire(client_id, prepare=prepare_session)
+        except Exception as exc:
+            raise TransactionError("Cannot prepare or acquire exclusive synchronization session: {}".format(exc))
+
+        journal = prepared.get("journal")
+        if journal is None:
+            # A coordinator that ignores the preparation callback cannot be
+            # used safely by this transaction runner.
+            raise TransactionError("Coordinator acquired a session without preparing its journal")
+
+        # No Kodi library mutation has started. If this transition cannot be
+        # persisted, release the marker only because the transaction is still
+        # guaranteed to be pre-write.
+        try:
+            journal["status"] = "applying"
             self._persist_journal(deepcopy(journal))
         except Exception as exc:
             try:
                 self._coordinator.release(session_id)
             except Exception as release_exc:
                 raise TransactionError(
-                    "Preflight failed and session marker could not be released: {}".format(release_exc)
+                    "Could not persist applying state and could not release pre-write session: {}".format(release_exc)
                 )
-            if isinstance(exc, TransactionError):
-                raise
-            raise TransactionError("Transaction preflight failed before any library write: {}".format(exc))
+            raise TransactionError("Could not persist applying state before any library write: {}".format(exc))
 
         try:
             for item in journal["items"]:

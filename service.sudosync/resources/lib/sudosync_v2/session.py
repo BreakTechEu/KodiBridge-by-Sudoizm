@@ -86,10 +86,19 @@ class SharedOperationCoordinator(object):
             )
         return _validate_marker(marker)
 
-    def acquire(self, client_id):
-        """Create and return an ownership token, or fail if any marker exists."""
+    def acquire(self, client_id, prepare=None):
+        """Create an ownership token, preparing its durable journal before the marker.
+
+        prepare(session_id) runs while the shared cross-process lock is held,
+        after confirming no active marker exists and before creating the marker.
+        It must persist the backup and a recoverable 'prepared' journal, and must
+        not mutate the Kodi library. If the process stops during preparation,
+        no marker exists and the orphaned session files are harmless.
+        """
         if not isinstance(client_id, str) or not client_id.strip() or len(client_id) > 128:
             raise ValueError("client_id must be a non-empty string of at most 128 characters")
+        if prepare is not None and not callable(prepare):
+            raise ValueError("prepare must be callable")
         with self._lock_factory(self._marker_path):
             if self._backend.exists(self._marker_path):
                 marker = self._read_marker()
@@ -112,6 +121,11 @@ class SharedOperationCoordinator(object):
                 "client_id": client_id,
                 "started_at": self._clock(),
             }
+            if prepare is not None:
+                try:
+                    prepare(canonical)
+                except Exception as exc:
+                    raise SessionError("Cannot prepare transaction before acquiring marker: {}".format(exc))
             text = encode_json(marker, max_bytes=4096)
             try:
                 written = self._backend.write_text(self._marker_path, text)
