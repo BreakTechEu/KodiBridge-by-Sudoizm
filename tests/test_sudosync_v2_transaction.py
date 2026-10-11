@@ -7,6 +7,7 @@ from copy import deepcopy
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
 
 from resources.lib.sudosync_v2.transaction import TransactionRunner, TransactionError
+from resources.lib.sudosync_v2.snapshot import build_snapshot
 
 CLIENT = "12345678-1234-4234-8234-123456789012"
 STAMP = "2026-10-11T10:00:00Z"
@@ -19,6 +20,10 @@ def state(playcount=0):
         "resume": {"position": 0.0, "total": 0.0},
         "userrating": None,
     }
+
+
+def current_snapshot():
+    return build_snapshot([], [], CLIENT, "Test Kodi", generated_at=STAMP)
 
 
 def plan(changes=None, media_type="movie", kodi_id=5):
@@ -99,7 +104,7 @@ class TestTransactionRunner(unittest.TestCase):
         )
 
     def test_successful_write_is_verified_journaled_and_released(self):
-        result = self.runner.run(plan(), CLIENT, {"movies": [], "episodes": []})
+        result = self.runner.run(plan(), CLIENT, current_snapshot())
         self.assertEqual(result["status"], "committed")
         self.assertEqual(self.kodi.items[("movie", 5)]["playcount"], 2)
         self.assertEqual(self.journals[-1]["status"], "committed")
@@ -116,14 +121,14 @@ class TestTransactionRunner(unittest.TestCase):
 
     def test_playback_before_acquire_defers(self):
         self.kodi.playing = True
-        result = self.runner.run(plan(), CLIENT, {})
+        result = self.runner.run(plan(), CLIENT, current_snapshot())
         self.assertEqual(result["status"], "deferred")
         self.assertFalse(self.coordinator.acquired)
 
     def test_verification_failure_retains_marker_and_journal(self):
         self.kodi.fail_verify = True
         with self.assertRaisesRegex(TransactionError, "verification failed"):
-            self.runner.run(plan(), CLIENT, {})
+            self.runner.run(plan(), CLIENT, current_snapshot())
         self.assertTrue(self.coordinator.marker_retained)
         self.assertEqual(self.journals[-1]["status"], "needs_recovery")
         self.assertFalse(self.coordinator.released)
@@ -151,7 +156,7 @@ class TestTransactionRunner(unittest.TestCase):
         }
         self.kodi.items[("movie", 6)] = state()
         with self.assertRaisesRegex(TransactionError, "playback started"):
-            self.runner.run(multi, CLIENT, {})
+            self.runner.run(multi, CLIENT, current_snapshot())
         self.assertTrue(self.coordinator.marker_retained)
         self.assertEqual(self.kodi.write_count, 1)
         self.assertEqual(self.journals[-1]["status"], "needs_recovery")
