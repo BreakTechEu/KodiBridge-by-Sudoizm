@@ -138,6 +138,30 @@ class KodiJsonRpcAdapter(object):
     def get_episodes(self):
         return self._get_library_items("VideoLibrary.GetEpisodes", "episodes", EPISODE_PROPERTIES)
 
+    def get_movie_details(self, movie_id):
+        if type(movie_id) is not int or movie_id < 1:
+            raise ValueError("movie_id must be a positive local Kodi ID")
+        result = self.call("VideoLibrary.GetMovieDetails", {
+            "movieid": movie_id,
+            "properties": list(MOVIE_PROPERTIES),
+        })
+        details = result.get("moviedetails") if isinstance(result, dict) else None
+        if not isinstance(details, dict):
+            raise KodiRpcError("VideoLibrary.GetMovieDetails returned invalid details")
+        return details
+
+    def get_episode_details(self, episode_id):
+        if type(episode_id) is not int or episode_id < 1:
+            raise ValueError("episode_id must be a positive local Kodi ID")
+        result = self.call("VideoLibrary.GetEpisodeDetails", {
+            "episodeid": episode_id,
+            "properties": list(EPISODE_PROPERTIES),
+        })
+        details = result.get("episodedetails") if isinstance(result, dict) else None
+        if not isinstance(details, dict):
+            raise KodiRpcError("VideoLibrary.GetEpisodeDetails returned invalid details")
+        return details
+
     def is_video_playing(self):
         players = self.call("Player.GetActivePlayers")
         if not isinstance(players, list):
