@@ -1,0 +1,29 @@
+name: SudoSync v2 CI
+
+on:
+  push:
+    branches:
+      - "v2/rewrite-2026-10-10"
+  pull_request:
+    branches:
+      - "master"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: v2 unit tests and syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Check Python syntax
+        run: python -m compileall -q service.sudosync tests tools
+      - name: Run unit tests
+        run: python -m unittest discover -s tests
