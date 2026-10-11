@@ -124,6 +124,43 @@ class SharedOperationCoordinator(object):
                 raise SessionError("Active-operation marker read-back did not match")
             return canonical
 
+
+    def inspect(self, client_id):
+        """Classify the shared session for this stable Kodi client ID.
+
+        A matching client owns recovery after a Kodi/service restart. A marker
+        owned by another client blocks this Kodi. Marker age is never used to
+        decide ownership or liveness.
+        """
+        if not isinstance(client_id, str) or not client_id.strip() or len(client_id) > 128:
+            raise ValueError("client_id must be a non-empty string of at most 128 characters")
+        with self._lock_factory(self._marker_path):
+            if not self._backend.exists(self._marker_path):
+                return {"state": "clear", "marker": None}
+            marker = self._read_marker()
+            state = "owned_recovery" if marker["client_id"] == client_id else "blocked"
+            return {"state": state, "marker": dict(marker)}
+
+    def resume_owned(self, client_id, session_id):
+        """Return the existing session token only to its original Kodi client.
+
+        This does not clear or replace the marker. It is solely an ownership
+        check before journal-based recovery starts.
+        """
+        state = self.inspect(client_id)
+        if state["state"] == "clear":
+            raise SessionOwnershipError("No unfinished session exists to resume")
+        if state["state"] == "blocked":
+            marker = state["marker"]
+            raise SessionBusyError(
+                "Unfinished operation belongs to another Kodi client (client {}, session {})."
+                .format(marker["client_id"], marker["session_id"])
+            )
+        marker = state["marker"]
+        if marker["session_id"] != session_id:
+            raise SessionOwnershipError("Recovery session ID does not match this Kodi client's active session")
+        return session_id
+
     def recover_abandoned(self, session_id, confirmed_no_process_running=False):
         """Explicitly clear a matching abandoned marker after operator review.
 

@@ -60,7 +60,7 @@ Status: projekt techniczny; nie jest jeszcze implementacją ani obietnicą zgodn
 - Przed rozpoczęciem cyklu klient musi zdobyć cross-process lock dla wspólnego znacznika aktywnej operacji. Blokada procesowa w Pythonie nie wystarcza.
 - Po zdobyciu blokady klient tworzy znacznik zawierający session ID, client ID i czas rozpoczęcia; kolejna instancja odmawia rozpoczęcia operacji, dopóki znacznik istnieje.
 - Znacznik jest usuwany wyłącznie przez właściciela sesji po prawidłowym zakończeniu. Błąd odczytu, zapisu lub usunięcia oznacza odmowę dalszej pracy.
-- Znacznik pozostawiony po awarii nie może być automatycznie uznawany za osierocony na podstawie wieku. Odzyskiwanie wymaga jawnego sprawdzenia, że żaden proces nie wykonuje operacji.
+- Znacznik pozostawiony po awarii nie może być automatycznie uznawany za osierocony na podstawie wieku. Przy starcie każda wtyczka najpierw odczytuje właściciela: urządzenie zapisane jako właściciel automatycznie podejmuje odzyskiwanie z dziennika, a inne urządzenia pozostają zablokowane. Nie ma automatycznego przejęcia sesji przez inne Kodi.
 - Protokół znacznika nie jest sam w sobie blokadą. Wydanie nie może być uznane za gotowe, dopóki implementacja blokady nie zostanie zweryfikowana na docelowych udziałach SMB/NFS oraz na lokalnym systemie plików.
 
 ## Testowanie i bramki jakości
@@ -96,7 +96,7 @@ Stan po wdrożeniu modułów domenowych i adapterów (nie oznacza gotowości do 
 - Zaimplementowano osobny planer inicjalizacji z wybranego urządzenia bazowego. Kopiuje wartości do pustych pól, zachowuje wyższy licznik odtworzeń celu i raportuje konflikty niepustych resume/lastplayed/userrating.
 - Zaimplementowano testowalny adapter JSON-RPC, adapter plikowy xbmcvfs, katalog współdzielonych snapshotów oraz abstrakcję repozytorium z kopią odzyskiwania.
 - Dodano runner transakcji z backupem przed zapisem, trwałym dziennikiem zamiaru, weryfikacją po każdej zmianie i pozostawieniem blokady przy niepewnym wyniku. Nie wykonuje automatycznego rollbacku ani samodzielnego odzyskiwania.
-- Dodano protokół znacznika aktywnej sesji, ale nie podłączono go do uruchamiania usługi. Sam znacznik nie stanowi blokady.
+- Dodano protokół znacznika aktywnej sesji, rozpoznawanie właściciela po restarcie oraz runner odzyskiwania, który weryfikuje rzeczywisty stan Kodi, bezpiecznie wznawia nieukończone pozycje i pozostawia blokadę przy niepewnym wyniku. Nie podłączono go jeszcze do uruchamiania usługi. Sam znacznik nie stanowi blokady.
 - Brakuje zweryfikowanego, międzyprocesowego mechanizmu blokady wspólnego zasobu i integracji kompletnego przepływu z service.py.
 - Adapter VFS i runner transakcji są testowane z atrapami API; rzeczywiste zachowanie na udziałach SMB/NFS i na wspieranych wersjach Kodi pozostaje do potwierdzenia.
 - Do czasu ukończenia tych punktów nie tworzyć paczki instalacyjnej ani nie deklarować, że synchronizacja działa end-to-end.
