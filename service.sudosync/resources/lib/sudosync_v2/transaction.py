@@ -93,6 +93,8 @@ class TransactionRunner(object):
                 raise TransactionError("plan item {} must include before-state and non-empty changes".format(index))
             if not set(changes).issubset({"playcount", "lastplayed", "resume", "userrating"}):
                 raise TransactionError("plan item {} contains unsupported fields".format(index))
+            if not set(changes).issubset(before):
+                raise TransactionError("plan item {} lacks before-values for changed fields".format(index))
             after = deepcopy(before)
             after.update(deepcopy(changes))
             normalized.append({
@@ -190,10 +192,26 @@ class TransactionRunner(object):
                 )
             raise TransactionError("Could not persist applying state before any library write: {}".format(exc))
 
+        mutation_started = False
         try:
             for item in journal["items"]:
                 if self._kodi.is_video_playing():
                     raise TransactionError("video playback started during the transaction")
+
+                # Plans may become stale while they wait for the shared session.
+                # Re-read the target under the session marker and compare every
+                # changed field with its recorded before-value before any write.
+                actual_before = self._get_details(item)
+                if not isinstance(actual_before, dict):
+                    raise TransactionError("Kodi returned invalid details before mutation")
+                for field in item["changes"]:
+                    expected_before = item["before"][field]
+                    if not _field_matches(actual_before, expected_before, field):
+                        raise TransactionError(
+                            "Plan precondition failed for {} {} field {}; refusing stale write"
+                            .format(item["type"], item["kodi_id"], field)
+                        )
+
                 # Persist intent before each mutation so recovery can distinguish
                 # untouched work from a write whose outcome may be uncertain.
                 item["status"] = "applying"
@@ -201,15 +219,35 @@ class TransactionRunner(object):
                 self._persist_journal(deepcopy(journal))
                 # From this point a failed RPC may have partially changed Kodi;
                 # never clear the marker automatically on error.
+                mutation_started = True
                 self._set_details(item, item["changes"])
                 self._verify(item)
                 item["status"] = "verified"
                 item["verified_at"] = self._clock()
                 self._persist_journal(deepcopy(journal))
         except Exception as exc:
-            journal["status"] = "needs_recovery"
             journal["error"] = str(exc)
             journal["finished_at"] = self._clock()
+            if not mutation_started:
+                # No library mutation has been attempted in this session. It is
+                # safe to abort and release the marker, even if the plan was stale.
+                journal["status"] = "aborted"
+                try:
+                    self._persist_journal(deepcopy(journal))
+                except Exception:
+                    pass
+                try:
+                    self._coordinator.release(session_id)
+                except Exception as release_exc:
+                    raise TransactionError(
+                        "Transaction failed before any library write and the session marker remains: {}"
+                        .format(release_exc)
+                    )
+                if isinstance(exc, TransactionError):
+                    raise
+                raise TransactionError("Transaction aborted before any library write: {}".format(exc))
+
+            journal["status"] = "needs_recovery"
             try:
                 self._persist_journal(deepcopy(journal))
             except Exception:
