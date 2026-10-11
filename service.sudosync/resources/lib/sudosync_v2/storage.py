@@ -60,11 +60,11 @@ def encode_json(value, max_bytes=8 * 1024 * 1024):
 class SharedJsonRepository(object):
     """JSON file repository with backup recovery and lock-required writes.
 
-    backend methods: exists(path), read_text(path), write_text(path, text),
-    copy(source, destination), rename(source, destination), delete(path).
-    Mutating backend methods must return True only when the operation succeeded.
-    lock_factory(path) must return a context manager implementing a cross-process
-    lock for the same logical document path.
+    Backend methods: exists(path), read_text(path), write_text(path, text),
+    rename(source, destination), delete(path). Mutating backend methods must
+    return True only when the operation succeeded. rename() must not silently
+    overwrite an existing destination. lock_factory(path) must return a context
+    manager implementing a cross-process lock for the same logical document.
     """
 
     def __init__(self, backend, lock_factory, max_bytes=8 * 1024 * 1024):
@@ -86,7 +86,7 @@ class SharedJsonRepository(object):
         return decode_json(text, self._max_bytes)
 
     def load(self, path):
-        """Load an existing JSON document; recover from backup only if main is absent."""
+        """Load a document; recover backup only when the main document is absent."""
         backup = path + ".bak"
         with self._lock_factory(path):
             if self._backend.exists(path):
@@ -102,31 +102,58 @@ class SharedJsonRepository(object):
             return None
 
     def save(self, path, value):
-        """Save JSON under a required lock, preserving the previous file as .bak."""
+        """Save under lock while preserving the current document and prior backup."""
         text = encode_json(value, self._max_bytes)
         backup = path + ".bak"
+        staged_backup = backup + ".previous-" + uuid.uuid4().hex
         temp = path + ".tmp-" + uuid.uuid4().hex
         with self._lock_factory(path):
             try:
+                main_exists = self._backend.exists(path)
+                backup_exists = self._backend.exists(backup)
+                if not main_exists and backup_exists:
+                    raise RepositoryError(
+                        "Main document is missing while backup exists; load/recover it before saving: " + path
+                    )
+                if main_exists:
+                    # Validate current data before moving or replacing any recoverable file.
+                    self._read_unlocked(path)
+
                 if not self._backend.write_text(temp, text):
                     raise RepositoryError("Temporary JSON write failed: " + path)
-                # Read-back verifies the VFS did not truncate or corrupt the write.
                 verified = self._read_unlocked(temp)
                 if verified != value:
                     raise RepositoryError("Temporary JSON read-back does not match the requested value: " + path)
 
-                if self._backend.exists(path):
-                    # Do not replace a malformed or unreadable current file automatically.
-                    self._read_unlocked(path)
-                    if self._backend.exists(backup) and not self._backend.delete(backup):
-                        raise RepositoryError("Cannot remove previous backup: " + backup)
-                    if not self._backend.rename(path, backup):
-                        raise RepositoryError("Cannot preserve current document as backup: " + path)
+                # Stage the old backup instead of deleting it before the current
+                # document has safely taken its place. If rotation fails, restore it.
+                staged = False
+                if backup_exists:
+                    if not self._backend.rename(backup, staged_backup):
+                        raise RepositoryError("Cannot preserve previous backup: " + backup)
+                    staged = True
+
+                if main_exists and not self._backend.rename(path, backup):
+                    if staged:
+                        self._backend.rename(staged_backup, backup)
+                    raise RepositoryError("Cannot preserve current document as backup: " + path)
 
                 if not self._backend.rename(temp, path):
-                    if self._backend.exists(backup) and not self._backend.exists(path):
+                    # Restore the just-saved main document, then restore the older
+                    # backup if one existed. Failed recovery leaves staged data intact.
+                    if main_exists and self._backend.exists(backup) and not self._backend.exists(path):
                         self._backend.rename(backup, path)
+                    if staged and self._backend.exists(staged_backup) and not self._backend.exists(backup):
+                        self._backend.rename(staged_backup, backup)
                     raise RepositoryError("Cannot promote temporary document: " + path)
+
+                # New main is now verified and promoted. A stale staged backup is
+                # expendable; failure to delete it does not invalidate the save.
+                if staged:
+                    try:
+                        self._backend.delete(staged_backup)
+                    except Exception:
+                        pass
                 return True
             except RepositoryError:
                 raise
