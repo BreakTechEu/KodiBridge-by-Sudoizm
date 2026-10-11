@@ -6,7 +6,8 @@ import uuid
 from . import FORMAT_NAME, SCHEMA_VERSION, SYNC_FIELDS, IDENTIFIER_TYPES
 from .identity import normalize_identifier
 
-_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
+_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$")
+_LEGACY_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
 
 class SnapshotValidationError(ValueError):
     """Raised when shared data is malformed or outside supported limits."""
