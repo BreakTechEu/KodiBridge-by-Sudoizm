@@ -94,7 +94,7 @@ Stan po wdrożeniu modułów domenowych i adapterów (nie oznacza gotowości do 
 - Zaimplementowano walidację snapshotów, normalizację silnych identyfikatorów, wersjonowanie pól, budowanie snapshotu z wyników JSON-RPC oraz czysty planer dry-run.
 - Planer grupuje rekordy tylko po typowanych silnych identyfikatorach. Niejednoznaczne grupy i konflikty pól są raportowane, nie nadpisywane. Rekordy zdalne nie są dodawane do lokalnej biblioteki.
 - Zaimplementowano osobny planer inicjalizacji z wybranego urządzenia bazowego. Kopiuje wartości do pustych pól, zachowuje wyższy licznik odtworzeń celu i raportuje konflikty niepustych resume/lastplayed/userrating.
-- Zaimplementowano testowalny adapter JSON-RPC, adapter plikowy xbmcvfs oraz abstrakcję repozytorium z kopią odzyskiwania.
+- Zaimplementowano testowalny adapter JSON-RPC, adapter plikowy xbmcvfs, katalog współdzielonych snapshotów oraz abstrakcję repozytorium z kopią odzyskiwania.
 - Dodano runner transakcji z backupem przed zapisem, trwałym dziennikiem zamiaru, weryfikacją po każdej zmianie i pozostawieniem blokady przy niepewnym wyniku. Nie wykonuje automatycznego rollbacku ani samodzielnego odzyskiwania.
 - Dodano protokół znacznika aktywnej sesji, ale nie podłączono go do uruchamiania usługi. Sam znacznik nie stanowi blokady.
 - Brakuje zweryfikowanego, międzyprocesowego mechanizmu blokady wspólnego zasobu i integracji kompletnego przepływu z service.py.
