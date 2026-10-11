@@ -2,7 +2,6 @@
 import os
 import sys
 import tempfile
-import threading
 import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
@@ -76,6 +75,19 @@ class TestNativeSharedFileLock(unittest.TestCase):
         factory = NativeSharedFileLockFactory(filesystem_verified=True)
         with self.assertRaisesRegex(SharedFileLockError, "VFS URIs are unsupported"):
             factory("smb://server/share/.sudosync-active-operation.json")
+
+    def test_os_lock_rejects_second_nonblocking_owner_until_release(self):
+        if os.name == "nt":
+            self.skipTest("The OS lock conflict test uses POSIX flock semantics")
+        with tempfile.TemporaryDirectory() as root:
+            path = os.path.join(root, "shared.lock")
+            first = NativeSharedFileLock(path, blocking=True)
+            second = NativeSharedFileLock(path, blocking=False)
+            with first:
+                with self.assertRaises(SharedFileLockBusy):
+                    second.__enter__()
+            with second:
+                self.assertTrue(os.path.exists(path))
 
     def test_factory_places_persistent_lock_beside_resource(self):
         with tempfile.TemporaryDirectory() as root:
