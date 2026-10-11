@@ -38,6 +38,13 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         self.assertEqual([x["movieid"] for x in adapter.get_movies()], [1, 2, 3])
         self.assertEqual(transport.calls[1]["params"]["limits"]["start"], 2)
 
+    def test_refuses_more_items_than_reported_total(self):
+        def handler(req):
+            return {"movies": [{"movieid": 1}, {"movieid": 2}], "limits": {"total": 1}}
+        adapter = KodiJsonRpcAdapter(FakeTransport(handler), page_size=2)
+        with self.assertRaisesRegex(KodiRpcError, "more records than its reported total"):
+            adapter.get_movies()
+
     def test_refuses_changing_total_during_pagination(self):
         def handler(req):
             start = req["params"]["limits"]["start"]
