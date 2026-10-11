@@ -49,7 +49,8 @@ def raw_movie(kodi_id, playcount):
 class TestSyncEngine(unittest.TestCase):
     def test_preview_builds_plan_without_publishing(self):
         local_kodi = FakeKodi([raw_movie(10, 0)])
-        remote = build_snapshot([raw_movie(20, 2)], [], B, "Bedroom", generated_at=STAMP)
+        remote_base = build_snapshot([raw_movie(20, 0)], [], B, "Bedroom", generated_at=STAMP)
+        remote = build_snapshot([raw_movie(20, 2)], [], B, "Bedroom", previous_snapshot=remote_base, generated_at=STAMP)
         stores = {"previous": None, "peer_calls": 0}
         engine = SyncEngine(
             local_kodi, A, "Living Room",
