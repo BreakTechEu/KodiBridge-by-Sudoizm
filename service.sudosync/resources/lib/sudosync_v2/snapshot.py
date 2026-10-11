@@ -137,24 +137,30 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                 for record in records:
                     if not isinstance(record, dict) or not isinstance(record.get("ids"), dict):
                         continue
-                    alias = _identity_key(media_type, record["ids"])
-                    if alias is not None:
-                        previous_by_identity[media_type][alias] = record
+                    for alias in _identity_keys(media_type, record["ids"]):
+                        previous_by_identity[media_type].setdefault(alias, []).append(record)
 
-    seen = {"movie": set(), "episode": set()}
+    seen = {"movie": {} , "episode": {}}
     output = {"movie": [], "episode": []}
     for media_type, source in (("movie", movies), ("episode", episodes)):
         for index, item in enumerate(source):
             if not isinstance(item, dict):
                 raise SnapshotBuildError("{}[{}] must be an object".format(media_type, index))
             ids = _identifiers(item)
-            identity = _identity_key(media_type, ids)
-            if identity is not None:
+            identities = _identity_keys(media_type, ids)
+            for identity in identities:
                 if identity in seen[media_type]:
-                    raise SnapshotBuildError("duplicate strong identity in {} library: {}".format(media_type, identity))
-                seen[media_type].add(identity)
+                    raise SnapshotBuildError("duplicate/overlapping strong identity in {} library: {}".format(media_type, identity))
+            for identity in identities:
+                seen[media_type][identity] = index
+            prior_candidates = {}
+            for identity in identities:
+                for prior_record in previous_by_identity[media_type].get(identity, []):
+                    prior_candidates[id(prior_record)] = prior_record
+            if len(prior_candidates) > 1:
+                raise SnapshotBuildError("current {} item matches multiple records in its previous snapshot".format(media_type))
+            prior = next(iter(prior_candidates.values())) if prior_candidates else None
             state = _state(item)
-            prior = previous_by_identity[media_type].get(identity) if identity is not None else None
             versions = _record_versions(state, prior, canonical_client, logical_clock)
             output[media_type].append({
                 "type": media_type,
@@ -178,10 +184,11 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
     return snapshot
 
 
-def _identity_key(media_type, ids):
-    """Select one stable primary identifier for previous-snapshot lookup."""
+def _identity_keys(media_type, ids):
+    """Return every valid typed alias for conservative snapshot matching."""
+    aliases = []
     for kind in ("sudosync", "imdb", "tmdb", "tvdb", "trakt"):
         value = normalize_identifier(kind, ids.get(kind))
         if value is not None:
-            return (media_type, kind, value)
-    return None
+            aliases.append((media_type, kind, value))
+    return tuple(aliases)
