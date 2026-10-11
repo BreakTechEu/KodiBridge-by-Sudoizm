@@ -123,6 +123,17 @@ class TestTransactionRunner(unittest.TestCase):
         self.assertEqual(result["status"], "no_changes")
         self.assertFalse(self.coordinator.acquired)
 
+    def test_stale_plan_aborts_before_any_library_write_and_releases_marker(self):
+        # The target changed after planning but before the transaction acquired
+        # its session. The old plan must not overwrite that newer local state.
+        self.kodi.items[("movie", 5)]["playcount"] = 1
+        with self.assertRaisesRegex(TransactionError, "Plan precondition failed"):
+            self.runner.run(plan({"playcount": 2}), CLIENT, current_snapshot())
+        self.assertEqual(self.kodi.write_count, 0)
+        self.assertFalse(self.coordinator.marker_retained)
+        self.assertEqual(self.coordinator.released, ["12345678-1234-4234-8234-123456789012"])
+        self.assertEqual(self.journals[-1]["status"], "aborted")
+
     def test_playback_before_acquire_defers(self):
         self.kodi.playing = True
         result = self.runner.run(plan(), CLIENT, current_snapshot())
