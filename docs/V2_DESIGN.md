@@ -54,6 +54,15 @@ Status: projekt techniczny; nie jest jeszcze implementacją ani obietnicą zgodn
 - Po instalacji weryfikować wersję i stan; jeśli Kodi wymaga restartu, jasno to komunikować. Nie usuwać ostatniej działającej kopii, dopóki nowa instalacja nie przejdzie walidacji.
 - Testy muszą obejmować poprawny podpis, zmieniony ZIP, zmieniony manifest, zły klucz, obcięty podpis, błędne kodowanie, złośliwe ścieżki, duplikaty, limity rozmiaru, downgrade i błędy I/O.
 
+## Wyłączność operacji synchronizacji
+
+- Wyłączność dotyczy mutującego cyklu synchronizacji, nie całego czasu życia dodatku Kodi.
+- Przed rozpoczęciem cyklu klient musi zdobyć cross-process lock dla wspólnego znacznika aktywnej operacji. Blokada procesowa w Pythonie nie wystarcza.
+- Po zdobyciu blokady klient tworzy znacznik zawierający session ID, client ID i czas rozpoczęcia; kolejna instancja odmawia rozpoczęcia operacji, dopóki znacznik istnieje.
+- Znacznik jest usuwany wyłącznie przez właściciela sesji po prawidłowym zakończeniu. Błąd odczytu, zapisu lub usunięcia oznacza odmowę dalszej pracy.
+- Znacznik pozostawiony po awarii nie może być automatycznie uznawany za osierocony na podstawie wieku. Odzyskiwanie wymaga jawnego sprawdzenia, że żaden proces nie wykonuje operacji.
+- Protokół znacznika nie jest sam w sobie blokadą. Wydanie nie może być uznane za gotowe, dopóki implementacja blokady nie zostanie zweryfikowana na docelowych udziałach SMB/NFS oraz na lokalnym systemie plików.
+
 ## Testowanie i bramki jakości
 
 - Testy domeny uruchamiane bez Kodi i bez sieci.
