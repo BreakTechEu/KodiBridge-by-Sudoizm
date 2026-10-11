@@ -104,6 +104,15 @@ class TestRecoveryRunner(unittest.TestCase):
         self.assertEqual(self.journals[-1]["status"], "committed")
         self.assertEqual(self.coordinator.released, [SESSION])
 
+    def test_aborted_prewrite_journal_releases_marker_without_mutation(self):
+        self.journals = [journal(status="aborted", item_status="pending")]
+        result = self.runner.recover_on_start(CLIENT_A)
+        self.assertEqual(result["status"], "recovered")
+        self.assertTrue(result["aborted"])
+        self.assertEqual(self.kodi.writes, 0)
+        self.assertEqual(self.kodi.value, 0)
+        self.assertEqual(self.coordinator.released, [SESSION])
+
     def test_same_kodi_resumes_partial_transaction_and_releases(self):
         result = self.runner.recover_on_start(CLIENT_A)
         self.assertEqual(result["status"], "recovered")
