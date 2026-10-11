@@ -15,6 +15,7 @@ class FakeBackend(object):
     def __init__(self):
         self.files = {}
         self.fail_promote = False
+        self.fail_backup_rotation = False
 
     def exists(self, path):
         return path in self.files
@@ -33,7 +34,9 @@ class FakeBackend(object):
     def rename(self, source, destination):
         if self.fail_promote and ".tmp-" in source and destination.endswith(".json"):
             return False
-        if source not in self.files:
+        if self.fail_backup_rotation and source.endswith(".json") and destination.endswith(".json.bak"):
+            return False
+        if source not in self.files or destination in self.files:
             return False
         self.files[destination] = self.files.pop(source)
         return True
@@ -104,6 +107,33 @@ class TestSharedJsonRepository(unittest.TestCase):
         with self.assertRaises(RepositoryError):
             self.repo.save(self.path, {"generation": 2})
         self.assertEqual(self.backend.files[self.path], '{"generation": NaN}')
+
+    def test_previous_backup_survives_failed_backup_rotation(self):
+        self.repo.save(self.path, {"generation": 1})
+        self.repo.save(self.path, {"generation": 2})
+        self.backend.fail_backup_rotation = True
+        with self.assertRaises(RepositoryError):
+            self.repo.save(self.path, {"generation": 3})
+        self.backend.fail_backup_rotation = False
+        self.assertEqual(self.repo.load(self.path), {"generation": 2})
+        self.assertEqual(decode_json(self.backend.files[self.path + ".bak"]), {"generation": 1})
+
+    def test_missing_main_with_backup_must_be_recovered_before_save(self):
+        self.backend.files[self.path + ".bak"] = '{"generation": 7}'
+        with self.assertRaises(RepositoryError):
+            self.repo.save(self.path, {"generation": 8})
+        self.assertNotIn(self.path, self.backend.files)
+        self.assertEqual(decode_json(self.backend.files[self.path + ".bak"]), {"generation": 7})
+
+    def test_previous_backup_survives_failed_promotion(self):
+        self.repo.save(self.path, {"generation": 1})
+        self.repo.save(self.path, {"generation": 2})
+        self.backend.fail_promote = True
+        with self.assertRaises(RepositoryError):
+            self.repo.save(self.path, {"generation": 3})
+        self.backend.fail_promote = False
+        self.assertEqual(self.repo.load(self.path), {"generation": 2})
+        self.assertEqual(decode_json(self.backend.files[self.path + ".bak"]), {"generation": 1})
 
 
 if __name__ == "__main__":
