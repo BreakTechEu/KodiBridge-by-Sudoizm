@@ -43,7 +43,8 @@ class TestDryRunPlanner(unittest.TestCase):
 
     def test_remote_only_item_is_not_added_to_local_library(self):
         local = make_snapshot(A, "Living Room", [{"playcount": 0, "imdb": "tt1234567"}])
-        remote = make_snapshot(B, "Bedroom", [{"playcount": 2, "imdb": "tt1234567"}, {"playcount": 3, "imdb": "tt9999999"}])
+        remote_base = make_snapshot(B, "Bedroom", [{"playcount": 0, "imdb": "tt1234567"}, {"playcount": 0, "imdb": "tt9999999"}])
+        remote = make_snapshot(B, "Bedroom", [{"playcount": 2, "imdb": "tt1234567"}, {"playcount": 3, "imdb": "tt9999999"}], previous=remote_base)
         plan = build_sync_plan(local, [remote], {"movie": [7], "episode": []})
         self.assertEqual(plan["change_count"], 1)
         self.assertEqual(plan["changes"][0]["kodi_id"], 7)
