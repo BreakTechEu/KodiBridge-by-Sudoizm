@@ -77,8 +77,10 @@ class TestTransactionStore(unittest.TestCase):
     def test_wrong_session_in_journal_is_rejected(self):
         value = journal()
         value["session_id"] = "42345678-1234-4234-8234-123456789012"
+        wrong_path = self.store.journal_path(SESSION)
+        self.repo.files[wrong_path] = value
         with self.assertRaisesRegex(TransactionStoreError, "session ID"):
-            self.store.persist_journal(value)
+            self.store.load_journal(SESSION)
 
     def test_invalid_status_is_rejected(self):
         value = journal()
