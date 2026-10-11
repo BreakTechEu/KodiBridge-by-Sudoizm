@@ -54,6 +54,13 @@ Status: projekt techniczny; nie jest jeszcze implementacją ani obietnicą zgodn
 - Po instalacji weryfikować wersję i stan; jeśli Kodi wymaga restartu, jasno to komunikować. Nie usuwać ostatniej działającej kopii, dopóki nowa instalacja nie przejdzie walidacji.
 - Testy muszą obejmować poprawny podpis, zmieniony ZIP, zmieniony manifest, zły klucz, obcięty podpis, błędne kodowanie, złośliwe ścieżki, duplikaty, limity rozmiaru, downgrade i błędy I/O.
 
+## Ochrona przed podwójnym uruchomieniem usługi lokalnie
+
+- Na jednym profilu Kodi usługa przed bootstrapem, aktualizacją, odczytem biblioteki lub synchronizacją zdobywa lokalną blokadę systemową na pliku w katalogu profilu dodatku.
+- Blokada jest utrzymywana przez cały czas życia procesu. System operacyjny zwalnia ją po zamknięciu lub awarii procesu; sam plik blokady pozostaje i nie jest traktowany jako dowód aktywności.
+- Druga kopia usługi na tym samym profilu kończy start bez wykonywania pracy. Jeśli mechanizm blokady nie jest dostępny lub nie można go bezpiecznie ustanowić, usługa nie rozpoczyna pracy.
+- Lokalna blokada nie zastępuje wspólnego znacznika sesji ani dziennika odzyskiwania dla wielu urządzeń Kodi.
+
 ## Wyłączność operacji synchronizacji
 
 - Wyłączność dotyczy mutującego cyklu synchronizacji, nie całego czasu życia dodatku Kodi.
