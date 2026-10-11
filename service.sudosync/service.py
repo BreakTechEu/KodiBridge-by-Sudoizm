@@ -8,10 +8,13 @@ from __future__ import absolute_import, division, print_function
 # (at your option) any later version.
 # -------------------------------------------------------------------------
 
+import atexit
 import time
 
 import xbmc
 import xbmcgui
+
+from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_guard, ServiceGuardError
 
 from resources.lib.sudosync_core import (
     addon_settings,
@@ -100,6 +103,18 @@ def _is_playing_video():
 
 
 def main():
+    # Prevent duplicate service execution on this Kodi installation before any
+    # bootstrap, update check, snapshot, or synchronization work begins.
+    try:
+        service_guard = acquire_kodi_service_guard()
+    except ServiceGuardError as exc:
+        log("Local service guard unavailable; refusing to start: {}".format(exc), xbmc.LOGERROR)
+        return
+    if service_guard is None:
+        log("Another SudoSync service instance already owns this Kodi profile; refusing duplicate start.", xbmc.LOGWARNING)
+        return
+    atexit.register(service_guard.release)
+
     monitor = SudoSyncMonitor()
     settings = addon_settings()
     
