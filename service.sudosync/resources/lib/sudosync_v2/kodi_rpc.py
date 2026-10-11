@@ -119,7 +119,9 @@ class KodiJsonRpcAdapter(object):
             if len(all_items) + len(items) > self._max_records:
                 raise KodiRpcError("{} exceeds the configured library record limit".format(method))
             all_items.extend(items)
-            if expected_total is not None and len(all_items) >= expected_total:
+            if expected_total is not None and len(all_items) > expected_total:
+                raise KodiRpcError("{} returned more records than its reported total".format(method))
+            if expected_total is not None and len(all_items) == expected_total:
                 break
             if not items:
                 if expected_total is None or len(all_items) >= expected_total:
