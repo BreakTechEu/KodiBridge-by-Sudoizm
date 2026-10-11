@@ -172,6 +172,7 @@ def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=
                     "type": media_type,
                     "kodi_id": kodi_id,
                     "identity": sorted(["{}:{}".format(kind, value) for kind, value in local_member["record"]["ids"].items()]),
+                    "before": dict(local_member["record"]["state"]),
                     "changes": field_changes,
                 })
             if not merged["conflicts"]:
