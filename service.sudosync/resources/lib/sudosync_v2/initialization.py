@@ -120,6 +120,7 @@ def build_initialization_plan(base_snapshot, target_snapshot, target_kodi_ids, m
                     "type": media_type,
                     "kodi_id": local_ids[media_type][target_index],
                     "identity": sorted("{}:{}".format(kind, value) for kind, value in target["ids"].items()),
+                    "before": deepcopy(target["state"]),
                     "changes": field_changes,
                 })
 
