@@ -16,13 +16,31 @@ def _require(condition, message):
         raise SnapshotValidationError(message)
 
 def _valid_timestamp(value):
-    if not isinstance(value, str) or not _TIMESTAMP.fullmatch(value):
+    if not isinstance(value, str):
+        return False
+    if _LEGACY_TIMESTAMP.fullmatch(value):
+        try:
+            from datetime import datetime
+            datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            return True
+        except ValueError:
+            return False
+    if not _TIMESTAMP.fullmatch(value):
         return False
     try:
         from datetime import datetime
-        datetime.strptime(value.split(".", 1)[0].rstrip("Z"), "%Y-%m-%dT%H:%M:%S")
+        base = value.split(".", 1)[0]
+        base = base[:19]
+        datetime.strptime(base, "%Y-%m-%dT%H:%M:%S")
+        suffix = value[-6:] if value[-6:-5] in ("+", "-") else value[-1:]
+        if suffix not in ("Z",) and suffix != value[-6:]:
+            return False
+        if suffix != "Z":
+            hours, minutes = int(suffix[1:3]), int(suffix[4:6])
+            if hours > 14 or minutes > 59 or (hours == 14 and minutes != 0):
+                return False
         return True
-    except ValueError:
+    except (ValueError, IndexError):
         return False
 
 def _validate_state(state, where):
