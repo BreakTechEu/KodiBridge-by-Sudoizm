@@ -108,6 +108,34 @@ class TestSharedOperationCoordinator(unittest.TestCase):
             self.coordinator.acquire("living-room")
         self.assertFalse(self.backend.exists(self.path))
 
+    def test_inspect_reports_clear_state(self):
+        result = self.coordinator.inspect("living-room")
+        self.assertEqual(result["state"], "clear")
+        self.assertIsNone(result["marker"])
+
+    def test_inspect_recognizes_original_kodi_as_recovery_owner(self):
+        token = self.coordinator.acquire("living-room")
+        result = self.coordinator.inspect("living-room")
+        self.assertEqual(result["state"], "owned_recovery")
+        self.assertEqual(result["marker"]["session_id"], token)
+        self.assertEqual(self.coordinator.resume_owned("living-room", token), token)
+        self.assertTrue(self.backend.exists(self.path))
+
+    def test_inspect_blocks_other_kodi_and_does_not_release_marker(self):
+        token = self.coordinator.acquire("living-room")
+        result = self.coordinator.inspect("bedroom")
+        self.assertEqual(result["state"], "blocked")
+        self.assertEqual(result["marker"]["session_id"], token)
+        with self.assertRaises(SessionBusyError):
+            self.coordinator.resume_owned("bedroom", token)
+        self.assertTrue(self.backend.exists(self.path))
+
+    def test_owner_cannot_resume_a_different_session_id(self):
+        self.coordinator.acquire("living-room")
+        with self.assertRaises(SessionOwnershipError):
+            self.coordinator.resume_owned("living-room", "22345678-1234-4234-8234-123456789012")
+        self.assertTrue(self.backend.exists(self.path))
+
     def test_recovery_requires_explicit_confirmation(self):
         token = self.coordinator.acquire("living-room")
         with self.assertRaisesRegex(SessionError, "Explicit confirmation"):
