@@ -64,6 +64,20 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         with self.assertRaisesRegex(KodiRpcError, "Method not found"):
             KodiJsonRpcAdapter(transport).get_version()
 
+    def test_get_movie_details_for_verification(self):
+        transport = FakeTransport(lambda req: {"moviedetails": {"movieid": 4, "playcount": 2}})
+        adapter = KodiJsonRpcAdapter(transport)
+        self.assertEqual(adapter.get_movie_details(4)["playcount"], 2)
+        self.assertEqual(transport.calls[0]["method"], "VideoLibrary.GetMovieDetails")
+        self.assertEqual(transport.calls[0]["params"]["movieid"], 4)
+
+    def test_get_episode_details_for_verification(self):
+        transport = FakeTransport(lambda req: {"episodedetails": {"episodeid": 8, "playcount": 1}})
+        adapter = KodiJsonRpcAdapter(transport)
+        self.assertEqual(adapter.get_episode_details(8)["episodeid"], 8)
+        self.assertEqual(transport.calls[0]["method"], "VideoLibrary.GetEpisodeDetails")
+        self.assertEqual(transport.calls[0]["params"]["episodeid"], 8)
+
     def test_video_playback_detection(self):
         transport = FakeTransport(lambda req: [{"playerid": 1, "type": "video"}])
         self.assertTrue(KodiJsonRpcAdapter(transport).is_video_playing())
