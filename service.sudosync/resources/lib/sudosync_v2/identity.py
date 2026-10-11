@@ -39,4 +39,3 @@ def match_by_strong_identity(left_type, left_ids, right_type, right_ids):
     if left_type != right_type or left_type not in ("movie", "episode"):
         return False
     return bool(strong_aliases(left_type, left_ids).intersection(strong_aliases(right_type, right_ids)))
-"
