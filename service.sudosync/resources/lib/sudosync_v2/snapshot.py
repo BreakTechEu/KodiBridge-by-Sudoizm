@@ -127,6 +127,14 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
     if len(movies) + len(episodes) > max_records:
         raise SnapshotBuildError("library exceeds configured record limit")
 
+    if previous_snapshot is not None:
+        try:
+            validate_snapshot(previous_snapshot, max_records=max_records)
+        except (ValueError, TypeError) as exc:
+            raise SnapshotBuildError("previous local snapshot is invalid; refusing to reset field versions: {}".format(exc))
+        if previous_snapshot["client"]["id"] != canonical_client:
+            raise SnapshotBuildError("previous snapshot belongs to a different client")
+
     previous_by_identity = {"movie": {}, "episode": {}}
     if isinstance(previous_snapshot, dict):
         for media_type, key in (("movie", "movies"), ("episode", "episodes")):
