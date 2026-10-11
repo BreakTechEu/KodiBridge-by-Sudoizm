@@ -74,6 +74,10 @@ class TestSnapshotBuilder(unittest.TestCase):
         result = build_snapshot([movie(imdbnumber="", uniqueid={})], [], CLIENT, "Living Room", generated_at=STAMP)
         self.assertEqual(result["movies"][0]["ids"], {})
 
+    def test_rejects_invalid_previous_snapshot_instead_of_resetting_versions(self):
+        with self.assertRaisesRegex(SnapshotBuildError, "previous local snapshot is invalid"):
+            build_snapshot([movie()], [], CLIENT, "Living Room", previous_snapshot={"movies": []}, generated_at=STAMP)
+
     def test_previous_snapshot_is_not_mutated(self):
         first = build_snapshot([movie()], [], CLIENT, "Living Room", generated_at=STAMP)
         before = deepcopy(first)
