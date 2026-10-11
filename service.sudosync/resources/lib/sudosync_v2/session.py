@@ -124,6 +124,35 @@ class SharedOperationCoordinator(object):
                 raise SessionError("Active-operation marker read-back did not match")
             return canonical
 
+    def recover_abandoned(self, session_id, confirmed_no_process_running=False):
+        """Explicitly clear a matching abandoned marker after operator review.
+
+        This is never called automatically. The caller must require an explicit
+        operator confirmation that no Kodi instance is still executing the
+        operation and should retain the corresponding journal/backup for audit.
+        """
+        if confirmed_no_process_running is not True:
+            raise SessionError("Explicit confirmation that no operation is running is required")
+        with self._lock_factory(self._marker_path):
+            if not self._backend.exists(self._marker_path):
+                raise SessionOwnershipError("Active-operation marker is missing")
+            marker = self._read_marker()
+            if marker["session_id"] != session_id:
+                raise SessionOwnershipError("Recovery session ID does not match the active marker")
+            try:
+                deleted = self._backend.delete(self._marker_path)
+            except Exception as exc:
+                raise SessionError("Cannot recover active-operation marker: {}".format(exc))
+            if deleted is not True or self._backend.exists(self._marker_path):
+                raise SessionError("Active-operation marker remains after recovery")
+            return {
+                "recovered_session_id": marker["session_id"],
+                "client_id": marker["client_id"],
+                "started_at": marker["started_at"],
+                "recovered_at": self._clock(),
+                "operator_confirmed_no_process_running": True,
+            }
+
     def release(self, session_id):
         """Remove only this operation's marker; any uncertainty leaves it intact."""
         with self._lock_factory(self._marker_path):
