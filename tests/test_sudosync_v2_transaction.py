@@ -47,10 +47,13 @@ class FakeCoordinator(object):
         self.released = []
         self.marker_retained = False
 
-    def acquire(self, client_id):
+    def acquire(self, client_id, prepare=None):
         self.acquired.append(client_id)
+        session_id = "12345678-1234-4234-8234-123456789012"
+        if prepare is not None:
+            prepare(session_id)
         self.marker_retained = True
-        return "12345678-1234-4234-8234-123456789012"
+        return session_id
 
     def release(self, session_id):
         self.released.append(session_id)
@@ -108,6 +111,7 @@ class TestTransactionRunner(unittest.TestCase):
         self.assertEqual(result["status"], "committed")
         self.assertEqual(self.kodi.items[("movie", 5)]["playcount"], 2)
         self.assertEqual(self.journals[-1]["status"], "committed")
+        self.assertEqual(self.journals[0]["status"], "prepared")
         self.assertEqual(self.journals[0]["items"][0]["status"], "pending")
         self.assertEqual(self.journals[-1]["items"][0]["status"], "verified")
         self.assertEqual(len(self.backups), 1)
