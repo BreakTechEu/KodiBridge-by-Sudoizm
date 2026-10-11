@@ -8,6 +8,7 @@ commit new snapshots.
 from __future__ import absolute_import
 
 from .planning import build_sync_plan
+from .initialization import build_initialization_plan
 from .snapshot import build_snapshot
 
 
@@ -101,3 +102,49 @@ class SyncEngine(object):
             raise
         except Exception as exc:
             raise SyncEngineError("Cannot safely build synchronization preview: {}".format(exc))
+
+    def initialization_preview(self, base_snapshot):
+        """Build a one-time base-to-this-Kodi preview without writing anything."""
+        try:
+            if self._kodi.is_video_playing():
+                return {
+                    "active": False,
+                    "reason": "video_playing",
+                    "snapshot": None,
+                    "plan": None,
+                }
+            movies = self._kodi.get_movies()
+            episodes = self._kodi.get_episodes()
+            previous = self._load_previous_local()
+            if previous is not None and previous.get("client", {}).get("id") != self._client_id:
+                raise SyncEngineError("previous local snapshot belongs to a different client")
+            logical_clock = _max_logical_clock(([previous] if previous else []) + [base_snapshot])
+            candidate = build_snapshot(
+                movies,
+                episodes,
+                self._client_id,
+                self._client_name,
+                previous_snapshot=previous,
+                logical_clock=logical_clock,
+                max_records=self._max_records,
+            )
+            local_kodi_ids = {
+                "movie": [item.get("movieid") for item in movies],
+                "episode": [item.get("episodeid") for item in episodes],
+            }
+            plan = build_initialization_plan(
+                base_snapshot,
+                candidate,
+                local_kodi_ids,
+                max_records=self._max_records,
+            )
+            return {
+                "active": True,
+                "reason": "",
+                "snapshot": candidate,
+                "plan": plan,
+            }
+        except SyncEngineError:
+            raise
+        except Exception as exc:
+            raise SyncEngineError("Cannot safely build initialization preview: {}".format(exc))
