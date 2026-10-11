@@ -58,8 +58,6 @@ def _state(item):
     lastplayed = item.get("lastplayed") or ""
     if not isinstance(lastplayed, str):
         raise SnapshotBuildError("lastplayed must be a string")
-    if lastplayed and not (lastplayed.endswith("Z") and "T" in lastplayed):
-        raise SnapshotBuildError("lastplayed is not a supported UTC timestamp")
     resume_raw = item.get("resume")
     if not isinstance(resume_raw, dict):
         resume_raw = {}
