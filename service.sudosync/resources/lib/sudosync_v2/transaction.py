@@ -10,6 +10,8 @@ from __future__ import absolute_import
 from copy import deepcopy
 from datetime import datetime, timezone
 
+from .schema import validate_snapshot
+
 
 class TransactionError(RuntimeError):
     """A plan could not be applied and verified safely."""
@@ -129,6 +131,12 @@ class TransactionRunner(object):
         items = self._validate_plan(plan, client_id)
         if not items:
             return {"status": "no_changes", "items": [], "backup_ref": None}
+        try:
+            validate_snapshot(current_snapshot)
+        except (ValueError, TypeError) as exc:
+            raise TransactionError("current snapshot is invalid; refusing to mutate Kodi: {}".format(exc))
+        if current_snapshot.get("client", {}).get("id") != client_id:
+            raise TransactionError("backup snapshot belongs to a different client")
         if self._kodi.is_video_playing():
             return {"status": "deferred", "reason": "video_playing", "items": [], "backup_ref": None}
 
@@ -171,6 +179,11 @@ class TransactionRunner(object):
             for item in journal["items"]:
                 if self._kodi.is_video_playing():
                     raise TransactionError("video playback started during the transaction")
+                # Persist intent before each mutation so recovery can distinguish
+                # untouched work from a write whose outcome may be uncertain.
+                item["status"] = "applying"
+                item["started_at"] = self._clock()
+                self._persist_journal(deepcopy(journal))
                 # From this point a failed RPC may have partially changed Kodi;
                 # never clear the marker automatically on error.
                 self._set_details(item, item["changes"])
