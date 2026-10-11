@@ -33,7 +33,8 @@ def make_snapshot(client_id, name, records, generated=STAMP, previous=None):
 class TestDryRunPlanner(unittest.TestCase):
     def test_plans_only_existing_local_records(self):
         local = make_snapshot(A, "Living Room", [{"playcount": 0}])
-        remote = make_snapshot(B, "Bedroom", [{"playcount": 2}])
+        remote_base = make_snapshot(B, "Bedroom", [{"playcount": 0}])
+        remote = make_snapshot(B, "Bedroom", [{"playcount": 2}], previous=remote_base)
         plan = build_sync_plan(local, [remote], {"movie": [42], "episode": []})
         self.assertEqual(plan["change_count"], 1)
         self.assertEqual(plan["changes"][0]["kodi_id"], 42)
@@ -72,7 +73,8 @@ class TestDryRunPlanner(unittest.TestCase):
 
     def test_input_snapshots_are_not_mutated(self):
         local = make_snapshot(A, "Living Room", [{"playcount": 0}])
-        remote = make_snapshot(B, "Bedroom", [{"playcount": 2}])
+        remote_base = make_snapshot(B, "Bedroom", [{"playcount": 0}])
+        remote = make_snapshot(B, "Bedroom", [{"playcount": 2}], previous=remote_base)
         before = deepcopy(local)
         build_sync_plan(local, [remote], {"movie": [7], "episode": []})
         self.assertEqual(local, before)
