@@ -6,6 +6,7 @@ crashes; the lock file itself is intentionally never deleted.
 """
 from __future__ import absolute_import
 
+import errno
 import os
 import threading
 
@@ -45,13 +46,19 @@ class _PlatformFileLock(object):
             try:
                 self._module.locking(handle.fileno(), self._module.LK_NBLCK, 1)
                 return True
-            except OSError:
-                return False
+            except OSError as exc:
+                if getattr(exc, "errno", None) in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                    return False
+                raise
         try:
             self._module.flock(handle.fileno(), self._module.LOCK_EX | self._module.LOCK_NB)
             return True
-        except (BlockingIOError, OSError):
+        except BlockingIOError:
             return False
+        except OSError as exc:
+            if getattr(exc, "errno", None) in (errno.EACCES, errno.EAGAIN, errno.EDEADLK):
+                return False
+            raise
 
     def release(self, handle):
         if self._windows:
