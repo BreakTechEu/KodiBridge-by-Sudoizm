@@ -86,3 +86,15 @@ Status: projekt techniczny; nie jest jeszcze implementacją ani obietnicą zgodn
 ## Zasada migracji
 
 Nie zakładać, że istniejące pliki współdzielone można nadpisać nowym schematem. Każda migracja musi być jawna, odwracalna i przetestowana na kopii. W razie niepewności v2 ma odmówić zapisu, zachowując dane źródłowe.
+
+## Stan implementacji fundamentu v2
+
+Stan po wdrożeniu modułów domenowych i adapterów (nie oznacza gotowości do wydania):
+
+- Zaimplementowano walidację snapshotów, normalizację silnych identyfikatorów, wersjonowanie pól, budowanie snapshotu z wyników JSON-RPC oraz czysty planer dry-run.
+- Planer grupuje rekordy tylko po typowanych silnych identyfikatorach. Niejednoznaczne grupy i konflikty pól są raportowane, nie nadpisywane. Rekordy zdalne nie są dodawane do lokalnej biblioteki.
+- Zaimplementowano testowalny adapter JSON-RPC, adapter plikowy xbmcvfs oraz abstrakcję repozytorium z kopią odzyskiwania.
+- Dodano protokół znacznika aktywnej sesji, ale nie podłączono go do uruchamiania usługi. Sam znacznik nie stanowi blokady.
+- Brakuje zweryfikowanego, międzyprocesowego mechanizmu blokady wspólnego zasobu, trwałego dziennika transakcji, bezpiecznego zastosowania i weryfikacji zmian w Kodi, obsługi inicjalizacji sieci oraz integracji modułów z service.py.
+- Adapter VFS jest testowany z atrapą API; rzeczywiste zachowanie na udziałach SMB/NFS i na wspieranych wersjach Kodi pozostaje do potwierdzenia.
+- Do czasu ukończenia tych punktów nie tworzyć paczki instalacyjnej ani nie deklarować, że synchronizacja działa end-to-end.
