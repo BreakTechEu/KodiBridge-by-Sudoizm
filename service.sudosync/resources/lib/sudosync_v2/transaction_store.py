@@ -81,7 +81,7 @@ class TransactionStore(object):
         session_id = _session_id(journal.get("session_id"))
         if not isinstance(journal.get("client_id"), str) or not journal["client_id"].strip():
             raise TransactionStoreError("journal client ID is invalid")
-        if journal.get("status") not in ("prepared", "applying", "needs_recovery", "committed"):
+        if journal.get("status") not in ("prepared", "applying", "needs_recovery", "committed", "aborted"):
             raise TransactionStoreError("journal status is invalid")
         items = journal.get("items")
         if not isinstance(items, list) or not items:
