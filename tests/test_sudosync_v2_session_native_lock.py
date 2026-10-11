@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from resources.lib.sudosync_v2.native_shared_lock import (
     NativeSharedFileLockFactory, SharedFileLockBusy,
 )
-from resources.lib.sudosync_v2.session import SharedOperationCoordinator
+from resources.lib.sudosync_v2.session import SharedOperationCoordinator, SessionBusyError
 from resources.lib.sudosync_v2.storage import encode_json
 
 
@@ -44,7 +44,7 @@ class TestCoordinatorWithNativeLock(unittest.TestCase):
             second = SharedOperationCoordinator(backend, factory, marker_path)
 
             token = first.acquire("kodi-a")
-            with self.assertRaises(SharedFileLockBusy):
+            with self.assertRaises(SessionBusyError):
                 second.acquire("kodi-b")
             first.release(token)
 
