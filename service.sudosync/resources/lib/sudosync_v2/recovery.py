@@ -69,7 +69,7 @@ class RecoveryRunner(object):
             raise TransactionError("recovery journal format/schema is unsupported")
         if journal.get("client_id") != client_id or journal.get("session_id") != session_id:
             raise TransactionError("recovery journal owner/session does not match the active marker")
-        if journal.get("status") not in ("prepared", "applying", "needs_recovery", "committed"):
+        if journal.get("status") not in ("prepared", "applying", "needs_recovery", "committed", "aborted"):
             raise TransactionError("recovery journal is not in a recoverable state")
         items = journal.get("items")
         if not isinstance(items, list) or not items:
@@ -117,6 +117,18 @@ class RecoveryRunner(object):
         except Exception as exc:
             raise TransactionError("Cannot load the owner's recovery journal: {}".format(exc))
         journal = self._validate_journal(journal, client_id, session_id)
+
+        # An aborted journal is written only when the transaction runner knows
+        # no Kodi mutation was attempted. If the process crashed before marker
+        # release, clear that marker without applying any pending item.
+        if journal["status"] == "aborted":
+            try:
+                self._coordinator.release(session_id)
+            except Exception as exc:
+                raise TransactionError(
+                    "Pre-write abort is durable but its session marker could not be released: {}".format(exc)
+                )
+            return {"status": "recovered", "session_id": session_id, "aborted": True}
 
         try:
             if self._kodi.is_video_playing():
