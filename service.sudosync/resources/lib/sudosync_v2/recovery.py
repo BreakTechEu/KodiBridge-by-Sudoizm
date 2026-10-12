@@ -8,6 +8,7 @@ from __future__ import absolute_import
 from copy import deepcopy
 
 from .transaction import TransactionError, _field_matches
+from .identity import identity_matches_kodi_item, is_valid_serialized_identity
 
 
 JOURNAL_FORMAT = "SudoSync v2 transaction journal"
@@ -86,6 +87,11 @@ class RecoveryRunner(object):
             seen.add((item["type"], kodi_id))
             if not isinstance(item.get("before"), dict) or not isinstance(item.get("changes"), dict):
                 raise TransactionError("recovery item {} has invalid before/changes data".format(index))
+            identity = item.get("identity")
+            if not isinstance(identity, list) or not identity:
+                raise TransactionError("recovery item {} has no strong identity".format(index))
+            if not is_valid_serialized_identity(identity):
+                raise TransactionError("recovery item {} has an invalid strong identity".format(index))
             if not item["changes"] or not set(item["changes"]).issubset(SYNC_FIELDS):
                 raise TransactionError("recovery item {} has unsupported changes".format(index))
             if item.get("status") not in ("pending", "applying", "verified"):
@@ -94,6 +100,8 @@ class RecoveryRunner(object):
 
     def _verify_after(self, item):
         actual = self._details(item)
+        if not identity_matches_kodi_item(item["identity"], actual):
+            raise TransactionError("Recovery identity check failed for {} {}; refusing to access a different library item".format(item["type"], item["kodi_id"]))
         if not isinstance(actual, dict) or not self._matches_after(item, actual):
             raise TransactionError("Recovery verification failed for {} {}".format(item["type"], item["kodi_id"]))
 
@@ -148,6 +156,11 @@ class RecoveryRunner(object):
                 actual = self._details(item)
                 if not isinstance(actual, dict):
                     raise TransactionError("Kodi returned invalid details during recovery")
+                if not identity_matches_kodi_item(item["identity"], actual):
+                    raise TransactionError(
+                        "Recovery identity check failed for {} {}; refusing to access a different library item"
+                        .format(item["type"], item["kodi_id"])
+                    )
 
                 if item["status"] == "verified":
                     if not self._matches_after(item, actual):

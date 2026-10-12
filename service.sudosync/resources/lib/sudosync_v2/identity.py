@@ -20,6 +20,47 @@ def normalize_identifier(kind, value):
         return None
     return text
 
+def identifiers_from_kodi_item(item):
+    """Return normalized strong identifiers from Kodi library details."""
+    if not isinstance(item, dict):
+        return {}
+    identifiers = {}
+    unique = item.get("uniqueid")
+    if isinstance(unique, dict):
+        for kind in ("imdb", "tmdb", "tvdb", "trakt", "sudosync"):
+            value = normalize_identifier(kind, unique.get(kind))
+            if value is not None:
+                identifiers[kind] = value
+    imdbnumber = normalize_identifier("imdb", item.get("imdbnumber"))
+    if imdbnumber is not None:
+        if "imdb" in identifiers and identifiers["imdb"] != imdbnumber:
+            raise ValueError("Kodi returned conflicting IMDb identifiers for one library item")
+        identifiers["imdb"] = imdbnumber
+    return identifiers
+
+def identity_matches_kodi_item(expected_identity, item):
+    """True when Kodi details still contain at least one planned strong ID."""
+    actual = identifiers_from_kodi_item(item)
+    expected = dict(value.split(":", 1) for value in expected_identity)
+    shared_kinds = set(actual).intersection(expected)
+    return bool(shared_kinds) and all(actual[kind] == expected[kind] for kind in shared_kinds)
+
+def is_valid_serialized_identity(identity):
+    """Validate the canonical ``kind:value`` identity list used in plans."""
+    if not isinstance(identity, list) or not identity:
+        return False
+    seen_kinds = set()
+    for value in identity:
+        if not isinstance(value, str) or ":" not in value:
+            return False
+        kind, identifier = value.split(":", 1)
+        normalized = normalize_identifier(kind, identifier)
+        if (kind != kind.strip().lower() or kind in seen_kinds
+                or normalized is None or normalized != identifier):
+            return False
+        seen_kinds.add(kind)
+    return True
+
 def strong_aliases(media_type, identifiers):
     """Build typed aliases; media type is part of identity by design."""
     media_type = str(media_type or "").strip().lower()

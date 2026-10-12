@@ -11,6 +11,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 
 from .schema import validate_snapshot
+from .identity import identity_matches_kodi_item, is_valid_serialized_identity
 
 
 class TransactionError(RuntimeError):
@@ -91,6 +92,11 @@ class TransactionRunner(object):
             before, changes = item.get("before"), item.get("changes")
             if not isinstance(before, dict) or not isinstance(changes, dict) or not changes:
                 raise TransactionError("plan item {} must include before-state and non-empty changes".format(index))
+            identity = item.get("identity")
+            if not isinstance(identity, list) or not identity:
+                raise TransactionError("plan item {} must include a strong identity".format(index))
+            if not is_valid_serialized_identity(identity):
+                raise TransactionError("plan item {} has an invalid strong identity".format(index))
             if not set(changes).issubset({"playcount", "lastplayed", "resume", "userrating"}):
                 raise TransactionError("plan item {} contains unsupported fields".format(index))
             if not set(changes).issubset(before):
@@ -122,6 +128,11 @@ class TransactionRunner(object):
         details = self._get_details(item)
         if not isinstance(details, dict):
             raise TransactionError("Kodi returned invalid details during verification")
+        if not identity_matches_kodi_item(item["identity"], details):
+            raise TransactionError(
+                "Kodi item identity changed during transaction for {} {}; recovery is required"
+                .format(item["type"], item["kodi_id"])
+            )
         for field, expected in item["changes"].items():
             if not _field_matches(details, expected, field):
                 raise TransactionError(
@@ -204,6 +215,11 @@ class TransactionRunner(object):
                 actual_before = self._get_details(item)
                 if not isinstance(actual_before, dict):
                     raise TransactionError("Kodi returned invalid details before mutation")
+                if not identity_matches_kodi_item(item["identity"], actual_before):
+                    raise TransactionError(
+                        "Plan identity precondition failed for {} {}; refusing to write to a different library item"
+                        .format(item["type"], item["kodi_id"])
+                    )
                 for field in item["changes"]:
                     expected_before = item["before"][field]
                     if not _field_matches(actual_before, expected_before, field):
