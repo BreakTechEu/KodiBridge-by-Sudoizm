@@ -2,6 +2,9 @@
 
 Status: projekt techniczny; nie jest jeszcze implementacją ani obietnicą zgodności z wydaniem produkcyjnym.
 
+Uzgodniony przepływ widoczny dla użytkownika, w tym wybór folderu i kreator
+pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
+
 ## Nienaruszalne granice
 
 - Gałąź `v1-stable` i wydanie SudoSync 1.0.0 są zamrożone. Nie cherry-pickować do niej zmian, nie zmieniać tagów ani opublikowanych plików.

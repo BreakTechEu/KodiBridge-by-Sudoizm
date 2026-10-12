@@ -1,0 +1,70 @@
+# SudoSync — trwały kontekst projektu
+
+Ten plik jest krótką, trwałą pamięcią wymagań użytkownika. Przeczytaj go na
+początku każdej sesji pracy. Szczegółowy przepływ użytkownika znajduje się w
+[`V2_USER_FLOW.md`](V2_USER_FLOW.md), a projekt techniczny w
+[`V2_DESIGN.md`](V2_DESIGN.md). Jeśli bieżąca prośba użytkownika coś zmienia,
+nadrzędna jest bieżąca prośba; potem zaktualizuj te pliki.
+
+## Cel i repozytorium
+
+- Projekt: `BreakTechEu/SudoSync`.
+- Docelowa praca: czysta przebudowa v2 na gałęzi `v2/rewrite-2026-10-10`.
+- Stan gałęzi, kodu i testów sprawdzaj na początku sesji — ten plik nie jest
+  źródłem aktualnego statusu Git.
+- `master` i `v1-stable` są poza zakresem zmian. Nie scalaj PR ani nie publikuj
+  wydania bez wyraźnej zgody Romana.
+- Audyt zewnętrzny wykonuj dopiero przed przekazaniem zmian do `master` albo
+  przygotowaniem wtyczki do testu na rzeczywistym Kodi.
+
+## Uzgodniony model użycia
+
+- Roman i docelowy użytkownik korzystają tylko z jednego Kodi naraz. Najpierw
+  kończą pracę na jednym urządzeniu, potem uruchamiają następne.
+- SudoSync działa jako usługa w tle Kodi, więc pozostałe urządzenia nie mają
+  w tym czasie uruchomionej usługi SudoSync.
+- Ochrona przed równoczesnym uruchomieniem jest dodatkiem. Nie projektuj jej
+  jako warunku rozpoczęcia lub ukończenia zwykłego przepływu. Nie wracaj do
+  wielokrotnego pytania, czy inne urządzenia pracują w tle — użytkownik już
+  określił zasadę pracy jednym Kodi.
+- Weryfikacja na rzeczywistych urządzeniach jest sekwencyjna: wykonać zmianę
+  na jednym Kodi, zakończyć jego pracę, uruchomić kolejne Kodi i sprawdzić
+  rezultat. Nie wymagać fizycznej równoczesnej pracy dwóch Kodi.
+
+## Zachowanie wtyczki
+
+- Szczegóły pierwszego uruchomienia, `SudoSync.cfg`, konfiguratora, migracji
+  i aktualizacji są opisane w `docs/V2_USER_FLOW.md`. Traktuj ten dokument
+  jako wymagania użytkownika, a nie sugestię.
+- Ścieżkę udziału wybiera się selektorem katalogu Kodi; użytkownik nie ma
+  ręcznie przepisywać adresu SMB/NFS. Plik wspólny to
+  `<base_path>/SudoSync.cfg`.
+- Konfiguracja sieciowa jest wspólna. ID klienta, nazwa i ustawienia
+  konkretnego Kodi pozostają lokalne i nie mogą być kopiowane przez plik
+  wspólny.
+- Aktualizacja jest dystrybuowana przez paczkę umieszczoną przez
+  administratora w `.SudoSync` i sprawdzaną przez uruchomioną wtyczkę.
+  Użytkownik nie może jej pominąć. Nie dodawaj funkcji wgrywania paczki przez
+  wtyczkę bez osobnego polecenia.
+- Synchronizowane pola: licznik odtworzeń, data ostatniego odtworzenia,
+  pozycja wznowienia i ocena użytkownika dla istniejących filmów i odcinków.
+- Zmiany biblioteki wykonuj wyłącznie przez Kodi JSON-RPC. Nigdy nie edytuj
+  `MyVideos*.db` bezpośrednio.
+- Dopasowuj po silnych identyfikatorach z uwzględnieniem rodzaju medium.
+  Tytuł, rok, ścieżka i lokalny ID Kodi same nie wystarczają. Nie dodawaj
+  zdalnych pozycji do lokalnej biblioteki. Konflikty/niejednoznaczności
+  raportuj i pomijaj zamiast zgadywać.
+- Przed zmianami wymagany jest podgląd, jawne zatwierdzenie, kopia i
+  sprawdzenie wyniku. Podczas odtwarzania odraczaj zdalne zmiany.
+
+## Zasady współpracy
+
+- Kontynuuj pracę w spójnych etapach; nie pytaj ponownie o ustalenia zapisane
+  w tym pliku ani w `V2_USER_FLOW.md`.
+- Zachowuj niezapisane zmiany. Przed synchronizacją sprawdź status i historię;
+  nie używaj ślepego resetu i nie rozwiązuj konfliktów przez zgadywanie.
+- W trakcie implementacji wykonuj zwykłe testy i własny przegląd kodu, gdy
+  są potrzebne do zmiany. Nie przedstawiaj planu ani dokumentacji jako
+  ukończonej wtyczki.
+- Raportuj zmienione pliki, potwierdzone testy, commit/push i najbliższy
+  pozostały etap. Wyraźnie odróżniaj stan lokalny od tego, co jest na GitHubie.
