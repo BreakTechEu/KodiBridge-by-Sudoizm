@@ -16,6 +16,8 @@ from .session import SharedOperationCoordinator
 from .storage import SharedJsonRepository
 from .transaction import TransactionRunner
 from .transaction_store import TransactionStore
+from .kodi_rpc import KodiJsonRpcAdapter
+from .kodi_vfs import KodiVFSMetadataReader
 
 
 class V2RuntimeError(RuntimeError):
@@ -176,4 +178,28 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
         transaction_store,
         coordinator,
         transaction_runner,
+    )
+
+
+def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
+                          lock_factory, client_id, client_name, vfs_module=None,
+                          max_records=100000):
+    """Compose a Kodi runtime with JSON-RPC and NFO reads provided by Kodi VFS.
+
+    The caller still owns the critical decision to provide a physically
+    verified shared lock factory; this helper does not certify the filesystem.
+    """
+    kodi = KodiJsonRpcAdapter(
+        execute_jsonrpc,
+        max_records=max_records,
+        nfo_reader=KodiVFSMetadataReader(vfs_module),
+    )
+    return build_v2_runtime(
+        kodi,
+        shared_backend,
+        shared_base_path,
+        lock_factory,
+        client_id,
+        client_name,
+        max_records=max_records,
     )

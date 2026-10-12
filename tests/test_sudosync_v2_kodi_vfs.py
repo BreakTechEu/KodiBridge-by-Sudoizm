@@ -5,7 +5,9 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
 
-from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend, KodiVFSBackendError
+from resources.lib.sudosync_v2.kodi_vfs import (
+    KodiVFSBackend, KodiVFSBackendError, KodiVFSMetadataReader,
+)
 
 
 class FakeFile(object):
@@ -97,6 +99,26 @@ class TestKodiVFSBackend(unittest.TestCase):
     def test_listdir_returns_separate_lists(self):
         self.vfs.files["share/a.json"] = "{}"
         self.assertEqual(self.backend.listdir("share"), ([], ["a.json"]))
+
+
+class TestKodiVFSMetadataReader(unittest.TestCase):
+    def setUp(self):
+        self.vfs = FakeVFS()
+        self.reader = KodiVFSMetadataReader(self.vfs)
+
+    def test_reads_utf8_sidecar_and_strips_bom(self):
+        self.vfs.files["smb://nas/media/movie.nfo"] = b"\xef\xbb\xbf<movie/>"
+        self.assertEqual(self.reader("smb://nas/media/movie.nfo", 32), "<movie/>")
+
+    def test_rejects_sidecar_over_limit(self):
+        self.vfs.files["smb://nas/media/movie.nfo"] = b"x" * 5
+        with self.assertRaisesRegex(KodiVFSBackendError, "size limit"):
+            self.reader("smb://nas/media/movie.nfo", 4)
+
+    def test_rejects_invalid_utf8(self):
+        self.vfs.files["smb://nas/media/movie.nfo"] = b"\xff"
+        with self.assertRaisesRegex(KodiVFSBackendError, "UTF-8"):
+            self.reader("smb://nas/media/movie.nfo", 4)
 
 
 if __name__ == "__main__":
