@@ -7,6 +7,8 @@ pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
 
 ## Nienaruszalne granice
 
+- `master` jest docelową główną gałęzią dla v2. Rozwój odbywa się na osobnej
+  gałęzi v2 i trafia do `master` uzgodnioną ścieżką przeglądu.
 - Gałąź `v1-stable` i wydanie SudoSync 1.0.0 są zamrożone. Nie cherry-pickować do niej zmian, nie zmieniać tagów ani opublikowanych plików.
 - Prace v2 prowadzić na osobnej gałęzi i przez Pull Request. Nie scalać i nie publikować bez osobnej zgody właściciela projektu.
 - SudoSync pozostaje darmowym oprogramowaniem open source.
