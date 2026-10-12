@@ -11,6 +11,48 @@ class KodiVFSBackendError(IOError):
     """Kodi VFS operation failed or returned an unverifiable result."""
 
 
+class KodiVFSMetadataReader(object):
+    """Bounded UTF-8 metadata reader for media sidecars through Kodi VFS."""
+
+    def __init__(self, vfs_module=None):
+        if vfs_module is None:
+            try:
+                import xbmcvfs as vfs_module
+            except ImportError as exc:
+                raise ValueError("Kodi xbmcvfs module is required: {}".format(exc))
+        self._vfs = vfs_module
+
+    def __call__(self, path, max_bytes):
+        if not isinstance(path, str) or not path.strip():
+            raise ValueError("metadata path must be a non-empty string")
+        if type(max_bytes) is not int or max_bytes < 1:
+            raise ValueError("max_bytes must be a positive integer")
+        handle = None
+        try:
+            handle = self._vfs.File(path, "r")
+            data = handle.read(max_bytes + 1)
+        except Exception as exc:
+            raise KodiVFSBackendError("Cannot read metadata {}: {}".format(path, exc))
+        finally:
+            if handle is not None:
+                try:
+                    handle.close()
+                except Exception:
+                    pass
+        if isinstance(data, bytes):
+            if len(data) > max_bytes:
+                raise KodiVFSBackendError("Metadata file exceeds configured size limit: " + path)
+            try:
+                return data.decode("utf-8-sig")
+            except UnicodeDecodeError as exc:
+                raise KodiVFSBackendError("Metadata file is not valid UTF-8: {}".format(exc))
+        if not isinstance(data, str):
+            raise KodiVFSBackendError("Kodi VFS returned invalid metadata for " + path)
+        if len(data.encode("utf-8")) > max_bytes:
+            raise KodiVFSBackendError("Metadata file exceeds configured size limit: " + path)
+        return data
+
+
 class KodiVFSBackend(object):
     def __init__(self, vfs_module=None, max_bytes=8 * 1024 * 1024):
         if vfs_module is None:

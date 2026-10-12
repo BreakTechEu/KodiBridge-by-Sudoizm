@@ -101,6 +101,14 @@ nadrzędna jest bieżąca prośba; potem zaktualizuj te pliki.
   `service.py` / produkcyjnego runtime v2. Zmiana sama w sobie nie oznacza,
   że synchronizacja v2 działa end-to-end. Nie budować ZIP-a ani nie deklarować
   gotowości do testu na Kodi.
+- Bieżący etap lokalny: dodano `KodiVFSMetadataReader` i kompozytor
+  `build_kodi_v2_runtime`, który łączy adapter JSON-RPC z czytaniem NFO przez
+  Kodi VFS. Testy VFS, runtime i JSON-RPC przeszły (33 testy, 1 pominięty z
+  powodu braku uprawnień Windows do tworzenia symlinków). Zmiany są lokalne,
+  niezatwierdzone i nie są jeszcze na GitHubie. `service.py` nadal używa v1;
+  przed jego przełączeniem trzeba zapewnić i zweryfikować międzyprocesową
+  blokadę wspólnego udziału oraz dokończyć bezpieczny przepływ preview,
+  zatwierdzenia, transakcji i odzyskiwania.
 - Następny etap: podłączyć adapter do runtime usługi, dostarczyć mu czytnik
   NFO przez Kodi VFS, a następnie zintegrować bezpieczny przepływ podglądu,
   transakcji i odzyskiwania zgodnie z `V2_DESIGN.md`.
