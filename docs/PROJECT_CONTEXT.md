@@ -104,8 +104,8 @@ nadrzędna jest bieżąca prośba; potem zaktualizuj te pliki.
 - Bieżący etap lokalny: dodano `KodiVFSMetadataReader` i kompozytor
   `build_kodi_v2_runtime`, który łączy adapter JSON-RPC z czytaniem NFO przez
   Kodi VFS. Testy VFS, runtime i JSON-RPC przeszły (33 testy, 1 pominięty z
-  powodu braku uprawnień Windows do tworzenia symlinków). Zmiany są lokalne,
-  niezatwierdzone i nie są jeszcze na GitHubie. `service.py` nadal używa v1;
+  powodu braku uprawnień Windows do tworzenia symlinków). Etap zapisano w
+  commicie `47fb544` na gałęzi rozwoju. `service.py` nadal używa v1;
   przed jego przełączeniem trzeba zapewnić i zweryfikować międzyprocesową
   blokadę wspólnego udziału oraz dokończyć bezpieczny przepływ preview,
   zatwierdzenia, transakcji i odzyskiwania.
