@@ -1,6 +1,7 @@
 """Tests for startup ordering in the SudoSync v2 runtime."""
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
@@ -173,6 +174,24 @@ class TestV2RuntimeComposition(unittest.TestCase):
             map_shared_resource_to_native("smb://nas/SudoSync", native_root, "smb://nas/SudoSync/drive:C")
         with self.assertRaisesRegex(ValueError, "outside the configured VFS root"):
             map_shared_resource_to_native("smb://nas/SudoSync", native_root, "smb://nas/Other/file")
+
+    def test_vfs_mapping_rejects_symlink_escape_from_native_mount(self):
+        with tempfile.TemporaryDirectory(dir=os.getcwd()) as temp_root:
+            mount_root = os.path.join(temp_root, "mount")
+            outside_root = os.path.join(temp_root, "outside")
+            os.makedirs(mount_root)
+            os.makedirs(outside_root)
+            link_path = os.path.join(mount_root, "transactions")
+            try:
+                os.symlink(outside_root, link_path, target_is_directory=True)
+            except (OSError, NotImplementedError) as exc:
+                self.skipTest("directory symlinks are unavailable: {}".format(exc))
+
+            with self.assertRaisesRegex(ValueError, "outside the configured mount root"):
+                map_shared_resource_to_native(
+                    "smb://nas/SudoSync", mount_root,
+                    "smb://nas/SudoSync/transactions/active-operation.json",
+                )
 
     def test_native_lock_provider_cannot_be_enabled_without_physical_verification(self):
         with self.assertRaisesRegex(V2RuntimeError, "physically verified"):

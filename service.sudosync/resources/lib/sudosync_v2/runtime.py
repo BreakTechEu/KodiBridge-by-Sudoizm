@@ -94,10 +94,12 @@ def map_shared_resource_to_native(shared_base_path, native_shared_path, resource
     ):
         raise ValueError("shared resource contains an unsafe path segment")
 
-    native_root = os.path.abspath(native_shared_path)
-    native_path = os.path.abspath(os.path.join(native_root, *segments))
+    native_root = os.path.realpath(os.path.abspath(native_shared_path))
+    native_path = os.path.realpath(os.path.abspath(os.path.join(native_root, *segments)))
     try:
-        if os.path.commonpath((native_root, native_path)) != native_root:
+        resolved_root = os.path.normcase(native_root)
+        resolved_path = os.path.normcase(native_path)
+        if os.path.commonpath((resolved_root, resolved_path)) != resolved_root:
             raise ValueError("mapped native resource is outside the configured mount root")
     except ValueError:
         raise ValueError("mapped native resource is outside the configured mount root")
