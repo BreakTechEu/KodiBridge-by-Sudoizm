@@ -85,3 +85,28 @@ nadrzędna jest bieżąca prośba; potem zaktualizuj te pliki.
   ukończonej wtyczki.
 - Raportuj zmienione pliki, potwierdzone testy, commit/push i najbliższy
   pozostały etap. Wyraźnie odróżniaj stan lokalny od tego, co jest na GitHubie.
+
+
+## Stan przekazania — 2026-10-12
+
+- Aktualny kod rozwoju znajduje się na GitHubie w `v2/rewrite-2026-10-10`.
+  Zmiana adaptera JSON-RPC łączy dostępne identyfikatory z Kodi z
+  identyfikatorami odczytanymi z plików `.nfo` (obsługiwane
+  `<uniqueid type="…">`, filmowe `<tmdbid>` i legacy IMDb
+  `<id>tt…</id>`). Sprzeczne identyfikatory zatrzymują odczyt zamiast
+  automatycznego dopasowania.
+- Potwierdzone: 13 testów `tests/test_sudosync_v2_kodi_rpc.py` przeszło
+  lokalnie. To testy adaptera, nie test end-to-end na Kodi.
+- Ograniczenie: `KodiJsonRpcAdapter` nie jest jeszcze podłączony do
+  `service.py` / produkcyjnego runtime v2. Zmiana sama w sobie nie oznacza,
+  że synchronizacja v2 działa end-to-end. Nie budować ZIP-a ani nie deklarować
+  gotowości do testu na Kodi.
+- Następny etap: podłączyć adapter do runtime usługi, dostarczyć mu czytnik
+  NFO przez Kodi VFS, a następnie zintegrować bezpieczny przepływ podglądu,
+  transakcji i odzyskiwania zgodnie z `V2_DESIGN.md`.
+- Gałąź GitHub została zaktualizowana przez integrację GitHub, ponieważ
+  lokalny Git nie rozwiązywał `github.com`. Lokalny checkout domowy nie
+  został pobrany ponownie; jego historia Git nie jest zsynchronizowana ze
+  zdalną. Na początku kolejnej sesji sprawdź stan GitHuba i bezpiecznie
+  zsynchronizuj checkout przed dalszymi commitami. Nie resetuj go w ciemno.
+- `master` i `v1-stable` pozostają nietknięte.
