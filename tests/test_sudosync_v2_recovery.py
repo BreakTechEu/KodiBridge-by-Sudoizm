@@ -68,7 +68,7 @@ class Kodi(object):
         return self.playing
 
     def get_movie_details(self, kodi_id):
-        return dict(state(self.value), movieid=kodi_id)
+        return dict(state(self.value), movieid=kodi_id, imdbnumber="tt1234567")
 
     def get_episode_details(self, kodi_id):
         raise AssertionError("unexpected episode read")
@@ -143,6 +143,14 @@ class TestRecoveryRunner(unittest.TestCase):
             self.runner.recover_on_start(CLIENT_A)
         self.assertTrue(self.coordinator.exists)
         self.assertEqual(self.kodi.writes, 0)
+
+    def test_reused_kodi_id_for_different_title_keeps_session_blocked(self):
+        self.kodi.get_movie_details = lambda kodi_id: dict(state(self.kodi.value), movieid=kodi_id, imdbnumber="tt7654321")
+        with self.assertRaisesRegex(TransactionError, "Recovery identity check failed"):
+            self.runner.recover_on_start(CLIENT_A)
+        self.assertTrue(self.coordinator.exists)
+        self.assertEqual(self.kodi.writes, 0)
+        self.assertEqual(self.journals[-1]["status"], "needs_recovery")
 
     def test_failed_recovery_keeps_session_blocked(self):
         self.kodi.fail_write = True

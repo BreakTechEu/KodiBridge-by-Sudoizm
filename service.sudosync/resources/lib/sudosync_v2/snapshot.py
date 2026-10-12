@@ -10,7 +10,7 @@ import math
 import uuid
 
 from . import FORMAT_NAME, SCHEMA_VERSION, SYNC_FIELDS
-from .identity import normalize_identifier
+from .identity import identifiers_from_kodi_item, normalize_identifier
 from .schema import validate_snapshot
 
 
@@ -35,19 +35,10 @@ def _number(value, label, maximum=1000000000):
 
 
 def _identifiers(item):
-    ids = {}
-    unique = item.get("uniqueid")
-    if isinstance(unique, dict):
-        for source, target in (("imdb", "imdb"), ("tmdb", "tmdb"), ("tvdb", "tvdb"), ("trakt", "trakt"), ("sudosync", "sudosync")):
-            value = normalize_identifier(target, unique.get(source))
-            if value is not None:
-                ids[target] = value
-    imdbnumber = normalize_identifier("imdb", item.get("imdbnumber"))
-    if imdbnumber is not None:
-        if "imdb" in ids and ids["imdb"] != imdbnumber:
-            raise SnapshotBuildError("Kodi returned conflicting IMDb identifiers for one library item")
-        ids["imdb"] = imdbnumber
-    return ids
+    try:
+        return identifiers_from_kodi_item(item)
+    except ValueError as exc:
+        raise SnapshotBuildError(str(exc))
 
 
 def _state(item):
@@ -166,6 +157,16 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
             if len(prior_candidates) > 1:
                 raise SnapshotBuildError("current {} item matches multiple records in its previous snapshot".format(media_type))
             prior = next(iter(prior_candidates.values())) if prior_candidates else None
+            if prior is not None:
+                conflicting_kinds = sorted(
+                    kind for kind in set(ids).intersection(prior["ids"])
+                    if ids[kind] != prior["ids"][kind]
+                )
+                if conflicting_kinds:
+                    raise SnapshotBuildError(
+                        "current {} item has conflicting identifiers with its previous snapshot: {}"
+                        .format(media_type, ", ".join(conflicting_kinds))
+                    )
             state = _state(item)
             versions = _record_versions(state, prior, canonical_client, logical_clock)
             output[media_type].append({

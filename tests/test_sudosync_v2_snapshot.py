@@ -42,6 +42,18 @@ class TestSnapshotBuilder(unittest.TestCase):
         second = build_snapshot([movie()], [], CLIENT, "Living Room", previous_snapshot=first, generated_at=STAMP, logical_clock=4)
         self.assertEqual(first["movies"][0]["versions"], second["movies"][0]["versions"])
 
+    def test_rejects_conflicting_identifiers_when_matching_previous_record(self):
+        previous = build_snapshot([movie()], [], CLIENT, "Living Room", generated_at=STAMP)
+        changed_identity = movie(
+            imdbnumber="tt7654321",
+            uniqueid={"imdb": "tt7654321", "tmdb": 1234},
+        )
+        with self.assertRaisesRegex(SnapshotBuildError, "conflicting identifiers with its previous snapshot: imdb"):
+            build_snapshot(
+                [changed_identity], [], CLIENT, "Living Room",
+                previous_snapshot=previous, generated_at=STAMP,
+            )
+
     def test_advances_only_changed_field_version(self):
         first = build_snapshot([movie()], [], CLIENT, "Living Room", generated_at=STAMP, logical_clock=3)
         second = build_snapshot([movie(playcount=2)], [], CLIENT, "Living Room", previous_snapshot=first, generated_at=STAMP, logical_clock=7)

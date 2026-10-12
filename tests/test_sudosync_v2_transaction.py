@@ -67,12 +67,14 @@ class FakeKodi(object):
         self.write_count = 0
         self.fail_verify = False
         self.start_playing_after_write = False
+        self.replace_identity_after_write = False
+        self.movie_imdbnumber = "tt1234567"
 
     def is_video_playing(self):
         return self.playing
 
     def get_movie_details(self, kodi_id):
-        return {"movieid": kodi_id, **deepcopy(self.items[("movie", kodi_id)])}
+        return {"movieid": kodi_id, "imdbnumber": self.movie_imdbnumber, **deepcopy(self.items[("movie", kodi_id)])}
 
     def get_episode_details(self, kodi_id):
         return {"episodeid": kodi_id, **deepcopy(self.items[("episode", kodi_id)])}
@@ -82,6 +84,8 @@ class FakeKodi(object):
         self.items[("movie", kodi_id)].update(deepcopy(changes))
         if self.start_playing_after_write:
             self.playing = True
+        if self.replace_identity_after_write:
+            self.movie_imdbnumber = "tt7654321"
         if self.fail_verify:
             self.items[("movie", kodi_id)]["playcount"] = 0
         return "OK"
@@ -134,6 +138,18 @@ class TestTransactionRunner(unittest.TestCase):
         self.assertEqual(self.coordinator.released, ["12345678-1234-4234-8234-123456789012"])
         self.assertEqual(self.journals[-1]["status"], "aborted")
 
+    def test_reused_kodi_id_for_different_title_aborts_before_write(self):
+        candidate = plan()
+        candidate["changes"][0]["identity"].append("tmdb:55")
+        self.kodi.get_movie_details = lambda kodi_id: {
+            "movieid": kodi_id, "imdbnumber": "tt7654321", "uniqueid": {"tmdb": "55"}, **state()
+        }
+        with self.assertRaisesRegex(TransactionError, "Plan identity precondition failed"):
+            self.runner.run(candidate, CLIENT, current_snapshot())
+        self.assertEqual(self.kodi.write_count, 0)
+        self.assertFalse(self.coordinator.marker_retained)
+        self.assertEqual(self.journals[-1]["status"], "aborted")
+
     def test_playback_before_acquire_defers(self):
         self.kodi.playing = True
         result = self.runner.run(plan(), CLIENT, current_snapshot())
@@ -144,6 +160,15 @@ class TestTransactionRunner(unittest.TestCase):
         self.kodi.fail_verify = True
         with self.assertRaisesRegex(TransactionError, "verification failed"):
             self.runner.run(plan(), CLIENT, current_snapshot())
+        self.assertTrue(self.coordinator.marker_retained)
+        self.assertEqual(self.journals[-1]["status"], "needs_recovery")
+        self.assertFalse(self.coordinator.released)
+
+    def test_identity_change_during_write_retains_marker_for_recovery(self):
+        self.kodi.replace_identity_after_write = True
+        with self.assertRaisesRegex(TransactionError, "identity changed during transaction"):
+            self.runner.run(plan(), CLIENT, current_snapshot())
+        self.assertEqual(self.kodi.write_count, 1)
         self.assertTrue(self.coordinator.marker_retained)
         self.assertEqual(self.journals[-1]["status"], "needs_recovery")
         self.assertFalse(self.coordinator.released)
