@@ -9,11 +9,14 @@ nadrzędna jest bieżąca prośba; potem zaktualizuj te pliki.
 ## Cel i repozytorium
 
 - Projekt: `BreakTechEu/SudoSync`.
-- Docelowa praca: czysta przebudowa v2 na gałęzi `v2/rewrite-2026-10-10`.
+- `master` jest docelową gałęzią główną dla v2.
+- `v1-stable` to działająca, stabilna wersja v1 i jest tylko do odczytu.
+- Rozwój v2 prowadzimy na `v2/rewrite-2026-10-10`, a do `master` integrujemy
+  v2 uzgodnioną ścieżką przeglądu. Nie traktuj `master` jako gałęzi v1 ani
+  `v1-stable` jako celu zmian v2.
 - Stan gałęzi, kodu i testów sprawdzaj na początku sesji — ten plik nie jest
   źródłem aktualnego statusu Git.
-- `master` i `v1-stable` są poza zakresem zmian. Nie scalaj PR ani nie publikuj
-  wydania bez wyraźnej zgody Romana.
+- Nie scalaj PR ani nie publikuj wydania bez wyraźnej zgody Romana.
 - Audyt zewnętrzny wykonuj dopiero przed przekazaniem zmian do `master` albo
   przygotowaniem wtyczki do testu na rzeczywistym Kodi.
 
