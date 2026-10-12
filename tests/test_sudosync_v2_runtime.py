@@ -8,9 +8,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from resources.lib.sudosync_v2.runtime import (
     V2RuntimeError, V2ServiceRuntime, build_mapped_native_lock_factory,
-    build_sequential_v2_runtime, build_v2_runtime, map_shared_resource_to_native,
+    build_v2_runtime, map_shared_resource_to_native,
 )
-from resources.lib.sudosync_v2.sequential_lock import SequentialAccessLockFactory
 
 
 class Recovery(object):
@@ -155,31 +154,6 @@ class TestV2RuntimeComposition(unittest.TestCase):
                 KodiReadOnly(), SharedBackend(), "smb://nas/SudoSync", None,
                 "12345678-1234-4234-8234-123456789012", "Kodi A",
             )
-
-    def test_sequential_runtime_requires_explicit_single_writer_confirmation(self):
-        with self.assertRaisesRegex(V2RuntimeError, "other Kodi services are stopped"):
-            build_sequential_v2_runtime(
-                KodiReadOnly(), SharedBackend(), "smb://nas/SudoSync",
-                "12345678-1234-4234-8234-123456789012", "Kodi A",
-            )
-
-    def test_sequential_runtime_uses_vfs_without_native_mount_lock(self):
-        components = build_sequential_v2_runtime(
-            KodiReadOnly(), SharedBackend(), "smb://nas/SudoSync",
-            "12345678-1234-4234-8234-123456789012", "Kodi A",
-            single_writer_confirmed=True,
-        )
-        result = components.start()
-        self.assertEqual(result["status"], "ready")
-        self.assertEqual(result["preview"]["plan"]["change_count"], 0)
-
-    def test_sequential_lock_factory_returns_reentrant_process_lock(self):
-        factory = SequentialAccessLockFactory()
-        self.assertIs(factory("smb://nas/SudoSync/client.json"), factory("smb://nas/SudoSync/client.json"))
-        self.assertIs(factory("smb://nas/SudoSync/client.json"), factory("smb://nas/SudoSync/peers.json"))
-        with factory("smb://nas/SudoSync/client.json"):
-            with factory("smb://nas/SudoSync/peers.json"):
-                pass
 
     def test_vfs_resource_maps_under_the_configured_native_mount(self):
         native_root = os.path.abspath(os.path.join(os.getcwd(), "mount"))
