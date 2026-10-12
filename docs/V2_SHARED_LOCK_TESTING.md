@@ -1,6 +1,10 @@
 # Fizyczna weryfikacja blokady współdzielonej SudoSync v2
 
-Ten test jest wymagany przed użyciem blokady systemowej na udziałach SMB/NFS. Testy jednostkowe i zielone CI nie dowodzą, że blokada jest widoczna między hostami.
+W docelowym modelu SudoSync użytkownik korzysta tylko z jednego Kodi naraz; blokady są dodatkowym zabezpieczeniem. Test dwóch hostów nie jest bramką dla tego modelu. Poniższy test jest wymagany tylko wtedy, gdy wdrożenie ma dopuszczać jednoczesne działanie usług Kodi na wielu urządzeniach. Testy jednostkowe i zielone CI nie dowodzą, że blokada jest widoczna między hostami.
+
+Test współbieżności dotyczy wyłącznie trybu, w którym więcej niż jedna usługa Kodi może działać jednocześnie. Jeśli wdrożenie używa trybu sekwencyjnego, nie uruchamiaj tej sondy na siłę: zamiast tego potwierdź, że Kodi/SudoSync na pozostałych urządzeniach jest całkowicie zamknięte przed uruchomieniem następnego urządzenia. Sama przerwa w oglądaniu nie wystarcza, ponieważ usługi Kodi mogą nadal działać w tle.
+
+Tryb sekwencyjny nie wymaga natywnej ścieżki montowania udziału, ale pozostawia ryzyko, jeśli dwie instancje mimo założenia rozpoczną pracę jednocześnie. Po awarii sesja pozostaje zablokowana; recovery może podjąć tylko pierwotne urządzenie, a inny klient nie może jej automatycznie przejąć.
 
 ## Warunki
 

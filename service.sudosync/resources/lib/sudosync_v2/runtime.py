@@ -12,6 +12,7 @@ from .catalog import SnapshotCatalog
 from .engine import SyncEngine
 from .native_shared_lock import NativeSharedFileLockFactory
 from .recovery import RecoveryRunner
+from .sequential_lock import SequentialAccessLockFactory
 from .session import SharedOperationCoordinator
 from .storage import SharedJsonRepository
 from .transaction import TransactionRunner
@@ -176,4 +177,30 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
         transaction_store,
         coordinator,
         transaction_runner,
+    )
+
+
+def build_sequential_v2_runtime(kodi, shared_backend, shared_base_path,
+                                client_id, client_name,
+                                single_writer_confirmed=False, max_records=100000):
+    """Build v2 for strictly serialized device use without a native share mount.
+
+    This mode is appropriate for Kodi VFS paths on Android only if all other
+    Kodi/SudoSync processes using the same directory are fully stopped. The
+    confirmation is an explicit deployment assertion; it cannot detect or
+    prevent another device from starting concurrently. Cross-host safety is
+    not provided by this mode.
+    """
+    if single_writer_confirmed is not True:
+        raise V2RuntimeError(
+            "Sequential mode requires confirmation that other Kodi services are stopped"
+        )
+    return build_v2_runtime(
+        kodi,
+        shared_backend,
+        shared_base_path,
+        SequentialAccessLockFactory(),
+        client_id,
+        client_name,
+        max_records=max_records,
     )
