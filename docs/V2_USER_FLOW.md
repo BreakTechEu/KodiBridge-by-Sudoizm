@@ -45,6 +45,11 @@ asystenta widoczne na zrzucie nie są źródłem wymagań.
   katalogu `.SudoSync`. Uruchomiona wtyczka sprawdza ją na początku działania.
   Użytkownik nie ma opcji pominięcia aktualizacji. Weryfikacja paczki musi
   zakończyć się powodzeniem przed instalacją.
+- Jeśli plik ZIP wyglądający na nowszą aktualizację nie ma prawidłowego podpisu
+  albo nie przejdzie weryfikacji, wtyczka pokazuje użytkownikowi jasny komunikat
+  wskazujący, że paczka w `.SudoSync` jest nieautentyczna lub nieprawidłowa,
+  nie instaluje jej i blokuje start tej wersji. Komunikat ma wskazać, że
+  administrator powinien zastąpić albo usunąć wadliwą paczkę.
 - Zawartość `SudoSync.cfg` jest wspólna dla sieci. Nazwa tego pliku nie oznacza,
   że wolno umieszczać w nim ustawienia konkretnego urządzenia Kodi.
 
@@ -66,6 +71,14 @@ asystenta widoczne na zrzucie nie są źródłem wymagań.
 - Dopasowanie odbywa się po mocnych identyfikatorach z uwzględnieniem typu
   medium: SudoSync ID, IMDb, TMDb, TVDb lub Trakt. Sam tytuł, rok, ścieżka ani
   lokalny ID Kodi nie uprawniają do automatycznego dopasowania.
+- Nie zakładaj, że każdy ma IMDb ID. Zbieraj i łącz wszystkie dostępne,
+  obsługiwane identyfikatory z Kodi oraz plików `.nfo`. W istniejącym v1 parser
+  rozpoznaje elementy `<uniqueid type="…">`; dla filmów także `<tmdbid>` oraz
+  legacy `<id>tt…</id>` jako IMDb. Kodi może też zwrócić `uniqueid` i
+  `imdbnumber` przez JSON-RPC. W v1 odczyt NFO uruchamia się dopiero, gdy Kodi
+  nie zwróci żadnego ID; v2 ma łączyć oba źródła, aby nie tracić dodatkowych
+  identyfikatorów. Jeśli nie ma żadnego mocnego ID i nie można zapisać
+  SudoSync ID, pozycji nie wolno dopasować po tytule.
 - Nie dodajemy zdalnych pozycji do biblioteki. Niejednoznaczne rekordy i
   konflikty są raportowane i pomijane zamiast cichego nadpisania.
 - Podgląd poprzedza operację pierwszej inicjalizacji. Zmiana biblioteki wymaga
@@ -74,6 +87,24 @@ asystenta widoczne na zrzucie nie są źródłem wymagań.
 - Podczas odtwarzania zdalne zmiany są odraczane. Weryfikację na urządzeniach
   prowadzi się sekwencyjnie: zmiana na jednym Kodi, zakończenie jego pracy,
   następnie sprawdzenie na kolejnym.
+
+## Wymiana zmian między kolejnymi Kodi
+
+- Zachowaj działającą w v1 zasadę: każde Kodi zapisuje własny snapshot, a przy
+  swoim cyklu odczytuje snapshoty pozostałych klientów. Nie wymagaj, by dwa
+  Kodi były aktywne jednocześnie ani by zgadzały się co do kolejności startu.
+- Zmiany są rozstrzygane oddzielnie dla każdego pola na podstawie wersji
+  logicznych, a nie czasu uruchomienia Kodi. Zwycięska wersja jest zachowywana
+  przy zastosowaniu na kolejnym kliencie, aby nie powstała pętla zmian.
+- Po zastosowaniu zdalnego stanu wtyczka odświeża własny snapshot. Nowe media
+  i zmiany po skanowaniu biblioteki nie mogą samą swoją obecnością nadpisać
+  zapamiętanego stanu synchronizowanego.
+- W sprawdzonym kodzie v1 snapshot peer starszy niż 7 dni jest oznaczany jako
+  błąd odczytu, a cykl LIVE przerywa zastosowanie zmian przy błędzie snapshotu.
+  To ograniczenie nie spełnia literalnie wymagania catch-up po dowolnie długiej
+  przerwie. V2 ma zachować niezależność od odstępu między uruchomieniami;
+  nie kopiować tej granicy wieku bez rozwiązania, które nie odrzuca ważnych
+  zmian tylko dlatego, że Kodi długo nie było uruchamiane.
 
 ## Granica obecnej implementacji
 

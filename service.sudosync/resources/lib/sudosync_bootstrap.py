@@ -312,7 +312,13 @@ def run_bootstrap():
         return False
 
 def check_and_enforce_updates_before_bootstrap():
-    """Wymuszona aktualizacja przez bootstrap."""
+    """Check mandatory updates before bootstrap.
+
+    Returns ``False`` when no update is available, ``"restart"`` after an
+    update was installed, or ``"blocked"`` when a discovered update could not
+    be verified or installed. A rejected update must not silently fall through
+    to normal service startup.
+    """
     from resources.lib.sudosync_core import check_for_update, install_latest_update
     # Sprawdzamy czy base_path jest na tyle zdatny (jeĹ›li to puste albo stary dummy, to pominie)
     base_path = get_base_path()
@@ -320,9 +326,16 @@ def check_and_enforce_updates_before_bootstrap():
         return False # brak Ĺ›cieĹĽki do folderu aktualizacji
         
     try:
-        # Wymuszamy ominiÄ™cie ustawieĹ„ (ustawienia lokalne ignorujemy dla instalacji aktualizacji z NAS)
         result = check_for_update(show_notification=False, manual=False)
-        if result.get("available"):
+    except Exception as exc:
+        log("Cannot check mandatory updates: {}".format(exc), xbmc.LOGWARNING)
+        return False
+    if result.get("error"):
+        log("Cannot check mandatory updates: {}".format(result["error"]), xbmc.LOGWARNING)
+        return False
+
+    if result.get("available"):
+        try:
             installed = install_latest_update(show_dialogs=False)
             if installed.get("installed"):
                 xbmcgui.Dialog().notification(
@@ -333,7 +346,18 @@ def check_and_enforce_updates_before_bootstrap():
                 )
                 xbmc.sleep(2000)
                 xbmc.executebuiltin("RestartApp")
-                return True
-    except Exception as exc:
-        log("BĹ‚Ä…d wymuszonej aktualizacji: {}".format(exc), xbmc.LOGWARNING)
+                return "restart"
+            return False
+        except Exception as exc:
+            filename = result.get("filename") or "nieznany plik ZIP"
+            log("Mandatory update {} was rejected or could not be installed: {}".format(filename, exc), xbmc.LOGERROR)
+            xbmcgui.Dialog().ok(
+                "SudoSync — aktualizacja zablokowana",
+                "W folderze .SudoSync znaleziono nowszy pakiet aktualizacji ({}), "
+                "ale nie można potwierdzić jego autentyczności lub poprawnie go "
+                "zainstalować. SudoSync nie uruchomi synchronizacji na starej "
+                "wersji. Administrator powinien zastąpić albo usunąć tę paczkę. "
+                "Szczegóły zapisano w dzienniku Kodi.".format(filename),
+            )
+            return "blocked"
     return False

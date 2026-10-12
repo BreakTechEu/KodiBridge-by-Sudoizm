@@ -54,8 +54,22 @@ nadrzędna jest bieżąca prośba; potem zaktualizuj te pliki.
   Tytuł, rok, ścieżka i lokalny ID Kodi same nie wystarczają. Nie dodawaj
   zdalnych pozycji do lokalnej biblioteki. Konflikty/niejednoznaczności
   raportuj i pomijaj zamiast zgadywać.
+- Nie zakładaj, że każdy ma IMDb ID. Łącz obsługiwane mocne ID z Kodi
+  JSON-RPC i `.nfo` (m.in. `<uniqueid type="…">`, filmowe `<tmdbid>` oraz
+  legacy IMDb `<id>tt…</id>`). Jeśli brak mocnego ID i nie można przypisać
+  SudoSync ID, pomiń rekord zamiast dopasowywać go po tytule.
 - Przed zmianami wymagany jest podgląd, jawne zatwierdzenie, kopia i
   sprawdzenie wyniku. Podczas odtwarzania odraczaj zdalne zmiany.
+- Zachowaj model LIVE v1: każde Kodi publikuje własny snapshot, zmiany każdego
+  pola mają wersję logiczną, a uruchomione Kodi uzgadnia je z peer snapshotami
+  niezależnie od współbieżności startu. Zachowuj zwycięską wersję przy
+  replikacji, aby uniknąć pętli. Użytkownik wymaga catch-up mimo długich
+  odstępów między uruchomieniami. W sprawdzonym v1 snapshot peer starszy niż
+  7 dni powoduje błąd odczytu, który zatrzymuje cykl LIVE; nie przenoś tego
+  ograniczenia do v2 bez zachowania catch-up po długiej przerwie.
+- Przy wykryciu nowego ZIP-a aktualizacji, który nie przejdzie weryfikacji,
+  pokaż jasny komunikat użytkownikowi, odmów instalacji i zatrzymaj start
+  wtyczki do czasu zastąpienia lub usunięcia paczki.
 
 ## Zasady współpracy
 
