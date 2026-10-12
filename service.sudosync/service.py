@@ -120,8 +120,12 @@ def main():
     
     from resources.lib.sudosync_bootstrap import check_and_enforce_updates_before_bootstrap, run_bootstrap
 
-    if check_and_enforce_updates_before_bootstrap():
-        log("Aktualizacja zainstalowana. SudoSync przerywa dzialanie obecnej instancji i czeka na restart.")
+    update_status = check_and_enforce_updates_before_bootstrap()
+    if update_status == "restart":
+        log("Aktualizacja zainstalowana. SudoSync przerywa działanie obecnej instancji i czeka na restart.")
+        return
+    if update_status == "blocked":
+        log("SudoSync nie uruchamia usługi, ponieważ wykryta paczka aktualizacji nie przeszła weryfikacji.", xbmc.LOGERROR)
         return
 
     if not run_bootstrap():
