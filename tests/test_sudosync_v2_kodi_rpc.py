@@ -38,6 +38,47 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         self.assertEqual([x["movieid"] for x in adapter.get_movies()], [1, 2, 3])
         self.assertEqual(transport.calls[1]["params"]["limits"]["start"], 2)
 
+    def test_library_ids_are_enriched_from_nfo_without_losing_kodi_ids(self):
+        transport = FakeTransport(lambda req: {
+            "movies": [{
+                "movieid": 7,
+                "file": "smb://nas/Films/Example.mkv",
+                "uniqueid": {"imdb": "tt12345"},
+                "imdbnumber": "tt12345",
+            }],
+            "limits": {"total": 1},
+        })
+        reads = []
+
+        def read_nfo(path, max_bytes):
+            reads.append((path, max_bytes))
+            if path.endswith("Example.nfo"):
+                return '<movie><uniqueid type="tmdb">123</uniqueid><uniqueid type="sudosync">nas:film-7</uniqueid></movie>'
+            return None
+
+        item = KodiJsonRpcAdapter(transport, nfo_reader=read_nfo).get_movies()[0]
+
+        self.assertEqual(item["uniqueid"], {
+            "imdb": "tt12345", "tmdb": "123", "sudosync": "nas:film-7",
+        })
+        self.assertEqual(reads[0][0], "smb://nas/Films/Example.nfo")
+
+    def test_conflicting_kodi_and_nfo_identifier_fails_closed(self):
+        transport = FakeTransport(lambda req: {
+            "movies": [{
+                "movieid": 7,
+                "file": "smb://nas/Films/Example.mkv",
+                "uniqueid": {"tmdb": "123"},
+            }],
+            "limits": {"total": 1},
+        })
+
+        def read_nfo(path, max_bytes):
+            return '<movie><uniqueid type="tmdb">456</uniqueid></movie>' if path.endswith("Example.nfo") else None
+
+        with self.assertRaisesRegex(KodiRpcError, "conflicting tmdb"):
+            KodiJsonRpcAdapter(transport, nfo_reader=read_nfo).get_movies()
+
     def test_refuses_more_items_than_reported_total(self):
         def handler(req):
             return {"movies": [{"movieid": 1}, {"movieid": 2}], "limits": {"total": 1}}
