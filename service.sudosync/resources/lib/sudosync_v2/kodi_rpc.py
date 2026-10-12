@@ -7,6 +7,10 @@ from __future__ import absolute_import
 
 import json
 import math
+import posixpath
+import xml.etree.ElementTree as ET
+
+from .identity import normalize_identifier
 
 
 MOVIE_PROPERTIES = (
@@ -28,17 +32,108 @@ class KodiRpcError(RuntimeError):
 class KodiJsonRpcAdapter(object):
     """Kodi JSON-RPC wrapper with bounded pagination and strict response checks."""
 
-    def __init__(self, execute_jsonrpc, page_size=500, max_records=100000):
+    def __init__(self, execute_jsonrpc, page_size=500, max_records=100000,
+                 nfo_reader=None, max_nfo_bytes=256 * 1024):
         if not callable(execute_jsonrpc):
             raise ValueError("execute_jsonrpc must be callable")
         if type(page_size) is not int or not 1 <= page_size <= 5000:
             raise ValueError("page_size must be between 1 and 5000")
         if type(max_records) is not int or not 1 <= max_records <= 1000000:
             raise ValueError("max_records must be between 1 and 1000000")
+        if nfo_reader is not None and not callable(nfo_reader):
+            raise ValueError("nfo_reader must be callable when provided")
+        if type(max_nfo_bytes) is not int or not 1 <= max_nfo_bytes <= 4 * 1024 * 1024:
+            raise ValueError("max_nfo_bytes must be between 1 byte and 4 MiB")
         self._execute_jsonrpc = execute_jsonrpc
         self._page_size = page_size
         self._max_records = max_records
+        self._nfo_reader = nfo_reader
+        self._max_nfo_bytes = max_nfo_bytes
         self._request_id = 0
+
+    def _nfo_paths(self, media_path, media_type):
+        if not isinstance(media_path, str) or not media_path.strip():
+            return ()
+        folder, filename = posixpath.split(media_path.replace("\\", "/"))
+        stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+        candidates = [posixpath.join(folder, stem + ".nfo")]
+        if media_type == "movie":
+            movie_nfo = posixpath.join(folder, "movie.nfo")
+            if movie_nfo not in candidates:
+                candidates.append(movie_nfo)
+        return tuple(candidates)
+
+    def _read_nfo_ids(self, media_path, media_type):
+        if self._nfo_reader is None:
+            return {}
+        for path in self._nfo_paths(media_path, media_type):
+            try:
+                raw = self._nfo_reader(path, self._max_nfo_bytes)
+            except Exception as exc:
+                raise KodiRpcError("Cannot read metadata file {}: {}".format(path, exc))
+            if raw is None or raw == "" or raw == b"":
+                continue
+            if isinstance(raw, bytes):
+                if len(raw) > self._max_nfo_bytes:
+                    raise KodiRpcError("Metadata file exceeds configured size limit: " + path)
+                try:
+                    raw = raw.decode("utf-8-sig")
+                except UnicodeDecodeError as exc:
+                    raise KodiRpcError("Metadata file is not valid UTF-8 ({}): {}".format(path, exc))
+            elif isinstance(raw, str):
+                if len(raw.encode("utf-8")) > self._max_nfo_bytes:
+                    raise KodiRpcError("Metadata file exceeds configured size limit: " + path)
+            else:
+                raise KodiRpcError("Metadata reader returned an invalid value for " + path)
+            try:
+                root = ET.fromstring(raw)
+            except (ET.ParseError, ValueError) as exc:
+                raise KodiRpcError("Metadata file is not valid XML ({}): {}".format(path, exc))
+
+            identifiers = {}
+            for node in root.findall("uniqueid"):
+                kind = (node.attrib.get("type") or "").strip().lower()
+                value = normalize_identifier(kind, node.text)
+                if value is not None:
+                    if kind in identifiers and identifiers[kind] != value:
+                        raise KodiRpcError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
+                    identifiers[kind] = value
+            if media_type == "movie":
+                tmdb = normalize_identifier("tmdb", root.findtext("tmdbid"))
+                legacy_imdb = normalize_identifier("imdb", root.findtext("id"))
+                for kind, value in (("tmdb", tmdb), ("imdb", legacy_imdb)):
+                    if value is not None:
+                        if kind in identifiers and identifiers[kind] != value:
+                            raise KodiRpcError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
+                        identifiers[kind] = value
+            return identifiers
+        return {}
+
+    def _enrich_with_nfo(self, items, media_type):
+        if self._nfo_reader is None:
+            return items
+        enriched = []
+        for item in items:
+            if not isinstance(item, dict):
+                raise KodiRpcError("Kodi returned an invalid {} library record".format(media_type))
+            record = dict(item)
+            kodi_ids = record.get("uniqueid")
+            kodi_ids = dict(kodi_ids) if isinstance(kodi_ids, dict) else {}
+            if record.get("imdbnumber"):
+                imdb = normalize_identifier("imdb", record.get("imdbnumber"))
+                if imdb is not None:
+                    if "imdb" in kodi_ids and normalize_identifier("imdb", kodi_ids["imdb"]) != imdb:
+                        raise KodiRpcError("Kodi returned conflicting IMDb identifiers for one library item")
+                    kodi_ids["imdb"] = imdb
+            nfo_ids = self._read_nfo_ids(record.get("file"), media_type)
+            for kind, value in nfo_ids.items():
+                current = normalize_identifier(kind, kodi_ids.get(kind))
+                if current is not None and current != value:
+                    raise KodiRpcError("Kodi and NFO contain conflicting {} identifiers for one library item".format(kind))
+                kodi_ids[kind] = value
+            record["uniqueid"] = kodi_ids
+            enriched.append(record)
+        return enriched
 
     def call(self, method, params=None):
         if not isinstance(method, str) or not method.strip() or any(ch.isspace() for ch in method):
@@ -133,10 +228,12 @@ class KodiJsonRpcAdapter(object):
         return all_items
 
     def get_movies(self):
-        return self._get_library_items("VideoLibrary.GetMovies", "movies", MOVIE_PROPERTIES)
+        items = self._get_library_items("VideoLibrary.GetMovies", "movies", MOVIE_PROPERTIES)
+        return self._enrich_with_nfo(items, "movie")
 
     def get_episodes(self):
-        return self._get_library_items("VideoLibrary.GetEpisodes", "episodes", EPISODE_PROPERTIES)
+        items = self._get_library_items("VideoLibrary.GetEpisodes", "episodes", EPISODE_PROPERTIES)
+        return self._enrich_with_nfo(items, "episode")
 
     def get_movie_details(self, movie_id):
         if type(movie_id) is not int or movie_id < 1:
