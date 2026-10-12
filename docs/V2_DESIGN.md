@@ -71,14 +71,6 @@ Status: projekt techniczny; nie jest jeszcze implementacją ani obietnicą zgodn
 - Znacznik pozostawiony po awarii nie może być automatycznie uznawany za osierocony na podstawie wieku. Przy starcie każda wtyczka najpierw odczytuje właściciela: urządzenie zapisane jako właściciel automatycznie podejmuje odzyskiwanie z dziennika, a inne urządzenia pozostają zablokowane. Nie ma automatycznego przejęcia sesji przez inne Kodi.
 - Protokół znacznika nie jest sam w sobie blokadą. W trybie dopuszczającym jednoczesne uruchomienie klientów blokada musi zostać zweryfikowana na docelowych udziałach SMB/NFS oraz systemach operacyjnych. Tryb sekwencyjny opiera się na zasadzie pracy jednym Kodi naraz i nie deklaruje ochrony między hostami.
 
-### Tryb jednego aktywnego urządzenia
-
-- Instalacja może jawnie wybrać tryb sekwencyjny, jeśli użytkownik gwarantuje, że w danej chwili tylko jedna usługa Kodi/SudoSync korzysta ze wspólnego katalogu. Pozostałe instancje Kodi muszą być całkowicie zamknięte; samo nieodtwarzanie filmu nie wystarcza, bo usługa działa w tle.
-- W trybie sekwencyjnym blokada lokalna chroni przed równoległymi wątkami w jednym procesie, ale nie zapewnia wyłączności między urządzeniami. Ten tryb nie może być używany, jeśli inne Kodi może pozostać uruchomione.
-- Tryb sekwencyjny pozwala używać Kodi VFS (np. `smb://`) bez natywnego montowania udziału. Nie dowodzi atomowości blokad ani operacji plikowych na SMB/NFS.
-- Próba blokady dwóch hostów jest wymagana tylko dla trybu dopuszczającego równoczesne uruchomienie klientów. W trybie sekwencyjnym trzeba potwierdzić zamknięcie pozostałych usług, poprawny zapis/odczyt udziału przy zmianie urządzenia oraz zachowanie po przerwaniu operacji: następny klient ma pozostać zablokowany, a recovery ma działać wyłącznie na urządzeniu właściciela sesji.
-- Awaria urządzenia właściciela może pozostawić blokadę wymagającą ponownego uruchomienia tego samego Kodi albo jawnej, ręcznej procedury odzyskiwania. Żaden inny klient nie może przejąć sesji automatycznie.
-
 ## Testowanie i bramki jakości
 
 - Testy domeny uruchamiane bez Kodi i bez sieci.
