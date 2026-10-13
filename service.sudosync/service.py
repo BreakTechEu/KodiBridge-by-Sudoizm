@@ -21,6 +21,7 @@ from resources.lib.sudosync_core import (
     check_for_update,
     collect_and_write,
     collect_live_snapshot,
+    get_or_create_client_id,
     install_latest_update,
     log,
     read_shared_config,
@@ -133,6 +134,39 @@ def main():
         return
 
     settings = addon_settings()
+
+    # Run v2 recovery and preview after bootstrap. Recovery may finish an
+    # interrupted, journaled transaction; normal synchronization remains on
+    # v1 until the full v2 preview/approval/transaction flow is integrated.
+    try:
+        from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend
+        from resources.lib.sudosync_v2.runtime import (
+            ProcessLocalLockFactory,
+            build_kodi_v2_runtime,
+        )
+
+        v2_runtime = build_kodi_v2_runtime(
+            xbmc.executeJSONRPC,
+            KodiVFSBackend(),
+            settings["base_path"],
+            ProcessLocalLockFactory(),
+            get_or_create_client_id(),
+            settings["client_name"],
+        )
+        v2_startup = v2_runtime.start()
+        v2_preview = v2_startup.get("preview")
+        if v2_preview is None:
+            log("V2 startup preview {}: {}".format(
+                v2_startup.get("status"),
+                (v2_startup.get("recovery") or {}).get("status", "no preview"),
+            ), xbmc.LOGINFO)
+        else:
+            log("V2 startup preview active={} reason={}".format(
+                v2_preview.get("active"), v2_preview.get("reason", ""),
+            ), xbmc.LOGINFO)
+    except Exception as exc:
+        # A preview failure must not disable the currently working v1 service.
+        log("V2 startup preview unavailable: {}".format(exc), xbmc.LOGWARNING)
 
     snapshot_interval = settings["interval_seconds"]
     live_poll = settings.get("live_poll_seconds", 60)
