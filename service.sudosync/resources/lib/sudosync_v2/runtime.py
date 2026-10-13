@@ -7,6 +7,7 @@ owned by the separately guarded transaction runner.
 from __future__ import absolute_import
 
 import os
+import threading
 
 from .catalog import SnapshotCatalog
 from .engine import SyncEngine
@@ -22,6 +23,24 @@ from .kodi_vfs import KodiVFSMetadataReader
 
 class V2RuntimeError(RuntimeError):
     """The v2 runtime could not safely enter its preview cycle."""
+
+
+class ProcessLocalLockFactory(object):
+    """Serialize shared-file access inside this Kodi service process.
+
+    This is sufficient only for SudoSync's agreed operating rule: one Kodi
+    service uses the shared directory at a time. It does not coordinate other
+    processes or devices and must not be used if concurrent Kodi clients are
+    introduced.
+    """
+
+    def __init__(self):
+        self._lock = threading.RLock()
+
+    def __call__(self, resource_path):
+        if not isinstance(resource_path, str) or not resource_path.strip():
+            raise ValueError("resource_path must be a non-empty string")
+        return self._lock
 
 
 class V2ServiceRuntime(object):
@@ -135,11 +154,12 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
                      client_id, client_name, max_records=100000):
     """Wire v2 adapters and runners without enabling any library writes.
 
-    ``lock_factory`` must provide cross-process exclusion verified on the exact
-    target filesystem and platform. This builder does not certify that provider.
+    ``lock_factory`` must serialize access according to the configured operating
+    model. For the current single-active-Kodi model, ProcessLocalLockFactory is
+    sufficient; concurrent Kodi clients require a verified shared lock.
     """
     if kodi is None or shared_backend is None or lock_factory is None:
-        raise ValueError("Kodi adapter, shared backend, and verified lock factory are required")
+        raise ValueError("Kodi adapter, shared backend, and lock factory are required")
     if not isinstance(shared_base_path, str) or not shared_base_path.strip():
         raise ValueError("shared_base_path must be a non-empty path")
     base_path = shared_base_path.rstrip("/")
@@ -186,8 +206,9 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
                           max_records=100000):
     """Compose a Kodi runtime with JSON-RPC and NFO reads provided by Kodi VFS.
 
-    The caller still owns the critical decision to provide a physically
-    verified shared lock factory; this helper does not certify the filesystem.
+    A process-local lock follows the project's single-active-Kodi operating
+    rule. Supply a verified shared lock only if concurrent Kodi clients are
+    explicitly added to the supported operating model.
     """
     kodi = KodiJsonRpcAdapter(
         execute_jsonrpc,

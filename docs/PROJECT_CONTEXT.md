@@ -22,6 +22,9 @@ nadrzędna jest bieżąca prośba; potem zaktualizuj te pliki.
 
 ## Uzgodniony model użycia
 
+- Stanowiska deweloperskie są oddalone od siebie o ponad 20 km i nigdy nie są
+  używane jednocześnie. Pracę kontynuuje się na kolejnym stanowisku po
+  przekazaniu zmian przez GitHub.
 - Roman i docelowy użytkownik korzystają tylko z jednego Kodi naraz. Najpierw
   kończą pracę na jednym urządzeniu, potem uruchamiają następne.
 - SudoSync działa jako usługa w tle Kodi, więc pozostałe urządzenia nie mają
@@ -97,21 +100,25 @@ nadrzędna jest bieżąca prośba; potem zaktualizuj te pliki.
   automatycznego dopasowania.
 - Potwierdzone: 13 testów `tests/test_sudosync_v2_kodi_rpc.py` przeszło
   lokalnie. To testy adaptera, nie test end-to-end na Kodi.
-- Ograniczenie: `KodiJsonRpcAdapter` nie jest jeszcze podłączony do
-  `service.py` / produkcyjnego runtime v2. Zmiana sama w sobie nie oznacza,
-  że synchronizacja v2 działa end-to-end. Nie budować ZIP-a ani nie deklarować
-  gotowości do testu na Kodi.
+- Ograniczenie: `KodiJsonRpcAdapter` nie obsługuje jeszcze zwykłej
+  synchronizacji v2 end-to-end. Nie budować ZIP-a ani nie deklarować gotowości
+  do testu na Kodi.
 - Bieżący etap lokalny: dodano `KodiVFSMetadataReader` i kompozytor
   `build_kodi_v2_runtime`, który łączy adapter JSON-RPC z czytaniem NFO przez
   Kodi VFS. Testy VFS, runtime i JSON-RPC przeszły (33 testy, 1 pominięty z
   powodu braku uprawnień Windows do tworzenia symlinków). Etap zapisano w
-  commicie `47fb544` na gałęzi rozwoju. `service.py` nadal używa v1;
-  przed jego przełączeniem trzeba zapewnić i zweryfikować międzyprocesową
-  blokadę wspólnego udziału oraz dokończyć bezpieczny przepływ preview,
-  zatwierdzenia, transakcji i odzyskiwania.
-- Następny etap: podłączyć adapter do runtime usługi, dostarczyć mu czytnik
-  NFO przez Kodi VFS, a następnie zintegrować bezpieczny przepływ podglądu,
-  transakcji i odzyskiwania zgodnie z `V2_DESIGN.md`.
+  commicie `47fb544` na gałęzi rozwoju. `service.py` nadal używa v1.
+- Uzgodniony model pracy Kodi jest sekwencyjny: w danej chwili działa tylko
+  jedna usługa SudoSync na urządzeniu Kodi. Fizyczny test blokady między
+  urządzeniami nie jest warunkiem implementacji ani zwykłego testu
+  funkcjonalnego. Jest potrzebny wyłącznie po ewentualnym rozszerzeniu projektu
+  o równoczesną pracę usług Kodi. Nie pytaj ponownie o tę decyzję.
+- Integracja startowa: `service.py` wywołuje runtime v2 do odzyskiwania
+  przerwanej transakcji i podglądu diagnostycznego. Zwykła synchronizacja nadal
+  działa ścieżką v1; nie jest to jeszcze synchronizacja v2 end-to-end.
+- Następny etap: dokończyć bezpieczny przepływ podglądu, jawnego zatwierdzenia,
+  transakcji i cyklu synchronizacji v2 zgodnie z `V2_DESIGN.md`. Potem sprawdzić
+  synchronizację kolejno na urządzeniach Kodi.
 - Gałąź GitHub została zaktualizowana przez integrację GitHub, ponieważ
   lokalny Git nie rozwiązywał `github.com`. Lokalny checkout domowy nie
   został pobrany ponownie; jego historia Git nie jest zsynchronizowana ze

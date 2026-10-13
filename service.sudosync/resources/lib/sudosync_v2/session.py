@@ -1,8 +1,9 @@
 """Fail-closed coordination for one shared SudoSync operation at a time.
 
 The marker is deliberately not a lease: its age never proves that its owner is
-dead. The injected lock must provide cross-process exclusion for the shared
-marker path on the actual filesystem. A process-local mutex is not sufficient.
+dead. The injected lock must serialize access according to the operating model.
+The current single-active-Kodi model uses a process-local lock; concurrent Kodi
+clients require cross-process exclusion on the actual filesystem.
 """
 from __future__ import absolute_import
 
@@ -61,14 +62,14 @@ class SharedOperationCoordinator(object):
 
     Backend contract: exists(path), read_text(path), write_text(path, text),
     delete(path). Mutations return True only on success. lock_factory(path)
-    returns a context manager implementing a real cross-process lock on the
-    shared filesystem. The marker is retained after abnormal termination; no
+    returns a context manager implementing exclusion for the configured
+    operating model. The marker is retained after abnormal termination; no
     age-based automatic recovery is performed.
     """
 
     def __init__(self, backend, lock_factory, marker_path, clock=None, id_factory=None):
         if backend is None or lock_factory is None:
-            raise ValueError("backend and cross-process lock_factory are required")
+            raise ValueError("backend and lock_factory are required")
         if not isinstance(marker_path, str) or not marker_path.strip():
             raise ValueError("marker_path must be a non-empty path")
         self._backend = backend

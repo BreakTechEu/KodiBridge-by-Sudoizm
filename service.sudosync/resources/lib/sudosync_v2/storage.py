@@ -64,7 +64,9 @@ class SharedJsonRepository(object):
     rename(source, destination), delete(path). Mutating backend methods must
     return True only when the operation succeeded. rename() must not silently
     overwrite an existing destination. lock_factory(path) must return a context
-    manager implementing a cross-process lock for the same logical document.
+    manager that serializes access according to the operating model. The current
+    single-active-Kodi model uses a process-local lock; concurrent Kodi clients
+    require a verified cross-process lock.
     """
 
     def __init__(self, backend, lock_factory, max_bytes=8 * 1024 * 1024):
