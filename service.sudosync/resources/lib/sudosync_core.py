@@ -597,22 +597,40 @@ def _mark_initialization_completed_if_converged(report, base_path=None):
 
 
 def _numeric_version(text):
-    text_str = str(text or "").lower()
-    nums = re.findall(r"\d+", text_str)
-    values = [int(x) for x in nums[:3]]
-    while len(values) < 3:
-        values.append(0)
-    
-    tag_val = 3
-    if "-alpha" in text_str or "alpha" in text_str:
-        tag_val = 0
-    elif "-beta" in text_str or "beta" in text_str:
-        tag_val = 1
-    elif "-rc" in text_str or "rc" in text_str:
-        tag_val = 2
-        
-    values.append(tag_val)
-    return tuple(values)
+    try:
+        text_str = str(text or "").strip().lower()
+    except Exception:
+        return (0, 0, 0, 3, 0)
+
+    semver_match = re.search(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?", text_str)
+    if semver_match:
+        major = int(semver_match.group(1))
+        minor = int(semver_match.group(2)) if semver_match.group(2) is not None else 0
+        patch = int(semver_match.group(3)) if semver_match.group(3) is not None else 0
+    else:
+        major, minor, patch = 0, 0, 0
+
+    stage_rank = 3
+    stage_num = 0
+
+    stage_match = re.search(r"(?:[\-_./]|\b|(?<=\d))(alpha|beta|rc)(?:[\-_.]?(\d+))?(?!\w)", text_str)
+    if stage_match:
+        stage = stage_match.group(1)
+        if stage == "alpha":
+            stage_rank = 0
+        elif stage == "beta":
+            stage_rank = 1
+        elif stage == "rc":
+            stage_rank = 2
+
+        num_str = stage_match.group(2)
+        if num_str:
+            try:
+                stage_num = int(num_str)
+            except Exception:
+                stage_num = 0
+
+    return (major, minor, patch, stage_rank, stage_num)
 
 
 def find_latest_update(base_path=None):

@@ -90,14 +90,68 @@ class TestSudoSync(unittest.TestCase):
         )
 
     def test_numeric_version(self):
-        self.assertEqual(sudosync_core._numeric_version("1.1.0-alpha"), (1, 1, 0, 0))
-        self.assertEqual(sudosync_core._numeric_version("1.1.0-beta"), (1, 1, 0, 1))
-        self.assertEqual(sudosync_core._numeric_version("1.1.0-rc"), (1, 1, 0, 2))
-        self.assertEqual(sudosync_core._numeric_version("1.1.0"), (1, 1, 0, 3))
-        self.assertEqual(sudosync_core._numeric_version("1.2.0"), (1, 2, 0, 3))
+        self.assertEqual(sudosync_core._numeric_version("1.1.0-alpha"), (1, 1, 0, 0, 0))
+        self.assertEqual(sudosync_core._numeric_version("1.1.0-beta"), (1, 1, 0, 1, 0))
+        self.assertEqual(sudosync_core._numeric_version("1.1.0-rc"), (1, 1, 0, 2, 0))
+        self.assertEqual(sudosync_core._numeric_version("1.1.0"), (1, 1, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version("1.2.0"), (1, 2, 0, 3, 0))
         
         self.assertGreater(sudosync_core._numeric_version("1.1.0-beta"), sudosync_core._numeric_version("1.1.0-alpha"))
         self.assertGreater(sudosync_core._numeric_version("1.1.0"), sudosync_core._numeric_version("1.1.0-beta"))
+
+        # Prerelease stage numbers (beta2 > beta)
+        self.assertEqual(sudosync_core._numeric_version("1.2.0-beta2"), (1, 2, 0, 1, 2))
+        self.assertEqual(sudosync_core._numeric_version("1.2.0-rc1"), (1, 2, 0, 2, 1))
+        self.assertEqual(sudosync_core._numeric_version("1.2.1-alpha"), (1, 2, 1, 0, 0))
+        self.assertGreater(
+            sudosync_core._numeric_version("1.2.0-beta2"),
+            sudosync_core._numeric_version("1.2.0-beta"),
+        )
+        self.assertGreater(
+            sudosync_core._numeric_version("1.2.0-beta2"),
+            sudosync_core._numeric_version("1.2.0-beta1"),
+        )
+
+        # Full ordering chain: alpha < beta < rc < final
+        self.assertLess(
+            sudosync_core._numeric_version("1.2.0-beta"),
+            sudosync_core._numeric_version("1.2.0-beta2"),
+        )
+        self.assertLess(
+            sudosync_core._numeric_version("1.2.0-beta2"),
+            sudosync_core._numeric_version("1.2.0-rc1"),
+        )
+        self.assertLess(
+            sudosync_core._numeric_version("1.2.0-rc1"),
+            sudosync_core._numeric_version("1.2.0"),
+        )
+        self.assertLess(
+            sudosync_core._numeric_version("1.2.0"),
+            sudosync_core._numeric_version("1.2.1-alpha"),
+        )
+
+        # Format variants (. and - separators, compact rc1)
+        self.assertEqual(sudosync_core._numeric_version("1.2.0-beta.2"), (1, 2, 0, 1, 2))
+        self.assertEqual(sudosync_core._numeric_version("1.2.0-rc.3"), (1, 2, 0, 2, 3))
+        self.assertEqual(sudosync_core._numeric_version("1.2.0rc1"), (1, 2, 0, 2, 1))
+
+        # CHANGELOG compatibility
+        self.assertEqual(sudosync_core._numeric_version("SudoSync 1.1.0 (v2 Beta)"), (1, 1, 0, 1, 0))
+        self.assertEqual(sudosync_core._numeric_version("SudoSync 1.0.0"), (1, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version("0.4.2-alpha: powiadomienia LIVE"), (0, 4, 2, 0, 0))
+        self.assertEqual(sudosync_core._numeric_version("SudoSync 0.4.x — historia wersji testowej"), (0, 4, 0, 3, 0))
+
+        # Edge cases: none should raise
+        self.assertEqual(sudosync_core._numeric_version(None), (0, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version(""), (0, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version("   "), (0, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version(123), (123, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version([]), (0, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version({}), (0, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version("not_a_version"), (0, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version("search"), (0, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version("source"), (0, 0, 0, 3, 0))
+        self.assertEqual(sudosync_core._numeric_version("1.2.0-final"), (1, 2, 0, 3, 0))
 
     def test_snapshots_ready_for_live(self):
         import time
