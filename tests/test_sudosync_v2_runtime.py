@@ -149,7 +149,7 @@ class TestV2RuntimeComposition(unittest.TestCase):
         self.assertIn("smb://nas/SudoSync/transactions/active-operation.json", lock_paths)
 
     def test_factory_requires_a_lock_provider(self):
-        with self.assertRaisesRegex(ValueError, "verified lock factory"):
+        with self.assertRaisesRegex(ValueError, "lock factory are required"):
             build_v2_runtime(
                 KodiReadOnly(), SharedBackend(), "smb://nas/SudoSync", None,
                 "12345678-1234-4234-8234-123456789012", "Kodi A",
