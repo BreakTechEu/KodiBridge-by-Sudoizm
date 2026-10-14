@@ -227,8 +227,8 @@ def run_bootstrap():
     base_path = get_base_path()
     
     # 1. USTALENIE BASE PATH
-    # Jeżeli brak base_path LUB ścieżka to stara śmieciowa defaultowa domyślna SMB
-    if not base_path or base_path == "smb://192.168.69.100/Wideo/.SudoSync/" or not base_path.endswith("/"):
+    # Brak ustawienia (pusty ciąg) uruchamia kreator wyboru folderu
+    if not base_path:
         dialog = xbmcgui.Dialog()
         dialog.ok("SudoSync", "Musisz wskazać folder sieciowy (np. SMB/NFS), w którym SudoSync będzie przechowywać wspólną konfigurację i bazę dla wszystkich urządzeń Kodi w tej sieci.")
         
@@ -247,6 +247,9 @@ def run_bootstrap():
         else:
             base_path = selected_path + ".SudoSync/"
             
+        set_base_path(base_path)
+    elif not base_path.endswith("/"):
+        base_path += "/"
         set_base_path(base_path)
         
     # 2. TEST DOSTĘPU I READ/WRITE
@@ -320,10 +323,10 @@ def check_and_enforce_updates_before_bootstrap():
     to normal service startup.
     """
     from resources.lib.sudosync_core import check_for_update, install_latest_update
-    # Sprawdzamy czy base_path jest na tyle zdatny (jeśli to puste albo stary dummy, to pominie)
+    # Sprawdzamy czy base_path jest ustawiony (jeśli pusty, to pomijamy)
     base_path = get_base_path()
-    if not base_path or base_path == "smb://192.168.69.100/Wideo/.SudoSync/":
-        return False # brak ścieżki do folderu aktualizacji
+    if not base_path:
+        return False  # brak ścieżki do folderu aktualizacji
         
     try:
         result = check_for_update(show_notification=False, manual=False)

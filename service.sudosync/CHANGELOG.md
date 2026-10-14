@@ -50,8 +50,7 @@ Operation:
 - while upgrading from 0.3, 0.4 waits until every known client has written a
   versioned LIVE snapshot before any background LIVE write is allowed.
 
-Shared path defaults to:
-smb://192.168.69.100/Wideo/.SudoSync/
+Shared path defaults to empty (configured via first-run setup wizard).
 
 Existing 0.3 protections retained:
 - explicit base-device selection and clear-before-replace rule;

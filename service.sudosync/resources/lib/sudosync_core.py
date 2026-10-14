@@ -250,8 +250,8 @@ def is_initial_write_guard_armed():
 
 def addon_settings():
     addon = xbmcaddon.Addon(ADDON_ID)
-    base = addon.getSetting("base_path").strip() or "smb://192.168.69.100/Wideo/.SudoSync/"
-    if not base.endswith("/"):
+    base = addon.getSetting("base_path").strip()
+    if base and not base.endswith("/"):
         base += "/"
     name = addon.getSetting("client_name").strip()
     if not name:
@@ -617,8 +617,15 @@ def _numeric_version(text):
 
 def find_latest_update(base_path=None):
     settings = addon_settings()
-    base = (base_path or settings["base_path"]).rstrip("/") + "/"
     current_text = xbmcaddon.Addon(ADDON_ID).getAddonInfo("version") or "0.0.0"
+    base = (base_path or settings["base_path"]).strip()
+    if not base:
+        return {
+            "available": False,
+            "current_version": current_text,
+            "base_path": "",
+        }
+    base = base.rstrip("/") + "/"
     current = _numeric_version(current_text)
     try:
         dirs, files = xbmcvfs.listdir(base)

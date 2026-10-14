@@ -49,5 +49,63 @@ class TestMandatoryUpdateStartup(unittest.TestCase):
         builtin.assert_called_once_with("RestartApp")
 
 
+
+class TestSentinelPathRemoval(unittest.TestCase):
+    def test_empty_base_path_runs_folder_wizard(self):
+        dialog = MagicMock()
+        dialog.browse.return_value = ""  # Użytkownik anulował
+        with patch.object(bootstrap, "get_base_path", return_value=""), \
+                patch.object(bootstrap.xbmcgui, "Dialog", return_value=dialog):
+            result = bootstrap.run_bootstrap()
+            self.assertFalse(result)
+            dialog.browse.assert_called_once_with(3, "Wybierz katalog współdzielony (np. Wideo)", "network")
+
+    def test_custom_sentinel_path_treated_normally_and_does_not_run_folder_wizard(self):
+        dialog = MagicMock()
+        sentinel_path = "smb://192.168.69.100/Wideo/.SudoSync/"
+        with patch.object(bootstrap, "get_base_path", return_value=sentinel_path), \
+                patch.object(bootstrap, "test_vfs_rw", return_value=(True, "OK")), \
+                patch.object(bootstrap, "read_sudosync_cfg", return_value=("VALID", {
+                    "schema_version": 1,
+                    "configuration": {"completed": True},
+                    "network_settings": {"sudosync_id_enabled": False, "sudosync_id_prefix": ""},
+                })), \
+                patch.object(bootstrap, "apply_network_settings"), \
+                patch.object(bootstrap.xbmcgui, "Dialog", return_value=dialog):
+            result = bootstrap.run_bootstrap()
+            self.assertTrue(result)
+            dialog.browse.assert_not_called()
+
+    def test_sentinel_path_does_not_skip_update_check(self):
+        sentinel_path = "smb://192.168.69.100/Wideo/.SudoSync/"
+        with patch.object(bootstrap, "get_base_path", return_value=sentinel_path), \
+                patch.object(core, "check_for_update", return_value={"available": False}) as mock_check:
+            result = bootstrap.check_and_enforce_updates_before_bootstrap()
+            self.assertFalse(result)
+            mock_check.assert_called_once()
+
+    def test_empty_base_path_skips_update_check(self):
+        with patch.object(bootstrap, "get_base_path", return_value=""), \
+                patch.object(core, "check_for_update") as mock_check:
+            result = bootstrap.check_and_enforce_updates_before_bootstrap()
+            self.assertFalse(result)
+            mock_check.assert_not_called()
+
+    def test_core_addon_settings_empty_by_default_without_sentinel(self):
+        addon_mock = MagicMock()
+        addon_mock.getSetting.side_effect = lambda key: "" if key == "base_path" else ""
+        with patch.object(core.xbmcaddon, "Addon", return_value=addon_mock):
+            settings = core.addon_settings()
+            self.assertEqual(settings["base_path"], "")
+
+    def test_core_addon_settings_accepts_sentinel_path(self):
+        sentinel_path = "smb://192.168.69.100/Wideo/.SudoSync/"
+        addon_mock = MagicMock()
+        addon_mock.getSetting.side_effect = lambda key: sentinel_path if key == "base_path" else ""
+        with patch.object(core.xbmcaddon, "Addon", return_value=addon_mock):
+            settings = core.addon_settings()
+            self.assertEqual(settings["base_path"], sentinel_path)
+
+
 if __name__ == "__main__":
     unittest.main()
