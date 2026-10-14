@@ -103,19 +103,16 @@ def _is_playing_video():
         return False
 
 
-def main():
-    # Prevent duplicate service execution on this Kodi installation before any
-    # bootstrap, update check, snapshot, or synchronization work begins.
+def run_service_guarded(service_guard, runner):
+    """Execute runner while holding service_guard, guaranteeing release in finally."""
     try:
-        service_guard = acquire_kodi_service_guard()
-    except ServiceGuardError as exc:
-        log("Local service guard unavailable; refusing to start: {}".format(exc), xbmc.LOGERROR)
-        return
-    if service_guard is None:
-        log("Another SudoSync service instance already owns this Kodi profile; refusing duplicate start.", xbmc.LOGWARNING)
-        return
-    atexit.register(service_guard.release)
+        return runner()
+    finally:
+        if service_guard is not None:
+            service_guard.release()
 
+
+def _run_service():
     monitor = SudoSyncMonitor()
     settings = addon_settings()
     
@@ -272,6 +269,26 @@ def main():
             break
 
     log("Service stopped")
+
+
+def main(guard_factory=acquire_kodi_service_guard, runner=None):
+    # Prevent duplicate service execution on this Kodi installation before any
+    # bootstrap, update check, snapshot, or synchronization work begins.
+    try:
+        service_guard = guard_factory()
+    except ServiceGuardError as exc:
+        log("Local service guard unavailable; refusing to start: {}".format(exc), xbmc.LOGERROR)
+        return
+    if service_guard is None:
+        log("Another SudoSync service instance already owns this Kodi profile; refusing duplicate start.", xbmc.LOGWARNING)
+        return
+    atexit.register(service_guard.release)
+
+    target_runner = runner if runner is not None else _run_service
+    try:
+        return target_runner()
+    finally:
+        service_guard.release()
 
 
 if __name__ == "__main__":

@@ -58,6 +58,133 @@ class TestLocalServiceGuard(unittest.TestCase):
         with self.assertRaises(ValueError):
             LocalServiceGuard("", self.backend)
 
+    def test_double_release_is_idempotent(self):
+        guard = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(guard.acquire())
+        guard.release()
+        # Second release should be a silent no-op
+        guard.release()
+        # Release on unacquired guard should also be a silent no-op
+        unacquired = LocalServiceGuard(self.path, self.backend)
+        unacquired.release()
+
+    def test_reacquire_after_release(self):
+        guard = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(guard.acquire())
+        guard.release()
+        # Same instance re-acquire
+        self.assertTrue(guard.acquire())
+        guard.release()
+        # New instance re-acquire
+        second = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(second.acquire())
+        second.release()
+
+
+class TestGuardedServiceExecution(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.temp.name, "profile", "sudosync-service.lock")
+        self.backend = FakeLockBackend()
+
+        from unittest.mock import MagicMock
+        sys.modules.setdefault("xbmc", MagicMock())
+        sys.modules.setdefault("xbmcaddon", MagicMock())
+        sys.modules.setdefault("xbmcgui", MagicMock())
+        sys.modules.setdefault("xbmcvfs", MagicMock())
+
+        import service
+        self.service = service
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def _make_guard(self):
+        guard = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(guard.acquire())
+        return guard
+
+    def test_release_on_normal_exit(self):
+        guard = self._make_guard()
+        state = {"ran": False}
+
+        def runner():
+            state["ran"] = True
+            # Guard must be held while runner executes
+            other = LocalServiceGuard(self.path, self.backend)
+            self.assertFalse(other.acquire())
+
+        self.service.run_service_guarded(guard, runner)
+        self.assertTrue(state["ran"])
+        # Guard must be released after normal exit, allowing re-acquire
+        reacquired = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(reacquired.acquire())
+        reacquired.release()
+
+    def test_release_on_return(self):
+        guard = self._make_guard()
+
+        def runner():
+            return "restart"
+
+        result = self.service.run_service_guarded(guard, runner)
+        self.assertEqual(result, "restart")
+        # Guard must be released after return, allowing re-acquire
+        reacquired = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(reacquired.acquire())
+        reacquired.release()
+
+    def test_release_on_exception(self):
+        guard = self._make_guard()
+
+        def runner():
+            raise RuntimeError("bootstrap crash")
+
+        with self.assertRaises(RuntimeError):
+            self.service.run_service_guarded(guard, runner)
+
+        # Guard must be released after exception, allowing re-acquire
+        reacquired = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(reacquired.acquire())
+        reacquired.release()
+
+    def test_reacquire_after_guarded_run(self):
+        def make_and_run(val):
+            g = self._make_guard()
+            return self.service.run_service_guarded(g, lambda: val)
+
+        self.assertEqual(make_and_run("run1"), "run1")
+        self.assertEqual(make_and_run("run2"), "run2")
+
+    def test_double_release_with_simulated_atexit(self):
+        guard = self._make_guard()
+        self.service.run_service_guarded(guard, lambda: "done")
+        # Simulate atexit firing at Kodi shutdown after finally has already released
+        guard.release()
+        self.assertFalse(guard._held)
+
+    def test_main_function_guarded_lifecycle(self):
+        def factory():
+            g = LocalServiceGuard(self.path, self.backend)
+            return g if g.acquire() else None
+
+        # 1. Normal return
+        result = self.service.main(guard_factory=factory, runner=lambda: "finished")
+        self.assertEqual(result, "finished")
+
+        # 2. Return on restart
+        result = self.service.main(guard_factory=factory, runner=lambda: "restart")
+        self.assertEqual(result, "restart")
+
+        # 3. Exception
+        with self.assertRaises(ValueError):
+            self.service.main(guard_factory=factory, runner=lambda: (_ for _ in ()).throw(ValueError("failed")))
+
+        # 4. Ponowne acquire after all the above runs
+        check_guard = factory()
+        self.assertIsNotNone(check_guard)
+        check_guard.release()
+
 
 if __name__ == "__main__":
     unittest.main()
