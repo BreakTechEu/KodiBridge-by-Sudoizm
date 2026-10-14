@@ -9,7 +9,7 @@ recorded there; update the documents when the user changes or clarifies them.
 At the start of work, inspect the current branch, working tree, recent commits,
 and remote state. Develop on `v2/rewrite-2026-10-10` unless the user explicitly
 directs otherwise. `master` is the intended v2 mainline/destination;
-`v1-stable` is the working v1 line and must remain read-only. Integrate v2 into
+`v1-stable` is the stable SudoSync 1.0.0 line and must remain read-only. Integrate v2 into
 `master` through the agreed review path, and do not merge a pull request or
 publish a release without explicit user approval. Treat `sources/` as read-only
 reference material.

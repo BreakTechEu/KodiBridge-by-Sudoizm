@@ -2,7 +2,7 @@
 
 ---
 
-> **Note:** This repository (master branch) now tracks **SudoSync v2 (Beta)** featuring the experimental SudoSync ID system for private videos without standard online IDs. We are waiting for feedback, feature requests, and bug reports! For the older stable v1 release, please switch to the [v1-stable](https://github.com/BreakTechEu/SudoSync/tree/v1-stable) branch.
+> **Note:** This repository (master branch) tracks **SudoSync 2.0.0** (in preparation, not yet published), featuring the experimental SudoSync ID system for private videos without standard online IDs. Stable version **SudoSync 1.0.0** is on branch [v1-stable](https://github.com/BreakTechEu/SudoSync/tree/v1-stable) and is no longer developed.
 
 # SudoSync for Kodi
 
@@ -39,10 +39,10 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 > [!NOTE]
-> The release package for SudoSync 2.0.0 (`service.sudosync-2.0.0.zip`) has not been published yet. The **Releases** section currently provides the stable release `service.sudosync-1.0.0.zip`.
+> The release package for SudoSync 2.0.0 (`service.sudosync-2.0.0.zip`) has not been published yet. The **Releases** section currently provides stable version SudoSync 1.0.0 (`service.sudosync-1.0.0.zip`).
 
 1. **Installation Package:**
-   - For the stable release, download `service.sudosync-1.0.0.zip` from the **Releases** section.
+   - For stable version SudoSync 1.0.0, download `service.sudosync-1.0.0.zip` from the **Releases** section.
    - To test development version 2.0.0 from this repository, package the `service.sudosync` directory into a zip archive.
 
 2. **Install in Kodi:**
