@@ -134,7 +134,7 @@ def _run_service():
 
     # Run v2 recovery and preview after bootstrap. Recovery may finish an
     # interrupted, journaled transaction; normal synchronization remains on
-    # the v1 engine until the full v2 preview/approval/transaction flow is integrated.
+    # dotychczasowy silnik v1 (linia 1.x) until the full v2 preview/approval/transaction flow is integrated.
     try:
         from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend
         from resources.lib.sudosync_v2.runtime import (
@@ -162,7 +162,7 @@ def _run_service():
                 v2_preview.get("active"), v2_preview.get("reason", ""),
             ), xbmc.LOGINFO)
     except Exception as exc:
-        # A preview failure must not disable the currently working v1 service.
+        # A preview failure must not disable dotychczasowy silnik v1 (linia 1.x).
         log("V2 startup preview unavailable: {}".format(exc), xbmc.LOGWARNING)
 
     snapshot_interval = settings["interval_seconds"]
