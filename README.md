@@ -38,13 +38,16 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 
 ## Installation & Setup
 
-1. **Download:**
-   - Go to the **Releases** section on the right side of this repository.
-   - Download the latest `service.sudosync-1.2.0-beta.zip` package.
+> [!NOTE]
+> The release package for SudoSync 2.0.0 (`service.sudosync-2.0.0.zip`) has not been published yet. The **Releases** section currently provides the stable release `service.sudosync-1.0.0.zip`.
+
+1. **Installation Package:**
+   - For the stable release, download `service.sudosync-1.0.0.zip` from the **Releases** section.
+   - To test development version 2.0.0 from this repository, package the `service.sudosync` directory into a zip archive.
 
 2. **Install in Kodi:**
    - In Kodi, navigate to: *Settings -> Add-ons -> Install from zip file*.
-   - Select the downloaded archive.
+   - Select the package archive.
 
 3. **Configure Network Path & Identifiers:**
    - Open SudoSync add-on settings in Kodi.

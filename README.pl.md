@@ -21,6 +21,9 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 - **Kwarantanna podczas skanowania i plików NFO:** Nowo zeskanowane elementy biblioteki oraz importy NFO otrzymują starsze wersje wewnętrzne, co zapobiega przypadkowemu nadpisaniu istniejącego, współdzielonego postępu oglądania.
 - **Eksperymentalne wsparcie dla SudoSync ID:** Automatycznie generuje i bezpiecznie wstrzykuje unikalne identyfikatory do plików `.nfo` dla prywatnych domowych wideo, które nie posiadają własnych wpisów w internetowych bazach danych.
 - **Rozdzielenie ID sieciowego od Aliasu UI:** Wyraźnie oddziela wewnętrzny identyfikator sieciowy od przyjaznego aliasu wyświetlanego w interfejsie. Zapewnia to stabilność przypisań przy jednoczesnym czytelnym nazewnictwie urządzeń.
+- **Kryptograficzne Bezpieczeństwo:** Mechanizm self-update weryfikuje aktualizacje pobierane z NAS używając podpisu RSA-2048. Niezaufane archiwum ZIP jest odrzucane i blokowane.
+- **Dziennik Zdarzeń (Journaling):** Synchronizacja początkowa używa mechanizmu transakcyjnego z dziennikiem postępu, pozwalając na bezpieczne wznowienie po nieoczekiwanym błędzie.
+- **Limity Bezpieczeństwa:** System wprowadza maksymalne limity pamięci, wielkości plików oraz liczby rekordów dla bezpieczeństwa klienta.
 
 ---
 
@@ -35,13 +38,16 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 
 ## Instalacja i konfiguracja
 
-1. **Pobranie:**
-   - Przejdź do sekcji **Releases** po prawej stronie repozytorium.
-   - Pobierz najnowszą paczkę `service.sudosync-1.2.0-beta.zip`.
+> [!NOTE]
+> Paczka wydania dla SudoSync 2.0.0 (`service.sudosync-2.0.0.zip`) nie została jeszcze opublikowana. W sekcji **Releases** dostępne jest obecnie stabilne wydanie `service.sudosync-1.0.0.zip`.
+
+1. **Źródło instalacji:**
+   - W przypadku stabilnego wydania pobierz plik `service.sudosync-1.0.0.zip` z sekcji **Releases** po prawej stronie repozytorium.
+   - Aby przetestować wersję rozwojową 2.0.0 z tego repozytorium, spakuj katalog `service.sudosync` do pliku zip.
 
 2. **Instalacja w Kodi:**
    - W Kodi przejdź do: *Ustawienia -> Dodatki -> Zainstaluj z pliku zip*.
-   - Wskaż pobrane archiwum.
+   - Wskaż przygotowane archiwum zip.
 
 3. **Konfiguracja ścieżki sieciowej i identyfikatorów:**
    - Otwórz ustawienia dodatku SudoSync w Kodi.
@@ -50,9 +56,6 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
      smb://192.168.1.100/Wspoldzielony/.SudoSync/
      ```
    - W ustawieniach określ swój **Identyfikator sieciowy** (używany wewnętrznie do synchronizacji plików) oraz **Alias UI** (przyjazną nazwę wyświetlananą na ekranie).
-- **Kryptograficzne Bezpieczeństwo:** Mechanizm self-update weryfikuje aktualizacje pobierane z NAS używając podpisu RSA-2048. Niezaufane archiwum ZIP jest odrzucane i blokowane.
-- **Dziennik Zdarzeń (Journaling):** Synchronizacja początkowa używa mechanizmu transakcyjnego z dziennikiem postępu, pozwalając na bezpieczne wznowienie po nieoczekiwanym błędzie.
-- **Limity Bezpieczeństwa:** System wprowadza maksymalne limity pamięci, wielkości plików oraz liczby rekordów dla bezpieczeństwa klienta.
 
 ---
 
