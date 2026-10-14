@@ -1,16 +1,19 @@
 SudoSync 2.0.0
 ==============
 
-Przebudowa architektury SudoSync (architektura v2) oraz kluczowe usprawnienia bezpieczeństwa i stabilności:
-- Nowy moduł domeny v2 ze ścisłą walidacją schematów snapshotów (`schema.py`) i konserwatywnym dopasowywaniem tożsamości mediów (`identity.py`, znormalizowane typy, silne aliasy i integracja z plikami `.nfo`).
-- Deterministyczne rozwiązywanie konfliktów na poziomie poszczególnych pól (`planning.py`, `merge.py`) oraz silnik bezpiecznego podglądu synchronizacji (dry-run/preview) zintegrowany ze startem usługi Kodi (`service.py`).
-- Transakcyjne stosowanie planów z dziennikiem zdarzeń (journaling) i rotacją kopii zapasowych (`transaction.py`, `transaction_store.py`) w trybie fail-closed — automatyczne wznawianie przerwanych sesji lub ich bezpieczne wycofywanie bez uszkadzania biblioteki Kodi.
-- Koordynator sesji operacji współdzielonych (`session.py`) z mechanizmem markerów i współdzielonej blokady plików na poziomie systemu operacyjnego (`native_shared_lock.py`), zabezpieczony przed ucieczką przez dowiązania symboliczne.
+Przebudowa architektury SudoSync (architektura v2) oraz kluczowe usprawnienia bezpieczeństwa i stabilności. Zgodnie z założeniami projektowymi, w usłudze Kodi z modułów v2 na starcie uruchamiane są jedynie procedury odzyskiwania oraz diagnostyczny podgląd (preview), podczas gdy zwykła synchronizacja nadal prowadzona jest sprawdzoną ścieżką v1:
+- Nowe moduły domeny v2 przygotowane pod synchronizację: ścisła walidacja schematów snapshotów (`schema.py`), konserwatywne dopasowywanie tożsamości mediów (`identity.py`, znormalizowane typy, silne aliasy) oraz czytanie plików `.nfo` przez Kodi VFS (`kodi_vfs.py`).
+- Silnik planowania i deterministycznego rozwiązywania konfliktów na poziomie poszczególnych pól (`planning.py`, `merge.py`) wykorzystywany do bezpiecznego podglądu synchronizacji (dry-run/preview) przy starcie usługi Kodi (`service.py`).
+- Silnik transakcyjny z dziennikiem zamiaru i rotacją kopii zapasowych (`transaction.py`, `transaction_store.py`) oraz mechanizmem markerów sesji (`session.py`) — wykorzystywany przy starcie usługi do weryfikacji stanu i bezpiecznego odzyskiwania przerwanych transakcji; nie jest jeszcze używany w zwykłej synchronizacji (która działa ścieżką v1).
+- Opcjonalna blokada współdzielona na poziomie systemu operacyjnego (`native_shared_lock.py`) zabezpieczona przed ucieczką przez dowiązania symboliczne — pozostaje niepodłączona w uzgodnionym sekwencyjnym modelu pracy (jedno urządzenie Kodi naraz).
 - Nowy katalog snapshotów współdzielonych (`catalog.py`) z weryfikacją historii i wersji pól.
-- Blokada singletonu usługi lokalnej (`local_service_guard.py`): blokada na poziomie systemu operacyjnego chroniąca przed równoległym uruchomieniem wielu instancji w profilu Kodi, ze zwolnieniem w bloku finally i atexit.
 - Konfigurator pierwszego uruchomienia (bootstrap) oparty na `SudoSync.cfg`, weryfikacji dostępu do zasobu sieciowego i obsłudze unikalnych identyfikatorów SudoSync ID z rozdzieleniem identyfikatora sieciowego od aliasu UI.
 - Weryfikacja kryptograficzna pakietów aktualizacji z podpisem RSA-2048 i natychmiastowym blokowaniem startu w razie odrzucenia paczki.
-- Usprawniony parser wersji `_numeric_version` z pełnym porównywaniem etapów wersji przedwydaniowych (`alpha < beta < rc < final`, obsługa `beta2 > beta`).
+- Poprawki z 14.10.2026:
+  - Naprawa podwójnie zakodowanych polskich znaków w komunikatach dialogowych oraz dodanie automatycznego testu kodowania UTF-8.
+  - Usunięcie sztywnej ścieżki-wartownika (`SPECIAL_REMOTE_SENTINEL`) z kreatora bootstrapu i modułu głównego.
+  - Zwalnianie blokady singletonu usługi lokalnej (`service.py` / `local_service_guard.py`) w bloku `finally` wokół wykonania usługi (nie tylko przez `atexit`).
+  - Usprawnienie parsera wersji `_numeric_version` z pełnym porównywaniem etapów wersji przedwydaniowych (`alpha < beta < rc < final`, np. `beta2 > beta`).
 
 SudoSync 1.1.0 (v2 Beta)
 ======================
