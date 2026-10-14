@@ -44,26 +44,26 @@ def show_status():
 
     upd = check_for_update(show_notification=False)
     if upd.get("available"):
-        update_text = "DostÄ™pna: {} ({})".format(upd.get("version"), upd.get("filename"))
+        update_text = "Dostępna: {} ({})".format(upd.get("version"), upd.get("filename"))
     elif upd.get("error"):
-        update_text = "Nie udaĹ‚o siÄ™ sprawdziÄ‡: {}".format(upd.get("error"))
+        update_text = "Nie udało się sprawdzić: {}".format(upd.get("error"))
     else:
-        update_text = "Brak nowszej wersji (zainstalowana {})".format(upd.get("current_version", "â€”"))
+        update_text = "Brak nowszej wersji (zainstalowana {})".format(upd.get("current_version", "—"))
 
     try:
         shared = sync_initial_base_selection(show_notification=False)
         init = shared.get("initialization") or {}
-        base_name = init.get("base_client_name") or "â€”"
-        init_state = "zakoĹ„czona" if init.get("completed") else "niezakoĹ„czona"
+        base_name = init.get("base_client_name") or "—"
+        init_state = "zakończona" if init.get("completed") else "niezakończona"
     except Exception as exc:
-        base_name = "bĹ‚Ä…d: {}".format(exc)
-        init_state = "â€”"
+        base_name = "błąd: {}".format(exc)
+        init_state = "—"
 
     dry = status.get("dry_run_summary") or {}
     plan = status.get("dry_run_local_plan") or {}
     dry_text = (
         "Ostatnia analiza: {when}\n"
-        "Bezpieczne wspĂłlne pozycje: {safe}\n"
+        "Bezpieczne wspólne pozycje: {safe}\n"
         "Bezpieczne mirrory lokalny/NAS: {mir}\n"
         "Niejednoznaczne grupy (pomijane): {amb}\n"
         "Bez mocnego ID: {noid}\n"
@@ -75,62 +75,62 @@ def show_status():
         "  resume: {rs}\n"
         "Raport: {report}"
     ).format(
-        when=status.get("last_dry_run_at", "â€”"),
-        safe=dry.get("safe_shared_clusters", "â€”"),
+        when=status.get("last_dry_run_at", "—"),
+        safe=dry.get("safe_shared_clusters", "—"),
         mir=dry.get("safe_mirror_clusters", 0),
-        amb=dry.get("ambiguous_clusters", "â€”"),
-        noid=dry.get("records_without_strong_id", "â€”"),
-        ratings=dry.get("rating_conflicts", "â€”"),
+        amb=dry.get("ambiguous_clusters", "—"),
+        noid=dry.get("records_without_strong_id", "—"),
+        ratings=dry.get("rating_conflicts", "—"),
         items=plan.get("items", 0),
         pc=plan.get("playcount", 0),
         lp=plan.get("lastplayed", 0),
         ur=plan.get("userrating", 0),
         rs=plan.get("resume", 0),
-        report=status.get("dry_run_report_path", "â€”"),
+        report=status.get("dry_run_report_path", "—"),
     )
 
     live_enabled = settings.get("live_sync_enabled", True)
     waiting = status.get("live_waiting_clients") or []
     live_plan = status.get("live_local_plan") or {}
-    if init_state == "zakoĹ„czona":
-        live_state = "WĹÄ„CZONA" if live_enabled else "WYĹÄ„CZONA"
+    if init_state == "zakończona":
+        live_state = "WŁĄCZONA" if live_enabled else "WYŁĄCZONA"
     else:
-        live_state = "OCZEKUJE NA ZAKOĹCZENIE INICJALIZACJI"
+        live_state = "OCZEKUJE NA ZAKOŃCZENIE INICJALIZACJI"
     live_text = (
-        "Synchronizacja bieĹĽÄ…ca: {state}\n"
+        "Synchronizacja bieżąca: {state}\n"
         "Odpytywanie innych Kodi: co {poll} s\n"
         "Ostatni cykl LIVE: {when}\n"
         "Ostatnio odebrano: {applied} pozycji\n"
-        "Ostatnio wysĹ‚ano lokalnie: {published} pozycji\n"
-        "BieĹĽÄ…cy plan lokalny: {items} pozycji\n"
+        "Ostatnio wysłano lokalnie: {published} pozycji\n"
+        "Bieżący plan lokalny: {items} pozycji\n"
         "Ostatnia kontrola lokalna: {probe_when}\n"
-        "Kontrola wykryĹ‚a zmianÄ™: {probe_changed} ({probe_items} pozycji)\n"
-        "Oczekiwanie na aktualizacjÄ™ klientĂłw: {waiting}\n"
+        "Kontrola wykryła zmianę: {probe_changed} ({probe_items} pozycji)\n"
+        "Oczekiwanie na aktualizację klientów: {waiting}\n"
         "Raport LIVE: {report}"
     ).format(
         state=live_state,
         poll=settings.get("live_poll_seconds", 60),
-        when=status.get("last_live_sync_at") or status.get("last_live_plan_at") or "â€”",
+        when=status.get("last_live_sync_at") or status.get("last_live_plan_at") or "—",
         applied=status.get("last_live_applied_items", 0),
         published=status.get("last_live_published_items", 0),
         items=live_plan.get("items", 0),
-        probe_when=status.get("last_local_probe_at") or "â€”",
+        probe_when=status.get("last_local_probe_at") or "—",
         probe_changed="tak" if status.get("last_local_probe_changed") else "nie",
         probe_items=status.get("last_local_probe_changed_items", 0),
         waiting=", ".join(waiting) if waiting else "nie",
-        report=status.get("last_live_report_path", "â€”"),
+        report=status.get("last_live_report_path", "—"),
     )
 
     import xbmcaddon
     addon_version = xbmcaddon.Addon("service.sudosync").getAddonInfo("version")
 
     text = (
-        "Tryb: SudoSync {version} â€” LIVE + powiadomienia zmian i ochrona nowszego odtwarzania\n\n"
-        "UrzÄ…dzenie: {name}\n"
+        "Tryb: SudoSync {version} — LIVE + powiadomienia zmian i ochrona nowszego odtwarzania\n\n"
+        "Urządzenie: {name}\n"
         "Client ID: {cid}\n"
         "Kodi: {kodi} ({platform})\n"
         "JSON-RPC: {rpc}\n\n"
-        "UrzÄ…dzenie bazowe inicjalizacji: {base}\n"
+        "Urządzenie bazowe inicjalizacji: {base}\n"
         "Pierwsza synchronizacja: {init_state}\n\n"
         "Ostatni snapshot: {when}\n"
         "Filmy: {movies}\n"
@@ -142,37 +142,37 @@ def show_status():
     ).format(
         version=addon_version,
         name=status.get("client_name", "Kodi"),
-        cid=status.get("client_id", "â€”"),
-        kodi=kodi.get("version", "â€”"),
-        platform=kodi.get("platform", "â€”"),
-        rpc=rpcv or "â€”",
+        cid=status.get("client_id", "—"),
+        kodi=kodi.get("version", "—"),
+        platform=kodi.get("platform", "—"),
+        rpc=rpcv or "—",
         base=base_name,
         init_state=init_state,
-        when=status.get("last_snapshot_at", "â€”"),
+        when=status.get("last_snapshot_at", "—"),
         movies=counts.get("movies", 0),
         episodes=counts.get("episodes", 0),
-        path=status.get("remote_path", "â€”"),
+        path=status.get("remote_path", "—"),
         dry=dry_text,
         live=live_text,
         update=update_text,
     )
-    xbmcgui.Dialog().textviewer("SudoSync â€” status", text)
+    xbmcgui.Dialog().textviewer("SudoSync — status", text)
 
 
 def apply_initial_dialog():
     guard = initial_write_guard_status()
     if not guard.get("armed"):
         xbmcgui.Dialog().ok(
-            "SudoSync â€” bezpiecznik",
+            "SudoSync — bezpiecznik",
             "Najpierw kliknij:\n\n"
-            "â€žUzbrĂłj jednorazowÄ… synchronizacjÄ™ poczÄ…tkowÄ… (10 min)â€ť\n\n"
-            "Przycisk uzbraja zapis natychmiast â€” nie trzeba zamykaÄ‡ okna ustawieĹ„.",
+            "„Uzbrój jednorazową synchronizację początkową (10 min)”\n\n"
+            "Przycisk uzbraja zapis natychmiast — nie trzeba zamykać okna ustawień.",
         )
         return
 
     xbmcgui.Dialog().notification(
-        "SudoSync â€” przygotowanie",
-        "PrzygotowujÄ™ bezpieczny plan. Nie klikaj ponownie â€” za chwilÄ™ pojawi siÄ™ okno potwierdzenia.",
+        "SudoSync — przygotowanie",
+        "Przygotowuję bezpieczny plan. Nie klikaj ponownie — za chwilę pojawi się okno potwierdzenia.",
         xbmcgui.NOTIFICATION_INFO,
         8000,
     )
@@ -182,8 +182,8 @@ def apply_initial_dialog():
     if not init.get("base_client_id"):
         disarm_initial_write_guard()
         xbmcgui.Dialog().ok(
-            "SudoSync â€” synchronizacja poczÄ…tkowa",
-            "Najpierw wybierz urzÄ…dzenie bazowe pierwszej synchronizacji.",
+            "SudoSync — synchronizacja początkowa",
+            "Najpierw wybierz urządzenie bazowe pierwszej synchronizacji.",
         )
         return
 
@@ -199,18 +199,18 @@ def apply_initial_dialog():
     if not plan:
         disarm_initial_write_guard()
         xbmcgui.Dialog().ok(
-            "SudoSync â€” synchronizacja poczÄ…tkowa",
-            "Na tym Kodi nie ma obecnie ĹĽadnych bezpiecznych zmian do zastosowania. Bezpiecznik zostaĹ‚ rozbrojony.",
+            "SudoSync — synchronizacja początkowa",
+            "Na tym Kodi nie ma obecnie żadnych bezpiecznych zmian do zastosowania. Bezpiecznik został rozbrojony.",
         )
         return
 
     base_label = init.get("base_client_name") or init.get("base_client_id")
     if not xbmcgui.Dialog().yesno(
-        "SudoSync â€” UWAGA: zapis do biblioteki",
-        "UrzÄ…dzenie bazowe: {base}\n\n"
-        "Ta operacja ZMIENI lokalnÄ… bibliotekÄ™ tego Kodi.\n\n"
+        "SudoSync — UWAGA: zapis do biblioteki",
+        "Urządzenie bazowe: {base}\n\n"
+        "Ta operacja ZMIENI lokalną bibliotekę tego Kodi.\n\n"
         "Pozycji: {items}\nplaycount: {pc}\nlastplayed: {lp}\noceny: {ur}\nresume: {rs}\n\n"
-        "Przed zapisem SudoSync utworzy peĹ‚ny snapshot-backup na NAS. Niejednoznaczne pozycje sÄ… pomijane.\n\nKontynuowaÄ‡?".format(
+        "Przed zapisem SudoSync utworzy pełny snapshot-backup na NAS. Niejednoznaczne pozycje są pomijane.\n\nKontynuować?".format(
             base=base_label, items=len(plan), pc=field_counts["playcount"], lp=field_counts["lastplayed"],
             ur=field_counts["userrating"], rs=field_counts["resume"]
         ),
@@ -220,17 +220,17 @@ def apply_initial_dialog():
         return
 
     if not xbmcgui.Dialog().yesno(
-        "SudoSync â€” ostatnie potwierdzenie",
-        "Synchronizacja bieĹĽÄ…ca uruchomi siÄ™ dopiero, gdy CAĹA inicjalizacja zostanie zakoĹ„czona.\n\n"
-        "ZastosowaÄ‡ teraz tylko bezpieczny plan poczÄ…tkowy na TYM Kodi?",
+        "SudoSync — ostatnie potwierdzenie",
+        "Synchronizacja bieżąca uruchomi się dopiero, gdy CAŁA inicjalizacja zostanie zakończona.\n\n"
+        "Zastosować teraz tylko bezpieczny plan początkowy na TYM Kodi?",
         yeslabel="Zastosuj", nolabel="Anuluj",
     ):
         disarm_initial_write_guard()
         return
 
     xbmcgui.Dialog().notification(
-        "SudoSync â€” synchronizacja trwa",
-        "Zapis i weryfikacja mogÄ… potrwaÄ‡ kilkadziesiÄ…t sekund. Nie klikaj ponownie â€” poczekaj na komunikat koĹ„cowy.",
+        "SudoSync — synchronizacja trwa",
+        "Zapis i weryfikacja mogą potrwać kilkadziesiąt sekund. Nie klikaj ponownie — poczekaj na komunikat końcowy.",
         xbmcgui.NOTIFICATION_INFO,
         10000,
     )
@@ -243,32 +243,32 @@ def apply_initial_dialog():
     post = result.get("post_plan") or {}
     completed = result.get("initialization_completed", False)
     xbmcgui.Dialog().ok(
-        "SudoSync â€” zakoĹ„czono",
-        "Zastosowano synchronizacjÄ™ poczÄ…tkowÄ….\n\n"
+        "SudoSync — zakończono",
+        "Zastosowano synchronizację początkową.\n\n"
         "Backup: {backup}\n\n"
-        "PozostaĹ‚y plan na tym Kodi: {left} pozycji.\n"
-        "Stan caĹ‚ej inicjalizacji: {state}\n\n"
-        "Po peĹ‚nym zakoĹ„czeniu inicjalizacji synchronizacja bieĹĽÄ…ca moĹĽe uruchomiÄ‡ siÄ™ automatycznie.".format(
-            backup=result.get("backup_path", "â€”"), left=post.get("items", 0),
-            state="ZAKOĹCZONA" if completed else "jeszcze niezakoĹ„czona",
+        "Pozostały plan na tym Kodi: {left} pozycji.\n"
+        "Stan całej inicjalizacji: {state}\n\n"
+        "Po pełnym zakończeniu inicjalizacji synchronizacja bieżąca może uruchomić się automatycznie.".format(
+            backup=result.get("backup_path", "—"), left=post.get("items", 0),
+            state="ZAKOŃCZONA" if completed else "jeszcze niezakończona",
         ),
     )
 
 
 def arm_initial_dialog():
     if not xbmcgui.Dialog().yesno(
-        "SudoSync â€” uzbrojenie zapisu",
-        "UzbroiÄ‡ jednorazowy zapis synchronizacji poczÄ…tkowej na 10 minut?\n\n"
-        "Samo uzbrojenie NICZEGO jeszcze nie zmienia w bibliotece. Zapis nastÄ…pi dopiero po uĹĽyciu przycisku â€žZastosuj synchronizacjÄ™ poczÄ…tkowÄ… na TYM Kodiâ€ť i dwĂłch kolejnych potwierdzeniach.",
-        yeslabel="UzbrĂłj", nolabel="Anuluj",
+        "SudoSync — uzbrojenie zapisu",
+        "Uzbroić jednorazowy zapis synchronizacji początkowej na 10 minut?\n\n"
+        "Samo uzbrojenie NICZEGO jeszcze nie zmienia w bibliotece. Zapis nastąpi dopiero po użyciu przycisku „Zastosuj synchronizację początkową na TYM Kodi” i dwóch kolejnych potwierdzeniach.",
+        yeslabel="Uzbrój", nolabel="Anuluj",
     ):
         return
     arm_initial_write_guard()
     xbmcgui.Dialog().ok(
-        "SudoSync â€” bezpiecznik uzbrojony",
+        "SudoSync — bezpiecznik uzbrojony",
         "Bezpiecznik jest uzbrojony na 10 minut.\n\n"
-        "MoĹĽesz od razu, bez zamykania okna ustawieĹ„, kliknÄ…Ä‡:\n\n"
-        "â€žZastosuj synchronizacjÄ™ poczÄ…tkowÄ… na TYM Kodiâ€ť.",
+        "Możesz od razu, bez zamykania okna ustawień, kliknąć:\n\n"
+        "„Zastosuj synchronizację początkową na TYM Kodi”.",
     )
 
 def select_base_dialog():
@@ -276,8 +276,8 @@ def select_base_dialog():
     init = shared.get("initialization") or {}
     if init.get("completed"):
         xbmcgui.Dialog().ok(
-            "SudoSync â€” urzÄ…dzenie bazowe",
-            "Pierwsza synchronizacja jest juĹĽ zakoĹ„czona. Zmiana urzÄ…dzenia bazowego jest zablokowana.",
+            "SudoSync — urządzenie bazowe",
+            "Pierwsza synchronizacja jest już zakończona. Zmiana urządzenia bazowego jest zablokowana.",
         )
         return
     current = init.get("base_client_name") or init.get("base_client_id")
@@ -287,18 +287,18 @@ def select_base_dialog():
         try:
             result = select_this_as_initial_base()
         except Exception as exc:
-            xbmcgui.Dialog().ok("SudoSync â€” urzÄ…dzenie bazowe", str(exc))
+            xbmcgui.Dialog().ok("SudoSync — urządzenie bazowe", str(exc))
             return
         if result.get("already_selected"):
             xbmcgui.Dialog().ok(
-                "SudoSync â€” urzÄ…dzenie bazowe",
-                "To Kodi jest juĹĽ urzÄ…dzeniem bazowym: {}.".format(result.get("client_name") or current),
+                "SudoSync — urządzenie bazowe",
+                "To Kodi jest już urządzeniem bazowym: {}.".format(result.get("client_name") or current),
             )
             return
     else:
         if not xbmcgui.Dialog().yesno(
-            "SudoSync â€” urzÄ…dzenie bazowe",
-            "UstawiÄ‡ TO Kodi jako urzÄ…dzenie bazowe pierwszej synchronizacji?",
+            "SudoSync — urządzenie bazowe",
+            "Ustawić TO Kodi jako urządzenie bazowe pierwszej synchronizacji?",
             yeslabel="Ustaw",
             nolabel="Anuluj",
         ):
@@ -306,7 +306,7 @@ def select_base_dialog():
         result = select_this_as_initial_base()
         xbmcgui.Dialog().ok(
             "SudoSync",
-            "UrzÄ…dzenie bazowe ustawione: {}.".format(result.get("client_name") or result.get("client_id")),
+            "Urządzenie bazowe ustawione: {}.".format(result.get("client_name") or result.get("client_id")),
         )
 
 
@@ -315,25 +315,25 @@ def reset_base_dialog():
     init = shared.get("initialization") or {}
     if init.get("completed"):
         xbmcgui.Dialog().ok(
-            "SudoSync â€” urzÄ…dzenie bazowe",
-            "Pierwsza synchronizacja jest juĹĽ zakoĹ„czona. ZwykĹ‚e wyczyszczenie wyboru bazowego jest zablokowane.",
+            "SudoSync — urządzenie bazowe",
+            "Pierwsza synchronizacja jest już zakończona. Zwykłe wyczyszczenie wyboru bazowego jest zablokowane.",
         )
         return
     if not init.get("base_client_id"):
-        xbmcgui.Dialog().ok("SudoSync â€” urzÄ…dzenie bazowe", "Nie ma obecnie wybranego urzÄ…dzenia bazowego.")
+        xbmcgui.Dialog().ok("SudoSync — urządzenie bazowe", "Nie ma obecnie wybranego urządzenia bazowego.")
         return
     if xbmcgui.Dialog().yesno(
-        "SudoSync â€” urzÄ…dzenie bazowe",
-        "Obecne urzÄ…dzenie bazowe: {}\n\nWyczyĹ›ciÄ‡ wybĂłr, aby moĹĽna byĹ‚o wskazaÄ‡ inne Kodi?".format(
+        "SudoSync — urządzenie bazowe",
+        "Obecne urządzenie bazowe: {}\n\nWyczyścić wybór, aby można było wskazać inne Kodi?".format(
             init.get("base_client_name") or init.get("base_client_id")
         ),
-        yeslabel="WyczyĹ›Ä‡",
+        yeslabel="Wyczyść",
         nolabel="Anuluj",
     ):
         clear_initial_base_selection()
         xbmcgui.Dialog().ok(
             "SudoSync",
-            "WybĂłr urzÄ…dzenia bazowego zostaĹ‚ wyczyszczony. Teraz uĹĽyj przycisku ustawienia bazy na wĹ‚aĹ›ciwym Kodi.",
+            "Wybór urządzenia bazowego został wyczyszczony. Teraz użyj przycisku ustawienia bazy na właściwym Kodi.",
         )
 
 
@@ -344,43 +344,43 @@ def live_sync_dialog():
     init = shared.get("initialization") or {}
     if not init.get("completed", False):
         xbmcgui.Dialog().ok(
-            "SudoSync â€” synchronizacja bieĹĽÄ…ca",
-            "Najpierw trzeba zakoĹ„czyÄ‡ synchronizacjÄ™ poczÄ…tkowÄ… wszystkich Kodi.",
+            "SudoSync — synchronizacja bieżąca",
+            "Najpierw trzeba zakończyć synchronizację początkową wszystkich Kodi.",
         )
         return
     if not settings.get("live_sync_enabled", True):
         xbmcgui.Dialog().ok(
-            "SudoSync â€” synchronizacja bieĹĽÄ…ca",
-            "Synchronizacja bieĹĽÄ…ca jest wyĹ‚Ä…czona w ustawieniach. WĹ‚Ä…cz jÄ… i zatwierdĹş ustawienia przyciskiem OK.",
+            "SudoSync — synchronizacja bieżąca",
+            "Synchronizacja bieżąca jest wyłączona w ustawieniach. Włącz ją i zatwierdź ustawienia przyciskiem OK.",
         )
         return
     xbmcgui.Dialog().notification(
-        "SudoSync â€” synchronizacja LIVE",
-        "Sprawdzam zmiany lokalne i pozostaĹ‚e Kodi. Poczekaj na komunikat koĹ„cowy.",
+        "SudoSync — synchronizacja LIVE",
+        "Sprawdzam zmiany lokalne i pozostałe Kodi. Poczekaj na komunikat końcowy.",
         xbmcgui.NOTIFICATION_INFO,
         7000,
     )
     result = run_live_sync_cycle(show_notification=False, suppress_local_changes=False, notify_local_changes=False, receiver_notification_delay_ms=0)
     if result.get("busy"):
-        xbmcgui.Dialog().ok("SudoSync", "Inny cykl synchronizacji juĹĽ trwa na tym Kodi. Nie uruchamiaj go ponownie.")
+        xbmcgui.Dialog().ok("SudoSync", "Inny cykl synchronizacji już trwa na tym Kodi. Nie uruchamiaj go ponownie.")
         return
     if result.get("playing"):
-        xbmcgui.Dialog().ok("SudoSync", "Trwa odtwarzanie wideo. Synchronizacja zostaĹ‚a odĹ‚oĹĽona i wykona siÄ™ automatycznie po zatrzymaniu odtwarzania.")
+        xbmcgui.Dialog().ok("SudoSync", "Trwa odtwarzanie wideo. Synchronizacja została odłożona i wykona się automatycznie po zatrzymaniu odtwarzania.")
         return
     if not result.get("active", True):
-        xbmcgui.Dialog().ok("SudoSync", "Synchronizacja LIVE nie jest teraz aktywna: {}".format(result.get("reason") or "nieznany powĂłd"))
+        xbmcgui.Dialog().ok("SudoSync", "Synchronizacja LIVE nie jest teraz aktywna: {}".format(result.get("reason") or "nieznany powód"))
         return
     if result.get("waiting"):
         xbmcgui.Dialog().ok(
-            "SudoSync â€” oczekiwanie",
-            "Synchronizacja LIVE ruszy automatycznie, gdy wszystkie znane Kodi bÄ™dÄ… miaĹ‚y wersjÄ™ 0.4.\n\nOczekiwanie na: {}".format(
+            "SudoSync — oczekiwanie",
+            "Synchronizacja LIVE ruszy automatycznie, gdy wszystkie znane Kodi będą miały wersję 0.4.\n\nOczekiwanie na: {}".format(
                 ", ".join(result.get("waiting_for_clients") or [])
             ),
         )
         return
     xbmcgui.Dialog().ok(
-        "SudoSync â€” synchronizacja LIVE",
-        "Cykl zakoĹ„czony.\n\nZastosowano z innych Kodi: {} pozycji.\nPozostaĹ‚y lokalny plan: {} pozycji.".format(
+        "SudoSync — synchronizacja LIVE",
+        "Cykl zakończony.\n\nZastosowano z innych Kodi: {} pozycji.\nPozostały lokalny plan: {} pozycji.".format(
             result.get("applied_items", 0), (result.get("post_plan") or {}).get("items", 0)
         ),
     )
@@ -389,21 +389,21 @@ def update_dialog():
     result = check_for_update(show_notification=False, manual=True)
     if result.get("error"):
         xbmcgui.Dialog().ok(
-            "SudoSync â€” aktualizacja",
-            "Nie udaĹ‚o siÄ™ sprawdziÄ‡ aktualizacji:\n{}".format(result["error"]),
+            "SudoSync — aktualizacja",
+            "Nie udało się sprawdzić aktualizacji:\n{}".format(result["error"]),
         )
         return
     if not result.get("available"):
         xbmcgui.Dialog().ok(
-            "SudoSync â€” aktualizacja",
-            "Masz najnowszÄ… wersjÄ™ dostÄ™pnÄ… w folderze .SudoSync.\n\nZainstalowana: {}".format(
-                result.get("current_version", "â€”")
+            "SudoSync — aktualizacja",
+            "Masz najnowszą wersję dostępną w folderze .SudoSync.\n\nZainstalowana: {}".format(
+                result.get("current_version", "—")
             ),
         )
         return
     if xbmcgui.Dialog().yesno(
-        "SudoSync â€” aktualizacja",
-        "DostÄ™pna jest wersja {}.\n\nSudoSync moĹĽe pobraÄ‡ jÄ… bezpoĹ›rednio z ukrytego folderu .SudoSync i zainstalowaÄ‡ bez szukania ZIP-a. ZainstalowaÄ‡ teraz?".format(
+        "SudoSync — aktualizacja",
+        "Dostępna jest wersja {}.\n\nSudoSync może pobrać ją bezpośrednio z ukrytego folderu .SudoSync i zainstalować bez szukania ZIP-a. Zainstalować teraz?".format(
             result.get("version")
         ),
         yeslabel="Zainstaluj",
@@ -418,7 +418,7 @@ def main():
         if action == "bootstrap":
             from resources.lib.sudosync_bootstrap import run_bootstrap
             if run_bootstrap():
-                xbmcgui.Dialog().ok("SudoSync", "Konfigurator zakoĹ„czony pomyĹ›lnie. Ĺšrodowisko gotowe.")
+                xbmcgui.Dialog().ok("SudoSync", "Konfigurator zakończony pomyślnie. Środowisko gotowe.")
         elif action == "collect":
             collect_and_write(show_notification=True)
         elif action in ("dryrun", "analyse", "analyze"):
@@ -426,12 +426,12 @@ def main():
             summary = report.get("summary") or {}
             init = report.get("initialization") or {}
             xbmcgui.Dialog().ok(
-                "SudoSync â€” DRY RUN",
-                "Analiza zakoĹ„czona. Niczego nie zmieniono w bibliotece.\n\n"
-                "UrzÄ…dzenie bazowe: {base}\n"
-                "Bezpieczne wspĂłlne pozycje: {safe}\n"
+                "SudoSync — DRY RUN",
+                "Analiza zakończona. Niczego nie zmieniono w bibliotece.\n\n"
+                "Urządzenie bazowe: {base}\n"
+                "Bezpieczne wspólne pozycje: {safe}\n"
                 "Bezpieczne mirrory lokalny/NAS: {mir}\n"
-                "Niejednoznaczne grupy (pominiÄ™te): {amb}\n"
+                "Niejednoznaczne grupy (pominięte): {amb}\n"
                 "Pozycje bez mocnego ID: {noid}\n"
                 "Konflikty ocen: {ratings}".format(
                     base=init.get("base_client_name") or "NIE WYBRANO",
@@ -459,10 +459,10 @@ def main():
             if result.get("error"):
                 raise IOError(result["error"])
             if not result.get("available"):
-                xbmcgui.Dialog().ok("SudoSync â€” aktualizacja", "Brak nowszej wersji w .SudoSync.")
+                xbmcgui.Dialog().ok("SudoSync — aktualizacja", "Brak nowszej wersji w .SudoSync.")
             elif xbmcgui.Dialog().yesno(
-                "SudoSync â€” aktualizacja",
-                "ZainstalowaÄ‡ wersjÄ™ {} bezpoĹ›rednio z .SudoSync?".format(result.get("version")),
+                "SudoSync — aktualizacja",
+                "Zainstalować wersję {} bezpośrednio z .SudoSync?".format(result.get("version")),
                 yeslabel="Zainstaluj",
                 nolabel="Anuluj",
             ):
@@ -472,18 +472,18 @@ def main():
             if not addon_settings().get("sudosync_id_enabled"):
                 xbmcgui.Dialog().ok(
                     "SudoSync",
-                    "Funkcja jest wyĹ‚Ä…czona. Najpierw jÄ… wĹ‚Ä…cz i zatwierdĹş opcje przyciskiem OK."
+                    "Funkcja jest wyłączona. Najpierw ją włącz i zatwierdź opcje przyciskiem OK."
                 )
                 return
                 
             preview = preview_sudosync_ids()
             if not preview:
-                xbmcgui.Dialog().ok("SudoSync", "Nie znaleziono ĹĽadnych plikĂłw wymagajÄ…cych przypisania ID.")
+                xbmcgui.Dialog().ok("SudoSync", "Nie znaleziono żadnych plików wymagających przypisania ID.")
                 return
                 
             if not xbmcgui.Dialog().yesno(
-                "SudoSync - wĹ‚asne identyfikatory",
-                "Znaleziono {} plikĂłw do zmiany (w tym np. {}).\n\nCzy na pewno chcesz nadpisaÄ‡ pliki .nfo?".format(
+                "SudoSync - własne identyfikatory",
+                "Znaleziono {} plików do zmiany (w tym np. {}).\n\nCzy na pewno chcesz nadpisać pliki .nfo?".format(
                     len(preview), preview[0].get("title")
                 ),
                 yeslabel="Tak, dopisz ID",
@@ -492,30 +492,30 @@ def main():
                 return
             xbmcgui.Dialog().notification(
                 "SudoSync",
-                "PrzypisujÄ™ identyfikatory. MoĹĽe to potrwaÄ‡ dĹ‚uĹĽszÄ… chwilÄ™...",
+                "Przypisuję identyfikatory. Może to potrwać dłuższą chwilę...",
                 xbmcgui.NOTIFICATION_INFO,
                 10000
             )
             result = assign_sudosync_ids()
             xbmcgui.Dialog().ok(
                 "SudoSync",
-                "Raport z operacji zostaĹ‚ zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}".format(result.get("manifest_path"), result.get("movies", 0), result.get("episodes", 0))
+                "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}".format(result.get("manifest_path"), result.get("movies", 0), result.get("episodes", 0))
             )
         elif action == "rollbackids":
             from resources.lib.sudosync_core import rollback_sudosync_ids
             if not xbmcgui.Dialog().yesno(
-                "SudoSync - cofniÄ™cie zmian",
-                "Czy wycofaÄ‡ ostatnie zmiany ID przywracajÄ…c kopie z backupu .bak?",
+                "SudoSync - cofnięcie zmian",
+                "Czy wycofać ostatnie zmiany ID przywracając kopie z backupu .bak?",
                 yeslabel="Tak, wycofaj",
                 nolabel="Anuluj"
             ):
                 return
             res = rollback_sudosync_ids()
-            xbmcgui.Dialog().ok("SudoSync", "PrzywrĂłcono: {} plikĂłw. BĹ‚Ä™dy: {}".format(res.get("rolled_back", 0), res.get("errors", 0)))
+            xbmcgui.Dialog().ok("SudoSync", "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0)))
         else:
             show_status()
     except Exception as exc:
-        xbmcgui.Dialog().ok("SudoSync â€” bĹ‚Ä…d", str(exc))
+        xbmcgui.Dialog().ok("SudoSync — błąd", str(exc))
 
 
 if __name__ == "__main__":

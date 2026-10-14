@@ -119,7 +119,7 @@ def _safe_mirror_cluster(cluster):
 
 def _display(record):
     if record.get("type") == "episode":
-        return "{} S{:02d}E{:02d} â€” {}".format(
+        return "{} S{:02d}E{:02d} — {}".format(
             record.get("showtitle") or "?",
             _safe_int(record.get("season"), 0),
             _safe_int(record.get("episode"), 0),
