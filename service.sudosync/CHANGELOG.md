@@ -9,6 +9,7 @@ Przebudowa architektury SudoSync (architektura v2) oraz kluczowe usprawnienia be
 - Nowy katalog snapshotów współdzielonych (`catalog.py`) z weryfikacją historii i wersji pól.
 - Konfigurator pierwszego uruchomienia (bootstrap) oparty na `SudoSync.cfg`, weryfikacji dostępu do zasobu sieciowego i obsłudze unikalnych identyfikatorów SudoSync ID z rozdzieleniem identyfikatora sieciowego od aliasu UI.
 - Weryfikacja kryptograficzna pakietów aktualizacji z podpisem RSA-2048 i natychmiastowym blokowaniem startu w razie odrzucenia paczki.
+- Ujednolicenie licencji do GPL-3.0-or-later oraz usunięcie zapisów o ograniczeniu użytku.
 - Poprawki z 14.10.2026:
   - Naprawa podwójnie zakodowanych polskich znaków w komunikatach dialogowych oraz dodanie automatycznego testu kodowania UTF-8.
   - Usunięcie sztywnej ścieżki-wartownika (`SPECIAL_REMOTE_SENTINEL`) z kreatora bootstrapu i modułu głównego.

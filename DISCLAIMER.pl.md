@@ -1,12 +1,10 @@
-# Zastrzeżenie prawne i warunki użytkowania (Disclaimer)
+# Zastrzeżenie prawne (Disclaimer)
 
-## 1. Użytek wyłącznie niekomercyjny
-Projekt **SudoSync** został stworzony i udostępniony wyłącznie do celów edukacyjnych, badawczych i prywatnego użytku niekomercyjnego. Jakiekolwiek komercyjne wykorzystanie oprogramowania lub usług opartych na tym rozwiązaniu bez wyraźnej zgody autora jest zabronione.
+## 1. Licencja i brak ograniczeń użycia
+Projekt **SudoSync** jest wolnym oprogramowaniem udostępnianym na licencji GPL-3.0-or-later. Nie nakłada żadnych ograniczeń co do sposobu i celu jego wykorzystania.
 
-## 2. Prawa do przetwarzanych materiałów
-Użytkownik oprogramowania przyjmuje do wiadomości i zobowiązuje się, że:
-- Program może być stosowany wyłącznie do przetwarzania materiałów audiowizualnych, do których użytkownik posiada pełne autorskie prawa majątkowe lub odpowiednią licencję/zgodę na przetwarzanie, transkrypcję i tłumaczenie.
-- Niedozwolone jest używanie programu do naruszania praw autorskich, praw pokrewnych oraz własności intelektualnej podmiotów trzecich.
+## 2. Prawa do zawartości użytkownika
+Wtyczka działa na plikach, metadanych i bibliotekach użytkownika (w tym na plikach wideo, lokalnych bazach i udziałach sieciowych NAS). Autor oprogramowania nie odpowiada za zawartość, którą użytkownik posiada lub przetwarza na swoich urządzeniach. Zawartość ta jest wyłączną własnością użytkownika lub odpowiednich właścicieli praw autorskich.
 
-## 3. Wyłączenie odpowiedzialności
-Twórcy oprogramowania nie ponoszą żadnej odpowiedzialności za sposób wykorzystania programu przez użytkowników, w szczególności za przetwarzanie nielegalnych, nieautoryzowanych lub chronionych prawem autorskim treści bez wymaganych uprawnień.
+## 3. Brak gwarancji
+Oprogramowanie jest dostarczane w stanie takim, w jakim się znajduje („as is”), bez jakiejkolwiek gwarancji, wyraźnej lub dorozumianej, zgodnie z postanowieniami licencji GNU General Public License v3.0 (GPL-3.0-or-later). Wszelkie ryzyko związane z jego użytkowaniem ponosi użytkownik.

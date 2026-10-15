@@ -1,3 +1,10 @@
+# -------------------------------------------------------------------------
+# SudoSync for Kodi
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# -------------------------------------------------------------------------
 """Automatic recovery of an unfinished transaction by its owning Kodi client.
 
 This module deliberately requires the original shared marker and its durable

@@ -1,3 +1,10 @@
+# -------------------------------------------------------------------------
+# SudoSync for Kodi
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# -------------------------------------------------------------------------
 """Real OS-lock smoke test (local filesystem only; not SMB/NFS certification)."""
 import os
 import sys

@@ -80,4 +80,4 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 
 ## License
 
-This project is open-source software licensed under the GPL-3.0 License. Any commercial use of the software requires a separate commercial license. Please contact the author for details.
+This project is open-source software licensed under the [GPL-3.0-or-later](LICENSE) license.

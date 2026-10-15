@@ -80,4 +80,4 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 
 ## Licencja
 
-Projekt typu open-source udostępniany na licencji GPL-3.0. Jakiekolwiek komercyjne wykorzystanie oprogramowania wymaga uzyskania osobnej licencji komercyjnej. W tym celu należy skontaktować się z autorem.
+Projekt typu open-source udostępniany na licencji [GPL-3.0-or-later](LICENSE).
