@@ -13,11 +13,34 @@ code passes xbmc.executeJSONRPC as the transport; unit tests use a fake.
 from __future__ import absolute_import
 
 import json
+import logging
 import math
 import posixpath
 import xml.etree.ElementTree as ET
 
 from .identity import normalize_identifier
+
+logger = logging.getLogger(__name__)
+
+
+def is_aborted(abort_requested):
+    if abort_requested is None:
+        return False
+    if callable(abort_requested):
+        return bool(abort_requested())
+    checker = getattr(abort_requested, "abortRequested", None)
+    if callable(checker):
+        return bool(checker())
+    return False
+
+
+class OperationAborted(RuntimeError):
+    """Operation was aborted by abortRequested signal."""
+
+    def __init__(self, message="Operation aborted", partial_items=None):
+        super(OperationAborted, self).__init__(message)
+        self.partial_items = partial_items if partial_items is not None else []
+
 
 
 MOVIE_PROPERTIES = (
@@ -40,7 +63,8 @@ class KodiJsonRpcAdapter(object):
     """Kodi JSON-RPC wrapper with bounded pagination and strict response checks."""
 
     def __init__(self, execute_jsonrpc, page_size=500, max_records=100000,
-                 nfo_reader=None, max_nfo_bytes=256 * 1024):
+                 nfo_reader=None, max_nfo_bytes=256 * 1024,
+                 abort_requested=None):
         if not callable(execute_jsonrpc):
             raise ValueError("execute_jsonrpc must be callable")
         if type(page_size) is not int or not 1 <= page_size <= 5000:
@@ -56,7 +80,25 @@ class KodiJsonRpcAdapter(object):
         self._max_records = max_records
         self._nfo_reader = nfo_reader
         self._max_nfo_bytes = max_nfo_bytes
+        self._abort_requested = abort_requested
+        self._skipped_nfos = []
         self._request_id = 0
+
+    @property
+    def skipped_nfos(self):
+        return list(self._skipped_nfos)
+
+    def clear_skipped_nfos(self):
+        self._skipped_nfos = []
+
+    def _is_aborted(self, abort_requested=None):
+        target = abort_requested if abort_requested is not None else self._abort_requested
+        return is_aborted(target)
+
+    def _record_nfo_error(self, path, reason):
+        entry = {"path": path, "reason": str(reason)}
+        self._skipped_nfos.append(entry)
+        logger.warning("Skipping corrupted metadata file %s: %s", path, reason)
 
     def _nfo_paths(self, media_path, media_type):
         if not isinstance(media_path, str) or not media_path.strip():
@@ -70,57 +112,73 @@ class KodiJsonRpcAdapter(object):
                 candidates.append(movie_nfo)
         return tuple(candidates)
 
-    def _read_nfo_ids(self, media_path, media_type):
+    def _read_single_nfo(self, path):
+        raw = self._nfo_reader(path, self._max_nfo_bytes)
+        if raw is None:
+            return None
+        if raw == "" or raw == b"":
+            raise ValueError("Metadata file is empty: " + path)
+        if isinstance(raw, bytes):
+            if len(raw) > self._max_nfo_bytes:
+                raise ValueError("Metadata file exceeds configured size limit: " + path)
+            raw = raw.decode("utf-8-sig")
+        elif isinstance(raw, str):
+            if len(raw.encode("utf-8")) > self._max_nfo_bytes:
+                raise ValueError("Metadata file exceeds configured size limit: " + path)
+        else:
+            raise ValueError("Metadata reader returned an invalid value for " + path)
+        root = ET.fromstring(raw)
+        identifiers = {}
+        for node in root.findall("uniqueid"):
+            kind = (node.attrib.get("type") or "").strip().lower()
+            value = normalize_identifier(kind, node.text)
+            if value is not None:
+                if kind in identifiers and identifiers[kind] != value:
+                    raise ValueError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
+                identifiers[kind] = value
+        return root, identifiers
+
+    def _read_nfo_ids(self, media_path, media_type, abort_requested=None):
         if self._nfo_reader is None:
             return {}
         for path in self._nfo_paths(media_path, media_type):
+            if self._is_aborted(abort_requested):
+                raise OperationAborted("NFO reading aborted before " + path)
             try:
-                raw = self._nfo_reader(path, self._max_nfo_bytes)
-            except Exception as exc:
-                raise KodiRpcError("Cannot read metadata file {}: {}".format(path, exc))
-            if raw is None or raw == "" or raw == b"":
+                res = self._read_single_nfo(path)
+                if res is None:
+                    continue
+                root, identifiers = res
+                if media_type == "movie":
+                    tmdb = normalize_identifier("tmdb", root.findtext("tmdbid"))
+                    legacy_imdb = normalize_identifier("imdb", root.findtext("id"))
+                    for kind, value in (("tmdb", tmdb), ("imdb", legacy_imdb)):
+                        if value is not None:
+                            if kind in identifiers and identifiers[kind] != value:
+                                raise ValueError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
+                            identifiers[kind] = value
+                return identifiers
+            except (IOError, OSError) as exc:
+                reason = "Cannot read metadata file: {}".format(exc)
+                self._record_nfo_error(path, reason)
                 continue
-            if isinstance(raw, bytes):
-                if len(raw) > self._max_nfo_bytes:
-                    raise KodiRpcError("Metadata file exceeds configured size limit: " + path)
-                try:
-                    raw = raw.decode("utf-8-sig")
-                except UnicodeDecodeError as exc:
-                    raise KodiRpcError("Metadata file is not valid UTF-8 ({}): {}".format(path, exc))
-            elif isinstance(raw, str):
-                if len(raw.encode("utf-8")) > self._max_nfo_bytes:
-                    raise KodiRpcError("Metadata file exceeds configured size limit: " + path)
-            else:
-                raise KodiRpcError("Metadata reader returned an invalid value for " + path)
-            try:
-                root = ET.fromstring(raw)
+            except UnicodeDecodeError as exc:
+                reason = "Metadata file is not valid UTF-8: {}".format(exc)
+                self._record_nfo_error(path, reason)
+                continue
             except (ET.ParseError, ValueError) as exc:
-                raise KodiRpcError("Metadata file is not valid XML ({}): {}".format(path, exc))
-
-            identifiers = {}
-            for node in root.findall("uniqueid"):
-                kind = (node.attrib.get("type") or "").strip().lower()
-                value = normalize_identifier(kind, node.text)
-                if value is not None:
-                    if kind in identifiers and identifiers[kind] != value:
-                        raise KodiRpcError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
-                    identifiers[kind] = value
-            if media_type == "movie":
-                tmdb = normalize_identifier("tmdb", root.findtext("tmdbid"))
-                legacy_imdb = normalize_identifier("imdb", root.findtext("id"))
-                for kind, value in (("tmdb", tmdb), ("imdb", legacy_imdb)):
-                    if value is not None:
-                        if kind in identifiers and identifiers[kind] != value:
-                            raise KodiRpcError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
-                        identifiers[kind] = value
-            return identifiers
+                reason = "Metadata file parsing error: {}".format(exc)
+                self._record_nfo_error(path, reason)
+                continue
         return {}
 
-    def _enrich_with_nfo(self, items, media_type):
+    def _enrich_with_nfo(self, items, media_type, abort_requested=None):
         if self._nfo_reader is None:
             return items
         enriched = []
         for item in items:
+            if self._is_aborted(abort_requested):
+                raise OperationAborted("Item enrichment aborted", partial_items=enriched)
             if not isinstance(item, dict):
                 raise KodiRpcError("Kodi returned an invalid {} library record".format(media_type))
             record = dict(item)
@@ -132,7 +190,11 @@ class KodiJsonRpcAdapter(object):
                     if "imdb" in kodi_ids and normalize_identifier("imdb", kodi_ids["imdb"]) != imdb:
                         raise KodiRpcError("Kodi returned conflicting IMDb identifiers for one library item")
                     kodi_ids["imdb"] = imdb
-            nfo_ids = self._read_nfo_ids(record.get("file"), media_type)
+            try:
+                nfo_ids = self._read_nfo_ids(record.get("file"), media_type, abort_requested=abort_requested)
+            except OperationAborted as exc:
+                exc.partial_items = enriched
+                raise
             for kind, value in nfo_ids.items():
                 current = normalize_identifier(kind, kodi_ids.get(kind))
                 if current is not None and current != value:
@@ -142,7 +204,9 @@ class KodiJsonRpcAdapter(object):
             enriched.append(record)
         return enriched
 
-    def call(self, method, params=None):
+    def call(self, method, params=None, abort_requested=None):
+        if self._is_aborted(abort_requested):
+            raise OperationAborted("JSON-RPC aborted before call: " + method)
         if not isinstance(method, str) or not method.strip() or any(ch.isspace() for ch in method):
             raise ValueError("method must be a non-empty JSON-RPC method name")
         if params is not None and not isinstance(params, dict):
@@ -193,17 +257,19 @@ class KodiJsonRpcAdapter(object):
             parts.append(value)
         return {"name": result.get("name", "Kodi"), "major": parts[0], "minor": parts[1], "patch": parts[2]}
 
-    def _get_library_items(self, method, collection_key, properties):
+    def _get_library_items(self, method, collection_key, properties, abort_requested=None):
         all_items = []
         start = 0
         expected_total = None
         while True:
+            if self._is_aborted(abort_requested):
+                raise OperationAborted("{} aborted during pagination".format(method), partial_items=all_items)
             end = start + self._page_size
             result = self.call(method, {
                 "properties": list(properties),
                 "limits": {"start": start, "end": end},
                 "sort": {"method": "title", "order": "ascending"},
-            })
+            }, abort_requested=abort_requested)
             if not isinstance(result, dict) or not isinstance(result.get(collection_key), list):
                 raise KodiRpcError("{} returned an invalid {} collection".format(method, collection_key))
             items = result[collection_key]
@@ -220,7 +286,10 @@ class KodiJsonRpcAdapter(object):
                     raise KodiRpcError("{} total changed during pagination; refusing an inconsistent snapshot".format(method))
             if len(all_items) + len(items) > self._max_records:
                 raise KodiRpcError("{} exceeds the configured library record limit".format(method))
-            all_items.extend(items)
+            for item in items:
+                if self._is_aborted(abort_requested):
+                    raise OperationAborted("{} aborted while processing items".format(method), partial_items=all_items)
+                all_items.append(item)
             if expected_total is not None and len(all_items) > expected_total:
                 raise KodiRpcError("{} returned more records than its reported total".format(method))
             if expected_total is not None and len(all_items) == expected_total:
@@ -234,13 +303,13 @@ class KodiJsonRpcAdapter(object):
             start += len(items)
         return all_items
 
-    def get_movies(self):
-        items = self._get_library_items("VideoLibrary.GetMovies", "movies", MOVIE_PROPERTIES)
-        return self._enrich_with_nfo(items, "movie")
+    def get_movies(self, abort_requested=None):
+        items = self._get_library_items("VideoLibrary.GetMovies", "movies", MOVIE_PROPERTIES, abort_requested=abort_requested)
+        return self._enrich_with_nfo(items, "movie", abort_requested=abort_requested)
 
-    def get_episodes(self):
-        items = self._get_library_items("VideoLibrary.GetEpisodes", "episodes", EPISODE_PROPERTIES)
-        return self._enrich_with_nfo(items, "episode")
+    def get_episodes(self, abort_requested=None):
+        items = self._get_library_items("VideoLibrary.GetEpisodes", "episodes", EPISODE_PROPERTIES, abort_requested=abort_requested)
+        return self._enrich_with_nfo(items, "episode", abort_requested=abort_requested)
 
     def get_movie_details(self, movie_id):
         if type(movie_id) is not int or movie_id < 1:
@@ -266,8 +335,10 @@ class KodiJsonRpcAdapter(object):
             raise KodiRpcError("VideoLibrary.GetEpisodeDetails returned invalid details")
         return details
 
-    def is_video_playing(self):
-        players = self.call("Player.GetActivePlayers")
+    def is_video_playing(self, abort_requested=None):
+        if self._is_aborted(abort_requested):
+            raise OperationAborted("Video playback check aborted")
+        players = self.call("Player.GetActivePlayers", abort_requested=abort_requested)
         if not isinstance(players, list):
             raise KodiRpcError("Player.GetActivePlayers returned an invalid response")
         return any(isinstance(player, dict) and player.get("type") == "video" for player in players)

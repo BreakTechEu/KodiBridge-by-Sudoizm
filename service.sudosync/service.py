@@ -149,8 +149,9 @@ def _run_service():
             ProcessLocalLockFactory(),
             get_or_create_client_id(),
             settings["client_name"],
+            abort_requested=monitor.abortRequested,
         )
-        v2_startup = v2_runtime.start()
+        v2_startup = v2_runtime.start(abort_requested=monitor.abortRequested)
         v2_preview = v2_startup.get("preview")
         if v2_preview is None:
             log("V2 startup preview {}: {}".format(
@@ -161,6 +162,10 @@ def _run_service():
             log("V2 startup preview active={} reason={}".format(
                 v2_preview.get("active"), v2_preview.get("reason", ""),
             ), xbmc.LOGINFO)
+            if v2_preview.get("skipped_nfo_count"):
+                log("V2 startup preview skipped {} corrupted NFO file(s)".format(
+                    v2_preview.get("skipped_nfo_count")
+                ), xbmc.LOGWARNING)
     except Exception as exc:
         # A preview failure must not disable the currently working v1 service.
         log("V2 startup preview unavailable: {}".format(exc), xbmc.LOGWARNING)

@@ -14,6 +14,7 @@ commit new snapshots.
 """
 from __future__ import absolute_import
 
+from .kodi_rpc import OperationAborted, is_aborted
 from .planning import build_sync_plan
 from .initialization import build_initialization_plan
 from .snapshot import build_snapshot
@@ -21,6 +22,13 @@ from .snapshot import build_snapshot
 
 class SyncEngineError(RuntimeError):
     """The read-only synchronization preview could not be built safely."""
+
+
+def _invoke_with_abort(fn, abort_requested):
+    try:
+        return fn(abort_requested=abort_requested)
+    except TypeError:
+        return fn()
 
 
 def _max_logical_clock(snapshots):
@@ -46,7 +54,7 @@ class SyncEngine(object):
     """
 
     def __init__(self, kodi, client_id, client_name, load_previous_local,
-                 load_peer_snapshots, max_records=100000):
+                 load_peer_snapshots, max_records=100000, abort_requested=None):
         if kodi is None:
             raise ValueError("kodi adapter is required")
         if not callable(load_previous_local) or not callable(load_peer_snapshots):
@@ -57,21 +65,54 @@ class SyncEngine(object):
         self._load_previous_local = load_previous_local
         self._load_peer_snapshots = load_peer_snapshots
         self._max_records = max_records
+        self._abort_requested = abort_requested
 
-    def preview(self):
+    def preview(self, abort_requested=None):
         """Return a candidate snapshot and plan without publishing or writing."""
+        abort = abort_requested if abort_requested is not None else self._abort_requested
+        if hasattr(self._kodi, "clear_skipped_nfos"):
+            self._kodi.clear_skipped_nfos()
+        movies = []
+        episodes = []
         try:
-            if self._kodi.is_video_playing():
+            if is_aborted(abort):
+                raise OperationAborted("Preview aborted before start")
+            if _invoke_with_abort(self._kodi.is_video_playing, abort):
+                skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
                 return {
                     "active": False,
+                    "aborted": False,
                     "reason": "video_playing",
                     "snapshot": None,
                     "plan": None,
+                    "skipped_nfos": skipped_nfos,
+                    "skipped_nfo_count": len(skipped_nfos),
+                    "nfo_errors": skipped_nfos,
                 }
-            movies = self._kodi.get_movies()
-            episodes = self._kodi.get_episodes()
-            previous = self._load_previous_local()
-            peers = self._load_peer_snapshots()
+            if is_aborted(abort):
+                raise OperationAborted("Preview aborted before reading movies")
+            try:
+                movies = _invoke_with_abort(self._kodi.get_movies, abort)
+            except OperationAborted as exc:
+                movies = exc.partial_items
+                raise
+
+            if is_aborted(abort):
+                raise OperationAborted("Preview aborted before reading episodes")
+            try:
+                episodes = _invoke_with_abort(self._kodi.get_episodes, abort)
+            except OperationAborted as exc:
+                episodes = exc.partial_items
+                raise
+
+            if is_aborted(abort):
+                raise OperationAborted("Preview aborted before loading previous snapshot")
+            previous = _invoke_with_abort(self._load_previous_local, abort)
+
+            if is_aborted(abort):
+                raise OperationAborted("Preview aborted before loading peer snapshots")
+            peers = _invoke_with_abort(self._load_peer_snapshots, abort)
+
             if previous is not None and previous.get("client", {}).get("id") != self._client_id:
                 raise SyncEngineError("previous local snapshot belongs to a different client")
             if not isinstance(peers, (list, tuple)):
@@ -80,6 +121,9 @@ class SyncEngine(object):
             if any(snapshot.get("client", {}).get("id") == self._client_id for snapshot in peers):
                 raise SyncEngineError("peer snapshot list unexpectedly includes this client")
             logical_clock = _max_logical_clock(([previous] if previous else []) + peers)
+
+            if is_aborted(abort):
+                raise OperationAborted("Preview aborted before building snapshot")
             candidate = build_snapshot(
                 movies,
                 episodes,
@@ -93,39 +137,103 @@ class SyncEngine(object):
                 "movie": [item.get("movieid") for item in movies],
                 "episode": [item.get("episodeid") for item in episodes],
             }
+
+            if is_aborted(abort):
+                raise OperationAborted("Preview aborted before building sync plan")
             plan = build_sync_plan(
                 candidate,
                 peers,
                 local_kodi_ids,
                 max_records=self._max_records,
             )
+            skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
             return {
                 "active": True,
+                "aborted": False,
                 "reason": "",
                 "snapshot": candidate,
                 "plan": plan,
+                "skipped_nfos": skipped_nfos,
+                "skipped_nfo_count": len(skipped_nfos),
+                "nfo_errors": skipped_nfos,
+            }
+        except OperationAborted as exc:
+            skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
+            partial_movies = movies or getattr(exc, "partial_items", [])
+            candidate = None
+            try:
+                candidate = build_snapshot(
+                    partial_movies if isinstance(partial_movies, list) else [],
+                    episodes if isinstance(episodes, list) else [],
+                    self._client_id,
+                    self._client_name,
+                    max_records=self._max_records,
+                )
+            except Exception:
+                candidate = None
+            return {
+                "active": False,
+                "aborted": True,
+                "reason": "aborted",
+                "snapshot": candidate,
+                "plan": None,
+                "skipped_nfos": skipped_nfos,
+                "skipped_nfo_count": len(skipped_nfos),
+                "nfo_errors": skipped_nfos,
             }
         except SyncEngineError:
             raise
         except Exception as exc:
             raise SyncEngineError("Cannot safely build synchronization preview: {}".format(exc))
 
-    def initialization_preview(self, base_snapshot):
+    def initialization_preview(self, base_snapshot, abort_requested=None):
         """Build a one-time base-to-this-Kodi preview without writing anything."""
+        abort = abort_requested if abort_requested is not None else self._abort_requested
+        if hasattr(self._kodi, "clear_skipped_nfos"):
+            self._kodi.clear_skipped_nfos()
+        movies = []
+        episodes = []
         try:
-            if self._kodi.is_video_playing():
+            if is_aborted(abort):
+                raise OperationAborted("Initialization preview aborted before start")
+            if _invoke_with_abort(self._kodi.is_video_playing, abort):
+                skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
                 return {
                     "active": False,
+                    "aborted": False,
                     "reason": "video_playing",
                     "snapshot": None,
                     "plan": None,
+                    "skipped_nfos": skipped_nfos,
+                    "skipped_nfo_count": len(skipped_nfos),
+                    "nfo_errors": skipped_nfos,
                 }
-            movies = self._kodi.get_movies()
-            episodes = self._kodi.get_episodes()
-            previous = self._load_previous_local()
+            if is_aborted(abort):
+                raise OperationAborted("Initialization preview aborted before reading movies")
+            try:
+                movies = _invoke_with_abort(self._kodi.get_movies, abort)
+            except OperationAborted as exc:
+                movies = exc.partial_items
+                raise
+
+            if is_aborted(abort):
+                raise OperationAborted("Initialization preview aborted before reading episodes")
+            try:
+                episodes = _invoke_with_abort(self._kodi.get_episodes, abort)
+            except OperationAborted as exc:
+                episodes = exc.partial_items
+                raise
+
+            if is_aborted(abort):
+                raise OperationAborted("Initialization preview aborted before loading previous snapshot")
+            previous = _invoke_with_abort(self._load_previous_local, abort)
+
             if previous is not None and previous.get("client", {}).get("id") != self._client_id:
                 raise SyncEngineError("previous local snapshot belongs to a different client")
             logical_clock = _max_logical_clock(([previous] if previous else []) + [base_snapshot])
+
+            if is_aborted(abort):
+                raise OperationAborted("Initialization preview aborted before building snapshot")
             candidate = build_snapshot(
                 movies,
                 episodes,
@@ -139,17 +247,49 @@ class SyncEngine(object):
                 "movie": [item.get("movieid") for item in movies],
                 "episode": [item.get("episodeid") for item in episodes],
             }
+
+            if is_aborted(abort):
+                raise OperationAborted("Initialization preview aborted before building initialization plan")
             plan = build_initialization_plan(
                 base_snapshot,
                 candidate,
                 local_kodi_ids,
                 max_records=self._max_records,
             )
+            skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
             return {
                 "active": True,
+                "aborted": False,
                 "reason": "",
                 "snapshot": candidate,
                 "plan": plan,
+                "skipped_nfos": skipped_nfos,
+                "skipped_nfo_count": len(skipped_nfos),
+                "nfo_errors": skipped_nfos,
+            }
+        except OperationAborted as exc:
+            skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
+            partial_movies = movies or getattr(exc, "partial_items", [])
+            candidate = None
+            try:
+                candidate = build_snapshot(
+                    partial_movies if isinstance(partial_movies, list) else [],
+                    episodes if isinstance(episodes, list) else [],
+                    self._client_id,
+                    self._client_name,
+                    max_records=self._max_records,
+                )
+            except Exception:
+                candidate = None
+            return {
+                "active": False,
+                "aborted": True,
+                "reason": "aborted",
+                "snapshot": candidate,
+                "plan": None,
+                "skipped_nfos": skipped_nfos,
+                "skipped_nfo_count": len(skipped_nfos),
+                "nfo_errors": skipped_nfos,
             }
         except SyncEngineError:
             raise

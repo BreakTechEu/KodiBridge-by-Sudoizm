@@ -12,6 +12,7 @@ import re
 import uuid
 
 from . import FORMAT_NAME, SCHEMA_VERSION
+from .kodi_rpc import OperationAborted, is_aborted
 from .schema import validate_snapshot
 from .storage import RepositoryError
 
@@ -73,7 +74,9 @@ class SnapshotCatalog(object):
             raise SnapshotCatalogError("Cannot publish client snapshot: {}".format(exc))
         return path
 
-    def load(self, client_id):
+    def load(self, client_id, abort_requested=None):
+        if is_aborted(abort_requested):
+            raise OperationAborted("Catalog load aborted")
         path = self._path_for(client_id)
         try:
             snapshot = self._repository.load(path)
@@ -91,7 +94,9 @@ class SnapshotCatalog(object):
             raise SnapshotCatalogError("Snapshot client ID does not match its filename")
         return snapshot
 
-    def load_peers(self, exclude_client_id=None):
+    def load_peers(self, exclude_client_id=None, abort_requested=None):
+        if is_aborted(abort_requested):
+            raise OperationAborted("Catalog load_peers aborted")
         exclude = _canonical_client_id(exclude_client_id) if exclude_client_id else None
         try:
             if not self._backend.exists(self._clients_path):
@@ -102,6 +107,8 @@ class SnapshotCatalog(object):
         peers = []
         seen = set()
         for filename in sorted(files):
+            if is_aborted(abort_requested):
+                raise OperationAborted("Catalog load_peers aborted during enumeration", partial_items=peers)
             if not filename.startswith("client-") or not filename.endswith(".json"):
                 continue
             match = _CLIENT_FILE.fullmatch(filename)
@@ -113,7 +120,7 @@ class SnapshotCatalog(object):
             seen.add(client_id)
             if client_id == exclude:
                 continue
-            snapshot = self.load(client_id)
+            snapshot = self.load(client_id, abort_requested=abort_requested)
             if snapshot is None:
                 raise SnapshotCatalogError("Listed client snapshot disappeared: " + filename)
             peers.append(snapshot)

@@ -58,7 +58,7 @@ class V2ServiceRuntime(object):
     A blocked or deferred recovery result prevents all subsequent library reads.
     """
 
-    def __init__(self, client_id, recovery_runner, sync_engine):
+    def __init__(self, client_id, recovery_runner, sync_engine, abort_requested=None):
         if not isinstance(client_id, str) or not client_id.strip():
             raise ValueError("client_id must be a non-empty string")
         if recovery_runner is None or not callable(getattr(recovery_runner, "recover_on_start", None)):
@@ -68,9 +68,28 @@ class V2ServiceRuntime(object):
         self._client_id = client_id
         self._recovery_runner = recovery_runner
         self._sync_engine = sync_engine
+        self._abort_requested = abort_requested
 
-    def start(self):
+    def start(self, abort_requested=None):
         """Recover any owned session before allowing a preview cycle."""
+        from .kodi_rpc import is_aborted
+        abort = abort_requested if abort_requested is not None else self._abort_requested
+        if is_aborted(abort):
+            return {
+                "status": "aborted",
+                "recovery": {"status": "aborted"},
+                "preview": {
+                    "active": False,
+                    "aborted": True,
+                    "reason": "aborted",
+                    "snapshot": None,
+                    "plan": None,
+                    "skipped_nfos": [],
+                    "skipped_nfo_count": 0,
+                    "nfo_errors": [],
+                },
+            }
+
         recovery = self._recovery_runner.recover_on_start(self._client_id)
         if not isinstance(recovery, dict) or not isinstance(recovery.get("status"), str):
             raise V2RuntimeError("Recovery runner returned an invalid startup result")
@@ -81,8 +100,13 @@ class V2ServiceRuntime(object):
         if status not in ("clear", "recovered"):
             raise V2RuntimeError("Recovery runner returned an unsupported startup status: " + status)
 
-        preview = self._sync_engine.preview()
-        return {"status": "ready", "recovery": recovery, "preview": preview}
+        try:
+            preview = self._sync_engine.preview(abort_requested=abort)
+        except TypeError:
+            preview = self._sync_engine.preview()
+
+        final_status = "aborted" if isinstance(preview, dict) and preview.get("aborted") else "ready"
+        return {"status": final_status, "recovery": recovery, "preview": preview}
 
 
 class V2RuntimeComponents(object):
@@ -96,9 +120,9 @@ class V2RuntimeComponents(object):
         self.coordinator = coordinator
         self.transaction_runner = transaction_runner
 
-    def start(self):
+    def start(self, abort_requested=None):
         """Recover the owned session, then create a read-only startup preview."""
-        return self.service_runtime.start()
+        return self.service_runtime.start(abort_requested=abort_requested)
 
 
 def map_shared_resource_to_native(shared_base_path, native_shared_path, resource_path):
@@ -158,7 +182,8 @@ def build_mapped_native_lock_factory(shared_base_path, native_shared_path,
 
 
 def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
-                     client_id, client_name, max_records=100000):
+                     client_id, client_name, max_records=100000,
+                     abort_requested=None):
     """Wire v2 adapters and runners without enabling any library writes.
 
     ``lock_factory`` must serialize access according to the configured operating
@@ -188,11 +213,12 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
         kodi,
         client_id,
         client_name,
-        lambda: catalog.load(client_id),
-        lambda: catalog.load_peers(exclude_client_id=client_id),
+        lambda: catalog.load(client_id, abort_requested=abort_requested),
+        lambda: catalog.load_peers(exclude_client_id=client_id, abort_requested=abort_requested),
         max_records=max_records,
+        abort_requested=abort_requested,
     )
-    service_runtime = V2ServiceRuntime(client_id, recovery, engine)
+    service_runtime = V2ServiceRuntime(client_id, recovery, engine, abort_requested=abort_requested)
     transaction_runner = TransactionRunner(
         kodi,
         coordinator,
@@ -210,7 +236,7 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
 
 def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
                           lock_factory, client_id, client_name, vfs_module=None,
-                          max_records=100000):
+                          max_records=100000, abort_requested=None):
     """Compose a Kodi runtime with JSON-RPC and NFO reads provided by Kodi VFS.
 
     A process-local lock follows the project's single-active-Kodi operating
@@ -221,6 +247,7 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
         execute_jsonrpc,
         max_records=max_records,
         nfo_reader=KodiVFSMetadataReader(vfs_module),
+        abort_requested=abort_requested,
     )
     return build_v2_runtime(
         kodi,
@@ -230,4 +257,5 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
         client_id,
         client_name,
         max_records=max_records,
+        abort_requested=abort_requested,
     )
