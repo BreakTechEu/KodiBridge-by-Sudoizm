@@ -14,8 +14,8 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
 
-from resources.lib.sudosync_v2.engine import SyncEngine
-from resources.lib.sudosync_v2.kodi_rpc import KodiJsonRpcAdapter
+from resources.lib.sudosync_v2.engine import SyncEngine, SyncEngineError
+from resources.lib.sudosync_v2.kodi_rpc import KodiJsonRpcAdapter, accepts_abort_requested, invoke_with_abort
 from resources.lib.sudosync_v2.snapshot import build_snapshot
 
 CLIENT_A = "12345678-1234-4234-8234-123456789012"
@@ -246,6 +246,104 @@ class TestPreviewResilience(unittest.TestCase):
         self.assertEqual(result["plan"]["change_count"], 1)
         self.assertEqual(result["plan"]["changes"][0]["kodi_id"], 10)
         self.assertEqual(result["plan"]["changes"][0]["changes"]["playcount"], 2)
+
+    def test_type_error_inside_get_movies_is_not_retried_and_raises_sync_engine_error(self):
+        call_count = [0]
+
+        class BrokenKodi(object):
+            def is_video_playing(self, abort_requested=None):
+                return False
+
+            def get_movies(self, abort_requested=None):
+                call_count[0] += 1
+                raise TypeError("Real TypeError inside get_movies implementation")
+
+        broken_kodi = BrokenKodi()
+        engine = SyncEngine(
+            broken_kodi,
+            CLIENT_A,
+            "Living Room",
+            load_previous_local=lambda: None,
+            load_peer_snapshots=lambda: [],
+        )
+        with self.assertRaises(SyncEngineError) as ctx:
+            engine.preview()
+        self.assertEqual(call_count[0], 1)
+        self.assertIn("Real TypeError", str(ctx.exception))
+
+    def test_callable_without_abort_requested_parameter_is_called_once(self):
+        call_count = [0]
+
+        def func_no_abort(arg1, kw=None):
+            call_count[0] += 1
+            return arg1, kw
+
+        res = invoke_with_abort(func_no_abort, lambda: False, 42, kw="test")
+        self.assertEqual(call_count[0], 1)
+        self.assertEqual(res, (42, "test"))
+        self.assertFalse(accepts_abort_requested(func_no_abort))
+
+        kodi_calls = {"movies": 0, "episodes": 0, "playing": 0}
+
+        class LegacyKodi(object):
+            def is_video_playing(self):
+                kodi_calls["playing"] += 1
+                return False
+
+            def get_movies(self):
+                kodi_calls["movies"] += 1
+                return []
+
+            def get_episodes(self):
+                kodi_calls["episodes"] += 1
+                return []
+
+        engine = SyncEngine(
+            LegacyKodi(),
+            CLIENT_A,
+            "Living Room",
+            load_previous_local=lambda: None,
+            load_peer_snapshots=lambda: [],
+        )
+        result = engine.preview()
+        self.assertTrue(result["active"])
+        self.assertEqual(kodi_calls["playing"], 1)
+        self.assertEqual(kodi_calls["movies"], 1)
+        self.assertEqual(kodi_calls["episodes"], 1)
+
+    def test_nfo_conflicting_identifiers_and_size_limit_skipped_with_distinct_reasons(self):
+        movies = [
+            make_movie(1, "Conflicting IDs Movie", "smb://nas/Films/Conflicting.mkv", tmdb="100"),
+            make_movie(2, "Oversized NFO Movie", "smb://nas/Films/Oversized.mkv", tmdb="200"),
+        ]
+        transport = FakeTransport(movies=movies)
+
+        def mock_nfo_reader(path, max_bytes):
+            if "Conflicting.nfo" in path:
+                return (
+                    '<movie>'
+                    '<uniqueid type="tmdb">100</uniqueid>'
+                    '<uniqueid type="tmdb">999</uniqueid>'
+                    '</movie>'
+                )
+            if "Oversized.nfo" in path:
+                return "x" * (max_bytes + 10)
+            return None
+
+        kodi_adapter = KodiJsonRpcAdapter(transport, nfo_reader=mock_nfo_reader, max_nfo_bytes=500)
+        engine = SyncEngine(
+            kodi_adapter,
+            CLIENT_A,
+            "Living Room",
+            load_previous_local=lambda: None,
+            load_peer_snapshots=lambda: [],
+        )
+        result = engine.preview()
+        self.assertTrue(result["active"])
+        self.assertEqual(result["skipped_nfo_count"], 2)
+        reasons_by_path = {item["path"]: item["reason"] for item in result["skipped_nfos"]}
+        self.assertIn("conflicting", reasons_by_path["smb://nas/Films/Conflicting.nfo"].lower())
+        self.assertIn("size limit", reasons_by_path["smb://nas/Films/Oversized.nfo"].lower())
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ code passes xbmc.executeJSONRPC as the transport; unit tests use a fake.
 """
 from __future__ import absolute_import
 
+import inspect
 import json
 import logging
 import math
@@ -34,12 +35,47 @@ def is_aborted(abort_requested):
     return False
 
 
+def accepts_abort_requested(fn):
+    """Check if callable explicitly accepts abort_requested or **kwargs."""
+    if not callable(fn):
+        return False
+    try:
+        sig = inspect.signature(fn)
+    except (ValueError, TypeError):
+        return False
+    for param in sig.parameters.values():
+        if param.name == "abort_requested":
+            return True
+        if param.kind == inspect.Parameter.VAR_KEYWORD:
+            return True
+    return False
+
+
+def invoke_with_abort(fn, abort_requested, *args, **kwargs):
+    """Invoke callable passing abort_requested only if accepted by signature."""
+    if accepts_abort_requested(fn):
+        kwargs["abort_requested"] = abort_requested
+    return fn(*args, **kwargs)
+
+
 class OperationAborted(RuntimeError):
     """Operation was aborted by abortRequested signal."""
 
     def __init__(self, message="Operation aborted", partial_items=None):
         super(OperationAborted, self).__init__(message)
         self.partial_items = partial_items if partial_items is not None else []
+
+
+class NfoSizeLimitError(ValueError):
+    """Metadata file exceeds configured size limit."""
+
+
+class NfoConflictError(ValueError):
+    """Metadata file has conflicting identifiers."""
+
+
+class NfoEmptyError(ValueError):
+    """Metadata file is empty."""
 
 
 
@@ -117,14 +153,14 @@ class KodiJsonRpcAdapter(object):
         if raw is None:
             return None
         if raw == "" or raw == b"":
-            raise ValueError("Metadata file is empty: " + path)
+            raise NfoEmptyError("Metadata file is empty: " + path)
         if isinstance(raw, bytes):
             if len(raw) > self._max_nfo_bytes:
-                raise ValueError("Metadata file exceeds configured size limit: " + path)
+                raise NfoSizeLimitError("Metadata file exceeds configured size limit: " + path)
             raw = raw.decode("utf-8-sig")
         elif isinstance(raw, str):
             if len(raw.encode("utf-8")) > self._max_nfo_bytes:
-                raise ValueError("Metadata file exceeds configured size limit: " + path)
+                raise NfoSizeLimitError("Metadata file exceeds configured size limit: " + path)
         else:
             raise ValueError("Metadata reader returned an invalid value for " + path)
         root = ET.fromstring(raw)
@@ -134,7 +170,7 @@ class KodiJsonRpcAdapter(object):
             value = normalize_identifier(kind, node.text)
             if value is not None:
                 if kind in identifiers and identifiers[kind] != value:
-                    raise ValueError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
+                    raise NfoConflictError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
                 identifiers[kind] = value
         return root, identifiers
 
@@ -155,7 +191,7 @@ class KodiJsonRpcAdapter(object):
                     for kind, value in (("tmdb", tmdb), ("imdb", legacy_imdb)):
                         if value is not None:
                             if kind in identifiers and identifiers[kind] != value:
-                                raise ValueError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
+                                raise NfoConflictError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
                             identifiers[kind] = value
                 return identifiers
             except (IOError, OSError) as exc:
@@ -164,6 +200,18 @@ class KodiJsonRpcAdapter(object):
                 continue
             except UnicodeDecodeError as exc:
                 reason = "Metadata file is not valid UTF-8: {}".format(exc)
+                self._record_nfo_error(path, reason)
+                continue
+            except NfoSizeLimitError as exc:
+                reason = "Metadata file exceeds configured size limit: {}".format(exc)
+                self._record_nfo_error(path, reason)
+                continue
+            except NfoConflictError as exc:
+                reason = "Metadata file has conflicting identifiers: {}".format(exc)
+                self._record_nfo_error(path, reason)
+                continue
+            except NfoEmptyError as exc:
+                reason = "Metadata file is empty: {}".format(exc)
                 self._record_nfo_error(path, reason)
                 continue
             except (ET.ParseError, ValueError) as exc:

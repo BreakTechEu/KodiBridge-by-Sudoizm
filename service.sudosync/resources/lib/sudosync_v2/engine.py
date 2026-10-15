@@ -14,7 +14,7 @@ commit new snapshots.
 """
 from __future__ import absolute_import
 
-from .kodi_rpc import OperationAborted, is_aborted
+from .kodi_rpc import OperationAborted, invoke_with_abort, is_aborted
 from .planning import build_sync_plan
 from .initialization import build_initialization_plan
 from .snapshot import build_snapshot
@@ -22,13 +22,6 @@ from .snapshot import build_snapshot
 
 class SyncEngineError(RuntimeError):
     """The read-only synchronization preview could not be built safely."""
-
-
-def _invoke_with_abort(fn, abort_requested):
-    try:
-        return fn(abort_requested=abort_requested)
-    except TypeError:
-        return fn()
 
 
 def _max_logical_clock(snapshots):
@@ -77,7 +70,7 @@ class SyncEngine(object):
         try:
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before start")
-            if _invoke_with_abort(self._kodi.is_video_playing, abort):
+            if invoke_with_abort(self._kodi.is_video_playing, abort):
                 skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
                 return {
                     "active": False,
@@ -87,12 +80,11 @@ class SyncEngine(object):
                     "plan": None,
                     "skipped_nfos": skipped_nfos,
                     "skipped_nfo_count": len(skipped_nfos),
-                    "nfo_errors": skipped_nfos,
                 }
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before reading movies")
             try:
-                movies = _invoke_with_abort(self._kodi.get_movies, abort)
+                movies = invoke_with_abort(self._kodi.get_movies, abort)
             except OperationAborted as exc:
                 movies = exc.partial_items
                 raise
@@ -100,18 +92,18 @@ class SyncEngine(object):
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before reading episodes")
             try:
-                episodes = _invoke_with_abort(self._kodi.get_episodes, abort)
+                episodes = invoke_with_abort(self._kodi.get_episodes, abort)
             except OperationAborted as exc:
                 episodes = exc.partial_items
                 raise
 
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before loading previous snapshot")
-            previous = _invoke_with_abort(self._load_previous_local, abort)
+            previous = invoke_with_abort(self._load_previous_local, abort)
 
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before loading peer snapshots")
-            peers = _invoke_with_abort(self._load_peer_snapshots, abort)
+            peers = invoke_with_abort(self._load_peer_snapshots, abort)
 
             if previous is not None and previous.get("client", {}).get("id") != self._client_id:
                 raise SyncEngineError("previous local snapshot belongs to a different client")
@@ -155,7 +147,6 @@ class SyncEngine(object):
                 "plan": plan,
                 "skipped_nfos": skipped_nfos,
                 "skipped_nfo_count": len(skipped_nfos),
-                "nfo_errors": skipped_nfos,
             }
         except OperationAborted as exc:
             skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
@@ -179,7 +170,6 @@ class SyncEngine(object):
                 "plan": None,
                 "skipped_nfos": skipped_nfos,
                 "skipped_nfo_count": len(skipped_nfos),
-                "nfo_errors": skipped_nfos,
             }
         except SyncEngineError:
             raise
@@ -196,7 +186,7 @@ class SyncEngine(object):
         try:
             if is_aborted(abort):
                 raise OperationAborted("Initialization preview aborted before start")
-            if _invoke_with_abort(self._kodi.is_video_playing, abort):
+            if invoke_with_abort(self._kodi.is_video_playing, abort):
                 skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
                 return {
                     "active": False,
@@ -206,12 +196,11 @@ class SyncEngine(object):
                     "plan": None,
                     "skipped_nfos": skipped_nfos,
                     "skipped_nfo_count": len(skipped_nfos),
-                    "nfo_errors": skipped_nfos,
                 }
             if is_aborted(abort):
                 raise OperationAborted("Initialization preview aborted before reading movies")
             try:
-                movies = _invoke_with_abort(self._kodi.get_movies, abort)
+                movies = invoke_with_abort(self._kodi.get_movies, abort)
             except OperationAborted as exc:
                 movies = exc.partial_items
                 raise
@@ -219,14 +208,14 @@ class SyncEngine(object):
             if is_aborted(abort):
                 raise OperationAborted("Initialization preview aborted before reading episodes")
             try:
-                episodes = _invoke_with_abort(self._kodi.get_episodes, abort)
+                episodes = invoke_with_abort(self._kodi.get_episodes, abort)
             except OperationAborted as exc:
                 episodes = exc.partial_items
                 raise
 
             if is_aborted(abort):
                 raise OperationAborted("Initialization preview aborted before loading previous snapshot")
-            previous = _invoke_with_abort(self._load_previous_local, abort)
+            previous = invoke_with_abort(self._load_previous_local, abort)
 
             if previous is not None and previous.get("client", {}).get("id") != self._client_id:
                 raise SyncEngineError("previous local snapshot belongs to a different client")
@@ -265,7 +254,6 @@ class SyncEngine(object):
                 "plan": plan,
                 "skipped_nfos": skipped_nfos,
                 "skipped_nfo_count": len(skipped_nfos),
-                "nfo_errors": skipped_nfos,
             }
         except OperationAborted as exc:
             skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
@@ -289,7 +277,6 @@ class SyncEngine(object):
                 "plan": None,
                 "skipped_nfos": skipped_nfos,
                 "skipped_nfo_count": len(skipped_nfos),
-                "nfo_errors": skipped_nfos,
             }
         except SyncEngineError:
             raise

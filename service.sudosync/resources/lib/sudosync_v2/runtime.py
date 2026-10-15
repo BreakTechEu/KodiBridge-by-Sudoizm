@@ -72,7 +72,7 @@ class V2ServiceRuntime(object):
 
     def start(self, abort_requested=None):
         """Recover any owned session before allowing a preview cycle."""
-        from .kodi_rpc import is_aborted
+        from .kodi_rpc import invoke_with_abort, is_aborted
         abort = abort_requested if abort_requested is not None else self._abort_requested
         if is_aborted(abort):
             return {
@@ -86,7 +86,6 @@ class V2ServiceRuntime(object):
                     "plan": None,
                     "skipped_nfos": [],
                     "skipped_nfo_count": 0,
-                    "nfo_errors": [],
                 },
             }
 
@@ -100,10 +99,7 @@ class V2ServiceRuntime(object):
         if status not in ("clear", "recovered"):
             raise V2RuntimeError("Recovery runner returned an unsupported startup status: " + status)
 
-        try:
-            preview = self._sync_engine.preview(abort_requested=abort)
-        except TypeError:
-            preview = self._sync_engine.preview()
+        preview = invoke_with_abort(self._sync_engine.preview, abort)
 
         final_status = "aborted" if isinstance(preview, dict) and preview.get("aborted") else "ready"
         return {"status": final_status, "recovery": recovery, "preview": preview}
