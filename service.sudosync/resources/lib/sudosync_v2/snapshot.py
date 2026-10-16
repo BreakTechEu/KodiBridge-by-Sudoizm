@@ -76,7 +76,7 @@ def _state(item):
     }
 
 
-def _record_versions(state, prior, client_id, logical_clock):
+def _record_versions(state, prior, client_id, logical_clock, has_previous_snapshot=False, suppress_local_changes=False):
     prior_state = prior.get("state", {}) if isinstance(prior, dict) else {}
     prior_versions = prior.get("versions", {}) if isinstance(prior, dict) else {}
     versions = {}
@@ -88,20 +88,33 @@ def _record_versions(state, prior, client_id, logical_clock):
                 and type(old_version.get("seq")) is int and old_version["seq"] >= 0
                 and isinstance(old_version.get("client_id"), str)):
             version = dict(old_version)
+        elif prior is None and has_previous_snapshot:
+            # Newly discovered library items after the initial snapshot receive
+            # version 0 so a library scan / NFO import cannot overwrite a peer's
+            # remembered state.
+            version = {"lc": 0, "seq": 0, "client_id": client_id}
         else:
-            version = {"lc": logical_clock, "seq": 0, "client_id": client_id}
+            version = {"lc": logical_clock if not suppress_local_changes else 0, "seq": 0, "client_id": client_id}
         if field in prior_state and prior_state[field] != state[field]:
-            version = {
-                "lc": max(logical_clock, version["lc"]) + 1,
-                "seq": version["seq"] + 1,
-                "client_id": client_id,
-            }
+            preserve_existing_rating_edit = (
+                field == "userrating"
+                and prior_state.get("userrating") is not None
+            )
+            if suppress_local_changes and not preserve_existing_rating_edit:
+                version = {"lc": 0, "seq": 0, "client_id": client_id}
+            else:
+                version = {
+                    "lc": max(logical_clock, version["lc"]) + 1,
+                    "seq": version["seq"] + 1,
+                    "client_id": client_id,
+                }
         versions[field] = version
     return versions
 
 
 def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=None,
-                   generated_at=None, logical_clock=0, max_records=100000):
+                   generated_at=None, logical_clock=0, max_records=100000,
+                   suppress_local_changes=False):
     """Convert Kodi movie/episode arrays into a schema-validated snapshot.
 
     A changed field advances that field's local version relative to the previous
@@ -175,7 +188,14 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                         .format(media_type, ", ".join(conflicting_kinds))
                     )
             state = _state(item)
-            versions = _record_versions(state, prior, canonical_client, logical_clock)
+            versions = _record_versions(
+                state,
+                prior,
+                canonical_client,
+                logical_clock,
+                has_previous_snapshot=(previous_snapshot is not None),
+                suppress_local_changes=bool(suppress_local_changes),
+            )
             output[media_type].append({
                 "type": media_type,
                 "ids": ids,

@@ -16,6 +16,12 @@ Przebudowa architektury SudoSync (architektura v2) oraz kluczowe usprawnienia be
   - Usunięcie sztywnej ścieżki-wartownika (`SPECIAL_REMOTE_SENTINEL`) z kreatora bootstrapu i modułu głównego.
   - Zwalnianie blokady singletonu usługi lokalnej (`service.py` / `local_service_guard.py`) w bloku `finally` wokół wykonania usługi (nie tylko przez `atexit`).
   - Usprawnienie parsera wersji `_numeric_version` z pełnym porównywaniem etapów wersji przedwydaniowych (`alpha < beta < rc < final`, np. `beta2 > beta`).
+- Poprawki i uzupełnienia z 16.10.2026:
+  - Domknięcie pełnego cyklu synchronizacji w runtime v2 (`sync_cycle`, `publish_local_snapshot`, `initialization_preview`, `apply_initialization`) z ochroną przed pętlą zwrotną (`apply_plan_to_snapshot`, zachowanie zwycięskich `target_versions`) oraz kwarantanną skanowania/nowych pozycji (`suppress_local_changes`, wersja zerowa `lc=0, seq=0` dla nowo wykrytych mediów).
+  - Naprawa krytycznego błędu `NameError: name 'secure_map' is not defined` podczas aplikowania zmian w `run_live_sync_cycle` w `sudosync_core.py`.
+  - Usunięcie 7-dniowego limitu wieku snapshotów w `_validate_snapshot` i `_validate_remote_snapshot` (obsługa nadrabiania zaległości po długim wyłączeniu urządzenia Kodi przy zachowaniu blokady zegarów z przyszłości) oraz bezpieczne ignorowanie plików snapshotów v2 w `read_remote_snapshots`.
+  - Łączenie identyfikatorów z bazy Kodi (JSON-RPC) z identyfikatorami z plików `.nfo` (`_record` i `_get_secure_local_identity_map` w `sudosync_core.py`).
+  - Usunięcie martwego kodu w `_read_json_file` w `sudosync_bootstrap.py`.
 
 SudoSync 1.1.0 (v2 Beta)
 ======================

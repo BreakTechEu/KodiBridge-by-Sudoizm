@@ -103,6 +103,22 @@ class TestSnapshotBuilder(unittest.TestCase):
         build_snapshot([movie(playcount=2)], [], CLIENT, "Living Room", previous_snapshot=first, generated_at=STAMP)
         self.assertEqual(first, before)
 
+    def test_newly_scanned_item_gets_zero_version_when_previous_snapshot_exists(self):
+        first = build_snapshot([movie()], [], CLIENT, "Living Room", generated_at=STAMP, logical_clock=5)
+        new_item = movie(movieid=20, imdbnumber="tt7654321", uniqueid={"imdb": "tt7654321"}, playcount=1)
+        second = build_snapshot([movie(), new_item], [], CLIENT, "Living Room", previous_snapshot=first, generated_at=STAMP, logical_clock=9)
+        self.assertEqual(second["movies"][1]["versions"]["playcount"], {"lc": 0, "seq": 0, "client_id": CLIENT})
+
+    def test_suppress_local_changes_quarantines_scan_updates_but_preserves_existing_rating_edits(self):
+        first = build_snapshot([movie(playcount=0, userrating=7)], [], CLIENT, "Living Room", generated_at=STAMP, logical_clock=3)
+        second = build_snapshot(
+            [movie(playcount=1, userrating=9)], [], CLIENT, "Living Room",
+            previous_snapshot=first, generated_at=STAMP, logical_clock=6,
+            suppress_local_changes=True,
+        )
+        self.assertEqual(second["movies"][0]["versions"]["playcount"], {"lc": 0, "seq": 0, "client_id": CLIENT})
+        self.assertEqual(second["movies"][0]["versions"]["userrating"], {"lc": 7, "seq": 1, "client_id": CLIENT})
+
 
 if __name__ == "__main__":
     unittest.main()

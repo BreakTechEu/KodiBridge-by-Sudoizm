@@ -132,9 +132,8 @@ def _run_service():
 
     settings = addon_settings()
 
-    # Run v2 recovery and preview after bootstrap. Recovery may finish an
-    # interrupted, journaled transaction; normal synchronization remains on
-    # the v1 engine until the full v2 preview/approval/transaction flow is integrated.
+    # Run v2 recovery and preview after bootstrap.
+    v2_runtime = None
     try:
         from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend
         from resources.lib.sudosync_v2.runtime import (
@@ -167,7 +166,7 @@ def _run_service():
                     v2_preview.get("skipped_nfo_count")
                 ), xbmc.LOGWARNING)
     except Exception as exc:
-        # A preview failure must not disable the currently working v1 service.
+        # A preview failure must not disable the currently working service.
         log("V2 startup preview unavailable: {}".format(exc), xbmc.LOGWARNING)
 
     snapshot_interval = settings["interval_seconds"]

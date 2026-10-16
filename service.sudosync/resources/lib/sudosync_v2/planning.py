@@ -13,6 +13,8 @@ stored in portable snapshots.
 """
 from __future__ import absolute_import
 
+from copy import deepcopy
+
 from . import SYNC_FIELDS
 from .identity import strong_aliases
 from .merge import plan_field_merge
@@ -171,9 +173,11 @@ def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=
             local_index = local_member["local_index"]
             kodi_id = local_ids[media_type][local_index]
             field_changes = {}
+            field_target_versions = {}
             for field in SYNC_FIELDS:
                 if field in merged["target_state"] and merged["target_state"][field] != local_member["record"]["state"][field]:
                     field_changes[field] = merged["target_state"][field]
+                    field_target_versions[field] = deepcopy(merged["target_versions"][field])
             if field_changes:
                 changes.append({
                     "type": media_type,
@@ -181,6 +185,7 @@ def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=
                     "identity": sorted(["{}:{}".format(kind, value) for kind, value in local_member["record"]["ids"].items()]),
                     "before": dict(local_member["record"]["state"]),
                     "changes": field_changes,
+                    "target_versions": field_target_versions,
                 })
             if not merged["conflicts"]:
                 safe_shared_clusters += 1
@@ -208,3 +213,57 @@ def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=
         "conflict_count": len(conflicts),
         "ambiguous": ambiguous,
     }
+
+
+def apply_plan_to_snapshot(snapshot, plan, max_records=100000):
+    """Return a new snapshot with applied plan changes and preserved target_versions.
+
+    Preserving the winning version from ``target_versions`` (feedback-loop guard)
+    ensures that applied remote changes do not bounce back as new local edits on
+    subsequent sync cycles.
+    """
+    try:
+        validate_snapshot(snapshot, max_records=max_records)
+    except (ValueError, TypeError) as exc:
+        raise PlanningError("invalid snapshot input: {}".format(exc))
+    if not isinstance(plan, dict) or not isinstance(plan.get("changes"), list):
+        raise PlanningError("plan must contain a changes list")
+    target_client = plan.get("local_client_id") or plan.get("target_client_id")
+    if target_client != snapshot["client"]["id"]:
+        raise PlanningError("plan does not belong to this snapshot's client")
+
+    updated = deepcopy(snapshot)
+    records_by_alias = {"movie": {}, "episode": {}}
+    for media_type, key in (("movie", "movies"), ("episode", "episodes")):
+        for record in updated[key]:
+            for alias in strong_aliases(media_type, record["ids"]):
+                records_by_alias[media_type].setdefault(alias, []).append(record)
+
+    for item in plan["changes"]:
+        if not isinstance(item, dict) or item.get("type") not in ("movie", "episode"):
+            raise PlanningError("plan contains an invalid change item")
+        media_type = item["type"]
+        identity = item.get("identity") or []
+        if not isinstance(identity, list) or not identity:
+            raise PlanningError("plan item lacks strong identity")
+        candidates = {}
+        for entry in identity:
+            if not isinstance(entry, str) or ":" not in entry:
+                raise PlanningError("plan item contains malformed identity")
+            kind, value = entry.split(":", 1)
+            for record in records_by_alias[media_type].get((media_type, kind, value), []):
+                candidates[id(record)] = record
+        if len(candidates) != 1:
+            raise PlanningError("plan item identity does not uniquely match one snapshot record")
+        record = next(iter(candidates.values()))
+        changes = item.get("changes") or {}
+        target_versions = item.get("target_versions") or {}
+        for field, value in changes.items():
+            if field not in SYNC_FIELDS:
+                raise PlanningError("unsupported synchronized field: " + str(field))
+            record["state"][field] = deepcopy(value)
+            if field in target_versions and isinstance(target_versions[field], dict):
+                record["versions"][field] = deepcopy(target_versions[field])
+
+    validate_snapshot(updated, max_records=max_records)
+    return updated

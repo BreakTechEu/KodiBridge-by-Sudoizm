@@ -188,5 +188,52 @@ class TestSudoSync(unittest.TestCase):
         sudosync_core._NFO_ID_CACHE.clear()
         self.assertEqual(len(sudosync_core._NFO_ID_CACHE), 0)
 
+    def test_remote_snapshot_allows_long_downtime_and_rejects_future(self):
+        import datetime
+        now = datetime.datetime.now(datetime.timezone.utc)
+        thirty_days_ago = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        two_hours_ahead = (now + datetime.timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        old_snap = {
+            "format": "SudoSync client snapshot",
+            "schema_version": 2,
+            "client": {"id": "12345678-1234-1234-1234-123456789012", "name": "Kodi"},
+            "generated_at": thirty_days_ago,
+            "movies": [],
+            "episodes": [],
+        }
+        self.assertIsNone(sudosync_core._validate_remote_snapshot(old_snap))
+
+        future_snap = dict(old_snap, generated_at=two_hours_ahead)
+        self.assertEqual(
+            sudosync_core._validate_remote_snapshot(future_snap),
+            "snapshot is from the future",
+        )
+
+    def test_record_merges_kodi_and_nfo_ids(self):
+        sudosync_core._NFO_ID_CACHE.clear()
+        sudosync_core._NFO_ID_CACHE["smb://nas/movies/Matrix.mkv"] = {
+            "sudosync": "ss-999",
+            "tmdb": "603",
+        }
+        raw_movie = {
+            "movieid": 10,
+            "title": "The Matrix",
+            "year": 1999,
+            "file": "smb://nas/movies/Matrix.mkv",
+            "uniqueid": {"imdb": "tt0133093"},
+            "playcount": 1,
+            "lastplayed": "2026-10-10 20:00:00",
+            "resume": {"position": 0, "total": 8160},
+            "userrating": 9,
+        }
+        rec = sudosync_core._record("movie", raw_movie)
+        self.assertEqual(rec["ids"].get("imdb"), "tt0133093")
+        self.assertEqual(rec["ids"].get("sudosync"), "ss-999")
+        self.assertEqual(rec["ids"].get("tmdb"), "603")
+        sudosync_core._NFO_ID_CACHE.clear()
+
+
 if __name__ == '__main__':
     unittest.main()
+

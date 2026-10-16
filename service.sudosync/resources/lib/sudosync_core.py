@@ -1036,8 +1036,10 @@ def _ids_from_nfo(media_file, kind):
 
 def _record(kind, item, first_import=True):
     ids = _normalize_ids(item.get("uniqueid"), item.get("imdbnumber"))
-    if not ids:
-        ids = _ids_from_nfo(item.get("file"), kind)
+    nfo_ids = _ids_from_nfo(item.get("file"), kind)
+    for k, v in nfo_ids.items():
+        if k not in ids and v:
+            ids[k] = v
     rec = {
         "type": kind,
         "ids": ids,
@@ -1919,14 +1921,14 @@ def _validate_snapshot(snapshot, client_id=None):
     if not generated_at_str:
         raise ValueError("Brak generated_at")
         
-    # Validation against absurdly old/future dates
+    # Validation against absurdly future dates (catch-up after long downtime is supported)
     import datetime
     try:
-        dt = datetime.datetime.strptime(generated_at_str, "%Y-%m-%dT%H:%M:%SZ")
+        dt = datetime.datetime.strptime(generated_at_str, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         now = datetime.datetime.now(timezone.utc)
-        # Max 7 days old, max 1 hour in the future
-        if (now - dt).total_seconds() > 7 * 24 * 3600:
-            raise ValueError("Snapshot jest zbyt stary")
+        # Max 1 hour in the future
         if (dt - now).total_seconds() > 3600:
             raise ValueError("Snapshot jest z przyszlosci")
     except ValueError as e:
@@ -2072,6 +2074,7 @@ def run_live_sync_cycle(show_notification=False, suppress_local_changes=False, c
             "results": [],
             "errors": [],
         }
+        secure_map = _get_secure_local_identity_map()
         for index, item in enumerate(items, 1):
             try:
                 safe_item, guarded_fields = _guard_live_item_against_playback_regression(item)
@@ -2225,10 +2228,10 @@ def _validate_remote_snapshot(data):
         return "missing generated_at"
     import datetime
     try:
-        dt = datetime.datetime.strptime(generated_at_str, "%Y-%m-%dT%H:%M:%SZ")
+        dt = datetime.datetime.strptime(generated_at_str, "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=timezone.utc
+        )
         now = datetime.datetime.now(timezone.utc)
-        if (now - dt).total_seconds() > 7 * 24 * 3600:
-            return "snapshot is too old"
         if (dt - now).total_seconds() > 3600:
             return "snapshot is from the future"
     except Exception:
@@ -2268,6 +2271,8 @@ def read_remote_snapshots(base_path=None):
         path = clients_path + filename
         try:
             data = _read_vfs_json(path)
+            if isinstance(data, dict) and data.get("format") == "SudoSync v2 snapshot":
+                continue
             error = _validate_remote_snapshot(data)
             if error:
                 errors.append({"file": filename, "error": error})
@@ -2418,7 +2423,11 @@ def _get_secure_local_identity_map():
     try:
         movies = rpc("VideoLibrary.GetMovies", {"properties": ["file", "uniqueid", "imdbnumber"]}).get("movies", [])
         for m in movies:
-            m_record = {"type": "movie", "ids": _normalize_ids(m.get("uniqueid"), m.get("imdbnumber"))}
+            ids = _normalize_ids(m.get("uniqueid"), m.get("imdbnumber"))
+            for k, v in _ids_from_nfo(m.get("file"), "movie").items():
+                if k not in ids and v:
+                    ids[k] = v
+            m_record = {"type": "movie", "ids": ids}
             identity_map[("movie", str(m.get("file") or ""))] = {
                 "id": m.get("movieid"),
                 "aliases": _aliases(m_record)
@@ -2426,9 +2435,13 @@ def _get_secure_local_identity_map():
     except Exception:
         pass
     try:
-        episodes = rpc("VideoLibrary.GetEpisodes", {"properties": ["file", "uniqueid"]}).get("episodes", [])
+        episodes = rpc("VideoLibrary.GetEpisodes", {"properties": ["file", "uniqueid", "imdbnumber"]}).get("episodes", [])
         for e in episodes:
-            e_record = {"type": "episode", "ids": _normalize_ids(e.get("uniqueid"))}
+            ids = _normalize_ids(e.get("uniqueid"), e.get("imdbnumber"))
+            for k, v in _ids_from_nfo(e.get("file"), "episode").items():
+                if k not in ids and v:
+                    ids[k] = v
+            e_record = {"type": "episode", "ids": ids}
             identity_map[("episode", str(e.get("file") or ""))] = {
                 "id": e.get("episodeid"),
                 "aliases": _aliases(e_record)

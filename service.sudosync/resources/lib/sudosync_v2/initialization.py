@@ -108,6 +108,8 @@ def build_initialization_plan(base_snapshot, target_snapshot, target_kodi_ids, m
 
             matched += 1
             field_changes = {}
+            field_target_versions = {}
+            base_versions = base_record.get("versions") if isinstance(base_record.get("versions"), dict) else {}
             for field in ("playcount", "lastplayed", "resume", "userrating"):
                 base_value = base_record["state"][field]
                 target_value = target["state"][field]
@@ -122,6 +124,8 @@ def build_initialization_plan(base_snapshot, target_snapshot, target_kodi_ids, m
                     })
                 elif value is not None and value != target_value:
                     field_changes[field] = value
+                    if isinstance(base_versions.get(field), dict):
+                        field_target_versions[field] = deepcopy(base_versions[field])
             if field_changes:
                 changes.append({
                     "type": media_type,
@@ -129,6 +133,7 @@ def build_initialization_plan(base_snapshot, target_snapshot, target_kodi_ids, m
                     "identity": sorted("{}:{}".format(kind, value) for kind, value in target["ids"].items()),
                     "before": deepcopy(target["state"]),
                     "changes": field_changes,
+                    "target_versions": field_target_versions,
                 })
 
     changes.sort(key=lambda item: (item["type"], item["kodi_id"]))

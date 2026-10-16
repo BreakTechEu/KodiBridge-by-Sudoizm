@@ -13,7 +13,7 @@ from copy import deepcopy
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
 
-from resources.lib.sudosync_v2.planning import PlanningError, build_sync_plan
+from resources.lib.sudosync_v2.planning import PlanningError, apply_plan_to_snapshot, build_sync_plan
 from resources.lib.sudosync_v2.snapshot import build_snapshot
 
 A = "12345678-1234-4234-8234-123456789012"
@@ -86,6 +86,25 @@ class TestDryRunPlanner(unittest.TestCase):
         before = deepcopy(local)
         build_sync_plan(local, [remote], {"movie": [7], "episode": []})
         self.assertEqual(local, before)
+
+    def test_apply_plan_to_snapshot_preserves_winning_versions_and_prevents_feedback_loop(self):
+        local = make_snapshot(A, "Living Room", [{"playcount": 0}])
+        remote_base = make_snapshot(B, "Bedroom", [{"playcount": 0}])
+        remote = make_snapshot(B, "Bedroom", [{"playcount": 2}], previous=remote_base)
+        plan = build_sync_plan(local, [remote], {"movie": [42], "episode": []})
+        self.assertIn("target_versions", plan["changes"][0])
+        winning_ver = remote["movies"][0]["versions"]["playcount"]
+        self.assertEqual(plan["changes"][0]["target_versions"]["playcount"], winning_ver)
+
+        updated_local = apply_plan_to_snapshot(local, plan)
+        self.assertEqual(updated_local["movies"][0]["state"]["playcount"], 2)
+        self.assertEqual(updated_local["movies"][0]["versions"]["playcount"], winning_ver)
+
+        # Next cycle on A with Kodi now returning playcount=2 must NOT advance lc/seq
+        next_local = make_snapshot(A, "Living Room", [{"playcount": 2}], previous=updated_local)
+        self.assertEqual(next_local["movies"][0]["versions"]["playcount"], winning_ver)
+        next_plan_on_b = build_sync_plan(remote, [next_local], {"movie": [1], "episode": []})
+        self.assertEqual(next_plan_on_b["change_count"], 0)
 
 
 if __name__ == "__main__":

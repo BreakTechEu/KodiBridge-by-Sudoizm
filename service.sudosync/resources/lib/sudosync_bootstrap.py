@@ -74,13 +74,6 @@ def _read_json_file(filepath):
     except json.JSONDecodeError as exc:
         log("Cannot parse JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
         return "INVALID", None
-        f = xbmcvfs.File(filepath, 'r')
-        data = f.read()
-        f.close()
-        return json.loads(data)
-    except Exception as exc:
-        log("Cannot read JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
-        return None
 
 def _write_json_file(filepath, obj):
     try:

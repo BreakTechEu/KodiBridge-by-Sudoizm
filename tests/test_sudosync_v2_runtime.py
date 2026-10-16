@@ -206,5 +206,153 @@ class TestV2RuntimeComposition(unittest.TestCase):
                 "smb://nas/SudoSync", os.path.abspath(os.getcwd()), filesystem_verified=False,
             )
 
+
+class InMemorySharedBackend(object):
+    def __init__(self):
+        self.files = {}
+        self.dirs = set()
+
+    def exists(self, path):
+        return path in self.files or path.rstrip("/") in self.dirs
+
+    def read_text(self, path):
+        if path not in self.files:
+            raise IOError("missing " + path)
+        return self.files[path]
+
+    def write_text(self, path, text):
+        self.files[path] = text
+        return True
+
+    def rename(self, source, destination):
+        if destination in self.files or source not in self.files:
+            return False
+        self.files[destination] = self.files.pop(source)
+        return True
+
+    def delete(self, path):
+        if path not in self.files:
+            return False
+        del self.files[path]
+        return True
+
+    def mkdirs(self, path):
+        self.dirs.add(path.rstrip("/"))
+        return True
+
+    def listdir(self, path):
+        prefix = path.rstrip("/") + "/"
+        files = []
+        for key in self.files:
+            if key.startswith(prefix):
+                rest = key[len(prefix):]
+                if "/" not in rest:
+                    files.append(rest)
+        return [], sorted(files)
+
+
+class MutableFakeKodi(object):
+    def __init__(self, movie_id, playcount=0):
+        self.movie_id = movie_id
+        self.playcount = playcount
+        self.lastplayed = ""
+        self.resume = {"position": 0.0, "total": 0.0}
+        self.userrating = None
+        self.playing = False
+        self.writes = 0
+
+    def is_video_playing(self):
+        return self.playing
+
+    def _item(self):
+        return {
+            "movieid": self.movie_id,
+            "title": "Movie",
+            "imdbnumber": "tt1234567",
+            "uniqueid": {"imdb": "tt1234567"},
+            "playcount": self.playcount,
+            "lastplayed": self.lastplayed,
+            "resume": dict(self.resume),
+            "userrating": self.userrating or 0,
+        }
+
+    def get_movies(self):
+        return [self._item()]
+
+    def get_episodes(self):
+        return []
+
+    def get_movie_details(self, movie_id):
+        assert movie_id == self.movie_id
+        return self._item()
+
+    def set_movie_details(self, movie_id, changes):
+        assert movie_id == self.movie_id
+        self.writes += 1
+        if "playcount" in changes:
+            self.playcount = changes["playcount"]
+        if "lastplayed" in changes:
+            self.lastplayed = changes["lastplayed"]
+        if "resume" in changes:
+            self.resume = dict(changes["resume"])
+        if "userrating" in changes:
+            self.userrating = changes["userrating"]
+        return "OK"
+
+
+class TestV2EndToEndSyncCycle(unittest.TestCase):
+    def test_sequential_two_client_sync_and_feedback_loop_prevention(self):
+        from resources.lib.sudosync_v2.runtime import ProcessLocalLockFactory
+
+        client_a = "12345678-1234-4234-8234-123456789012"
+        client_b = "22345678-1234-4234-8234-123456789012"
+        backend = InMemorySharedBackend()
+        lock_factory = ProcessLocalLockFactory()
+
+        kodi_a = MutableFakeKodi(movie_id=10, playcount=2)
+        kodi_b = MutableFakeKodi(movie_id=99, playcount=0)
+
+        runtime_a = build_v2_runtime(kodi_a, backend, "smb://nas/.SudoSync", lock_factory, client_a, "Living Room")
+        runtime_b = build_v2_runtime(kodi_b, backend, "smb://nas/.SudoSync", lock_factory, client_b, "Bedroom")
+
+        # 1. Device A publishes its initial state
+        res_a1 = runtime_a.sync_cycle()
+        self.assertEqual(res_a1["status"], "no_changes")
+        self.assertIsNotNone(res_a1["published_snapshot_path"])
+
+        # 2. Device B initializes from Device A
+        init_b = runtime_b.apply_initialization(client_a)
+        self.assertEqual(init_b["status"], "committed")
+        self.assertEqual(init_b["applied_count"], 1)
+        self.assertEqual(kodi_b.playcount, 2)
+        self.assertEqual(kodi_b.writes, 1)
+
+        # 3. Device B watches the movie again (playcount 2 -> 3) and runs sync_cycle
+        kodi_b.playcount = 3
+        res_b2 = runtime_b.sync_cycle()
+        self.assertEqual(res_b2["status"], "no_changes")
+        self.assertIsNotNone(res_b2["published_snapshot_path"])
+
+        # 4. Device A runs sync_cycle and receives playcount=3 via journaled transaction
+        res_a2 = runtime_a.sync_cycle()
+        self.assertEqual(res_a2["status"], "committed")
+        self.assertEqual(res_a2["applied_count"], 1)
+        self.assertEqual(kodi_a.playcount, 3)
+        self.assertEqual(kodi_a.writes, 1)
+
+        # 5. Feedback-loop check: subsequent cycles on both A and B make zero writes and no re-publications
+        res_b3 = runtime_b.sync_cycle()
+        self.assertEqual(res_b3["status"], "no_changes")
+        self.assertEqual(res_b3["applied_count"], 0)
+        self.assertIsNone(res_b3["published_snapshot_path"])
+        self.assertEqual(kodi_b.writes, 1)
+
+        res_a3 = runtime_a.sync_cycle()
+        self.assertEqual(res_a3["status"], "no_changes")
+        self.assertEqual(res_a3["applied_count"], 0)
+        self.assertIsNone(res_a3["published_snapshot_path"])
+        self.assertEqual(kodi_a.writes, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
