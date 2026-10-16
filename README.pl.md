@@ -2,7 +2,10 @@
 
 ---
 
-> **Uwaga:** To repozytorium (gałąź master) zawiera **SudoSync 2.0.0**, wprowadzający własne identyfikatory SudoSync ID dla prywatnych wideo pozbawionych wpisów w bazach online. Stabilna wersja **SudoSync 1.0.0** znajduje się na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync/tree/v1-stable) i nie jest już rozwijana. Obie wersje są dostępne do pobrania w sekcji [Releases](https://github.com/BreakTechEu/SudoSync/releases).
+> [!WARNING]
+> **Ostrzeżenie o wersji Beta (SudoSync 2.0.0):**
+> SudoSync 2.0.0 jest **wersją testową (Beta)** wprowadzającą przebudowaną architekturę v2 oraz eksperymentalną obsługę identyfikatorów SudoSync ID dla prywatnych wideo. Mimo szczegółowych testów jednostkowych i odpornościowych, wydanie to jest przeznaczone do testów i dla wczesnych użytkowników. Jeżeli potrzebujesz w 100% sprawdzonego i stabilnego środowiska produkcyjnego, zalecamy korzystanie ze stabilnej wersji **SudoSync 1.0.0** na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync/tree/v1-stable).
+> Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/SudoSync/releases)**.
 
 # SudoSync dla Kodi
 
@@ -39,7 +42,8 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 ## Instalacja i konfiguracja
 
 1. **Źródło instalacji:**
-   - Zarówno **SudoSync 2.0.0** (`service.sudosync-2.0.0.zip`), jak i stabilna wersja **SudoSync 1.0.0** (`service.sudosync-1.0.0.zip`) są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** po prawej stronie repozytorium.
+   - **SudoSync 2.0.0 (Beta):** Pobierz plik `service.sudosync-2.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** (zalecany do testowania nowych funkcji v2 i SudoSync ID).
+   - **SudoSync 1.0.0 (Stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** (zalecany do środowisk produkcyjnych wymagających maksymalnej stabilności).
 
 2. **Instalacja w Kodi:**
    - W Kodi przejdź do: *Ustawienia -> Dodatki -> Zainstaluj z pliku zip*.
