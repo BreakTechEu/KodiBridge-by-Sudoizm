@@ -174,8 +174,8 @@ class V2RuntimeComponents(object):
 
         if not changes:
             published_path = None
-            if publish_local:
-                previous = self.catalog.load(client_id, abort_requested=abort_requested)
+            previous = self.catalog.load(client_id, abort_requested=abort_requested)
+            if publish_local or previous is None:
                 if (previous is None
                         or previous.get("movies") != candidate.get("movies")
                         or previous.get("episodes") != candidate.get("episodes")
