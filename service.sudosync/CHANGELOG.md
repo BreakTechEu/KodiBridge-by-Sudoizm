@@ -22,6 +22,10 @@ Przebudowa architektury SudoSync (architektura v2) oraz kluczowe usprawnienia be
   - Usunięcie 7-dniowego limitu wieku snapshotów w `_validate_snapshot` i `_validate_remote_snapshot` (obsługa nadrabiania zaległości po długim wyłączeniu urządzenia Kodi przy zachowaniu blokady zegarów z przyszłości) oraz bezpieczne ignorowanie plików snapshotów v2 w `read_remote_snapshots`.
   - Łączenie identyfikatorów z bazy Kodi (JSON-RPC) z identyfikatorami z plików `.nfo` (`_record` i `_get_secure_local_identity_map` w `sudosync_core.py`).
   - Usunięcie martwego kodu w `_read_json_file` w `sudosync_bootstrap.py`.
+  - Kontrola tożsamości przy zapisie (`_apply_one_planned_item`) działa w trybie fail-closed: elementy planu (`build_live_plan` oraz `build_dry_run`) zawierają posortowaną listę aliasów rekordu klienta, a brak aliasów po stronie planu lub lokalnej mapy przerywa zapis przed wywołaniem JSON-RPC.
+  - Jawne logowanie ostrzeżeń (`LOGWARNING`) przy błędach odczytu filmów lub odcinków podczas budowania bezpiecznej mapy tożsamości (`_get_secure_local_identity_map`).
+  - Obsługa znaczników czasu `generated_at` z milisekundami w `_validate_remote_snapshot` (blokada zegarów z przyszłości o tolerancji 1 godziny działa również dla snapshotów LIVE).
+  - Dodanie testów jednostkowych ścieżki zapisu LIVE i weryfikacji tożsamości (`tests/test_live_apply_identity.py`).
 
 SudoSync 1.1.0 (v2 Beta)
 ======================

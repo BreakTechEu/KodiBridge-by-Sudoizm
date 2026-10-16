@@ -440,6 +440,7 @@ def build_dry_run(snapshots, base_client_id=None):
                 client_change_items[node["client_id"]].append({
                     "type": media_type,
                     "display": display,
+                    "aliases": sorted(_aliases(node["record"])),
                     "local": node["record"].get("local") or {},
                     "file": node["record"].get("file") or "",
                     "changes": changes,
@@ -736,6 +737,7 @@ def build_live_plan(snapshots):
                 item = {
                     "type": media_type,
                     "display": display,
+                    "aliases": sorted(_aliases(node["record"])),
                     "local": node["record"].get("local") or {},
                     "local_key": node["record"].get("sync_local_key") or "",
                     "file": node["record"].get("file") or "",

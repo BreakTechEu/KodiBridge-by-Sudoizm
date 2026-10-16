@@ -2207,6 +2207,19 @@ def _read_vfs_json(path):
     return json.loads(raw.decode("utf-8-sig", errors="strict"))
 
 
+def _parse_snapshot_timestamp(value):
+    """Parse an ISO-8601 UTC snapshot timestamp with or without fractional seconds."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S.%fZ"):
+        try:
+            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
 def _validate_remote_snapshot(data):
     """Validate the actual SudoSync client snapshot schema used on NAS."""
     if not isinstance(data, dict):
@@ -2226,16 +2239,11 @@ def _validate_remote_snapshot(data):
     generated_at_str = data.get("generated_at")
     if not generated_at_str:
         return "missing generated_at"
-    import datetime
-    try:
-        dt = datetime.datetime.strptime(generated_at_str, "%Y-%m-%dT%H:%M:%SZ").replace(
-            tzinfo=timezone.utc
-        )
-        now = datetime.datetime.now(timezone.utc)
+    dt = _parse_snapshot_timestamp(generated_at_str)
+    if dt is not None:
+        now = datetime.now(timezone.utc)
         if (dt - now).total_seconds() > 3600:
             return "snapshot is from the future"
-    except Exception:
-        pass
 
     for collection in ("movies", "episodes"):
         values = data.get(collection)
@@ -2432,8 +2440,8 @@ def _get_secure_local_identity_map():
                 "id": m.get("movieid"),
                 "aliases": _aliases(m_record)
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        log("Secure identity map: failed to read movies: {}".format(exc), xbmc.LOGWARNING)
     try:
         episodes = rpc("VideoLibrary.GetEpisodes", {"properties": ["file", "uniqueid", "imdbnumber"]}).get("episodes", [])
         for e in episodes:
@@ -2446,25 +2454,30 @@ def _get_secure_local_identity_map():
                 "id": e.get("episodeid"),
                 "aliases": _aliases(e_record)
             }
-    except Exception:
-        pass
+    except Exception as exc:
+        log("Secure identity map: failed to read episodes: {}".format(exc), xbmc.LOGWARNING)
     return identity_map
 
 def _apply_one_planned_item(item, secure_map=None):
     media_type = str(item.get("type") or "")
     local = item.get("local") if isinstance(item.get("local"), dict) else {}
     changes = item.get("changes") if isinstance(item.get("changes"), dict) else {}
+    display = item.get("display") or "elementu"
     
     if secure_map is not None:
         plan_file = str(item.get("file") or "")
         plan_aliases = set(item.get("aliases") or [])
         local_record = secure_map.get((media_type, plan_file))
         if not local_record:
-            raise ValueError("Lokalny rekord dla {} nie istnieje w Kodi.".format(item.get("display") or "elementu"))
+            raise ValueError("Lokalny rekord dla {} nie istnieje w Kodi.".format(display))
+        if not plan_aliases:
+            raise ValueError("Brak aliasów tożsamości w elemencie planu dla {}.".format(display))
         
-        local_aliases = local_record["aliases"]
-        if plan_aliases and local_aliases and not plan_aliases.intersection(local_aliases):
-            raise ValueError("Tożsamość logiczna lokalnego rekordu nie zgadza się ze snapshotem.")
+        local_aliases = set(local_record.get("aliases") or [])
+        if not local_aliases:
+            raise ValueError("Lokalny rekord dla {} nie posiada aliasów tożsamości.".format(display))
+        if not plan_aliases.intersection(local_aliases):
+            raise ValueError("Tożsamość logiczna lokalnego rekordu dla {} nie zgadza się ze snapshotem.".format(display))
             
         local_id = local_record["id"]
     else:
