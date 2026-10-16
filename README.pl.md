@@ -2,7 +2,7 @@
 
 ---
 
-> **Uwaga:** To repozytorium (gałąź master) zawiera **SudoSync 2.0.0** (w przygotowaniu, jeszcze nieopublikowany), wprowadzający własne identyfikatory SudoSync ID dla prywatnych wideo pozbawionych wpisów w bazach online. Stabilna wersja **SudoSync 1.0.0** znajduje się na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync/tree/v1-stable) i nie jest już rozwijana.
+> **Uwaga:** To repozytorium (gałąź master) zawiera **SudoSync 2.0.0**, wprowadzający własne identyfikatory SudoSync ID dla prywatnych wideo pozbawionych wpisów w bazach online. Stabilna wersja **SudoSync 1.0.0** znajduje się na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync/tree/v1-stable) i nie jest już rozwijana. Obie wersje są dostępne do pobrania w sekcji [Releases](https://github.com/BreakTechEu/SudoSync/releases).
 
 # SudoSync dla Kodi
 
@@ -38,12 +38,8 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 
 ## Instalacja i konfiguracja
 
-> [!NOTE]
-> Paczka wydania dla SudoSync 2.0.0 (`service.sudosync-2.0.0.zip`) nie została jeszcze opublikowana. W sekcji **Releases** dostępna jest obecnie stabilna wersja SudoSync 1.0.0 (`service.sudosync-1.0.0.zip`).
-
 1. **Źródło instalacji:**
-   - W przypadku stabilnej wersji SudoSync 1.0.0 pobierz plik `service.sudosync-1.0.0.zip` z sekcji **Releases** po prawej stronie repozytorium.
-   - Aby przetestować wersję rozwojową 2.0.0 z tego repozytorium, spakuj katalog `service.sudosync` do pliku zip.
+   - Zarówno **SudoSync 2.0.0** (`service.sudosync-2.0.0.zip`), jak i stabilna wersja **SudoSync 1.0.0** (`service.sudosync-1.0.0.zip`) są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** po prawej stronie repozytorium.
 
 2. **Instalacja w Kodi:**
    - W Kodi przejdź do: *Ustawienia -> Dodatki -> Zainstaluj z pliku zip*.
