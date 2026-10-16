@@ -329,6 +329,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
                     "action": "modified",
                     "created": False,
                     "sudosync_id": "DOM-1",
+                    "content_sha256": hashlib.sha256(self.vfs.files[file_ok_mod]).hexdigest(),
                 },
                 {
                     "file": file_missing_bak,
@@ -336,6 +337,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
                     "action": "modified",
                     "created": False,
                     "sudosync_id": "DOM-2",
+                    "content_sha256": hashlib.sha256(self.vfs.files[file_missing_bak]).hexdigest(),
                 },
                 {
                     "file": file_ok_created,
@@ -385,6 +387,213 @@ class TestSudoSyncIdRollback(unittest.TestCase):
 
             with self.assertRaises(RuntimeError):
                 sudosync_core.rollback_sudosync_ids("/profile/nonexistent_manifest.json")
+
+    def test_06_modified_nfo_edited_later_by_user_or_scraper_is_protected(self):
+        """Modified .nfo whose content was changed after SudoSync ID assignment must not be overwritten."""
+        nfo_path = "smb://nas/movies/Film.nfo"
+        bak_path = nfo_path + ".bak"
+        original_nfo = b"<movie><title>Film</title><plot>Kopia zapasowa</plot></movie>"
+        sudosync_written_nfo = b"<movie><title>Film</title><uniqueid type=\"sudosync\">DOM-123</uniqueid></movie>"
+        scraper_modified_nfo = b"<movie><title>Film</title><plot>Nowy opis pobrany przez scraper</plot></movie>"
+
+        self.vfs.files[nfo_path] = scraper_modified_nfo
+        self.vfs.files[bak_path] = original_nfo
+
+        manifest_path = "/profile/assign_ids_manifest.json"
+        manifest = {
+            "generated_at": "2026-10-16T12:00:00.000Z",
+            "modified": [
+                {
+                    "file": nfo_path,
+                    "backup": bak_path,
+                    "action": "modified",
+                    "created": False,
+                    "sudosync_id": "DOM-123",
+                    "content_sha256": hashlib.sha256(sudosync_written_nfo).hexdigest(),
+                    "title": "Film",
+                }
+            ],
+            "errors": [],
+        }
+
+        patches = self._patch_vfs_and_json()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+            sudosync_core._write_local_json(manifest_path, manifest)
+            res = sudosync_core.rollback_sudosync_ids(manifest_path)
+
+            self.assertEqual(res["rolled_back"], 0)
+            self.assertEqual(res["restored"], 0)
+            self.assertEqual(res["skipped_modified"], 1)
+            self.assertEqual(res["errors"], 1)
+            self.assertEqual(res["error_details"][0]["reason"], "file_modified")
+            # Both files must remain untouched
+            self.assertEqual(self.vfs.files[nfo_path], scraper_modified_nfo)
+            self.assertEqual(self.vfs.files[bak_path], original_nfo)
+
+    def test_07_legacy_manifest_without_content_sha256_for_modified_is_protected(self):
+        """Modified .nfo in a legacy manifest without content_sha256 must not be overwritten."""
+        nfo_path = "smb://nas/movies/LegacyModified.nfo"
+        bak_path = nfo_path + ".bak"
+        self.vfs.files[nfo_path] = b"<movie><title>Current</title></movie>"
+        self.vfs.files[bak_path] = b"<movie><title>Backup</title></movie>"
+
+        manifest_path = "/profile/assign_ids_manifest.json"
+        manifest = {
+            "generated_at": "2026-10-16T12:00:00.000Z",
+            "modified": [
+                {
+                    "file": nfo_path,
+                    "backup": bak_path,
+                    "action": "modified",
+                    "created": False,
+                    "title": "LegacyModified",
+                }
+            ],
+            "errors": [],
+        }
+
+        patches = self._patch_vfs_and_json()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+            sudosync_core._write_local_json(manifest_path, manifest)
+            res = sudosync_core.rollback_sudosync_ids(manifest_path)
+
+            self.assertEqual(res["rolled_back"], 0)
+            self.assertEqual(res["restored"], 0)
+            self.assertEqual(res["errors"], 1)
+            self.assertEqual(res["error_details"][0]["reason"], "unverifiable_modified_file")
+            self.assertEqual(self.vfs.files[nfo_path], b"<movie><title>Current</title></movie>")
+            self.assertEqual(self.vfs.files[bak_path], b"<movie><title>Backup</title></movie>")
+
+    def test_08_failed_restore_keeps_target_nfo_intact(self):
+        """If restore operation fails (e.g. exception during rename), the target .nfo file is never lost."""
+        nfo_path = "smb://nas/movies/FailSwap.nfo"
+        bak_path = nfo_path + ".bak"
+        target_content = b"<movie><title>Target Content</title></movie>"
+        backup_content = b"<movie><title>Backup Content</title></movie>"
+
+        self.vfs.files[nfo_path] = target_content
+        self.vfs.files[bak_path] = backup_content
+
+        manifest_path = "/profile/assign_ids_manifest.json"
+        manifest = {
+            "generated_at": "2026-10-16T12:00:00.000Z",
+            "modified": [
+                {
+                    "file": nfo_path,
+                    "backup": bak_path,
+                    "action": "modified",
+                    "created": False,
+                    "sudosync_id": "DOM-999",
+                    "content_sha256": hashlib.sha256(target_content).hexdigest(),
+                }
+            ],
+            "errors": [],
+        }
+
+        patches = self._patch_vfs_and_json()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], \
+                patch.object(sudosync_core, "_safe_restore_modified_nfo", side_effect=OSError("Disk write error")):
+            sudosync_core._write_local_json(manifest_path, manifest)
+            res = sudosync_core.rollback_sudosync_ids(manifest_path)
+
+            self.assertEqual(res["rolled_back"], 0)
+            self.assertEqual(res["restored"], 0)
+            self.assertEqual(res["errors"], 1)
+            self.assertEqual(res["error_details"][0]["reason"], "restore_failed")
+            # Target content must remain intact on disk
+            self.assertEqual(self.vfs.files[nfo_path], target_content)
+
+    def test_09_partial_failure_with_modified_sha256_or_replace_error_processes_remaining(self):
+        """A failure on one entry must not prevent processing the remaining valid entries."""
+        file_a = "smb://nas/movies/A.nfo"
+        file_b = "smb://nas/movies/B.nfo"
+        file_c = "smb://nas/movies/C.nfo"
+
+        content_a_sudosync = b"<movie><title>A</title><uniqueid type=\"sudosync\">DOM-A</uniqueid></movie>"
+        content_a_edited = b"<movie><title>A</title><plot>Scraped plot</plot></movie>"
+        content_b = b"<movie><title>B</title><uniqueid type=\"sudosync\">DOM-B</uniqueid></movie>"
+        content_c = b"<movie><title>C</title><uniqueid type=\"sudosync\">DOM-C</uniqueid></movie>"
+
+        self.vfs.files[file_a] = content_a_edited
+        self.vfs.files[file_a + ".bak"] = b"<movie><title>A-Backup</title></movie>"
+
+        self.vfs.files[file_b] = content_b
+        self.vfs.files[file_b + ".bak"] = b"<movie><title>B-Backup</title></movie>"
+
+        self.vfs.files[file_c] = content_c
+        self.vfs.files[file_c + ".bak"] = b"<movie><title>C-Backup</title></movie>"
+
+        manifest_path = "/profile/assign_ids_manifest.json"
+        manifest = {
+            "generated_at": "2026-10-16T12:00:00.000Z",
+            "modified": [
+                {
+                    "file": file_a,
+                    "backup": file_a + ".bak",
+                    "action": "modified",
+                    "created": False,
+                    "content_sha256": hashlib.sha256(content_a_sudosync).hexdigest(),
+                },
+                {
+                    "file": file_b,
+                    "backup": file_b + ".bak",
+                    "action": "modified",
+                    "created": False,
+                    "content_sha256": hashlib.sha256(content_b).hexdigest(),
+                },
+                {
+                    "file": file_c,
+                    "backup": file_c + ".bak",
+                    "action": "modified",
+                    "created": False,
+                    # Missing content_sha256 -> fails closed
+                },
+            ],
+            "errors": [],
+        }
+
+        patches = self._patch_vfs_and_json()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+            sudosync_core._write_local_json(manifest_path, manifest)
+            res = sudosync_core.rollback_sudosync_ids(manifest_path)
+
+            self.assertEqual(res["rolled_back"], 1)
+            self.assertEqual(res["restored"], 1)
+            self.assertEqual(res["skipped_modified"], 1)
+            self.assertEqual(res["errors"], 2)
+
+            # File B was restored
+            self.assertEqual(self.vfs.files[file_b], b"<movie><title>B-Backup</title></movie>")
+            # Files A and C were protected
+            self.assertEqual(self.vfs.files[file_a], content_a_edited)
+            self.assertEqual(self.vfs.files[file_c], content_c)
+
+    def test_10_safe_restore_helper_recovers_target_if_rename_fails(self):
+        """_safe_restore_modified_nfo recovers target file from safety copy if backup swap fails."""
+        nfo_path = "smb://nas/movies/SwapFail.nfo"
+        bak_path = nfo_path + ".bak"
+        target_content = b"<movie><title>Target Content</title></movie>"
+        backup_content = b"<movie><title>Backup Content</title></movie>"
+
+        self.vfs.files[nfo_path] = target_content
+        self.vfs.files[bak_path] = backup_content
+
+        patches = self._patch_vfs_and_json()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+            orig_rename = self.vfs.rename
+
+            def failing_rename(src, dst):
+                if src == bak_path:
+                    return False
+                return orig_rename(src, dst)
+
+            with patch.object(sudosync_core.xbmcvfs, "rename", side_effect=failing_rename):
+                with self.assertRaises(IOError):
+                    sudosync_core._safe_restore_modified_nfo(bak_path, nfo_path)
+
+            # Target content must remain restored from the safety copy and not lost
+            self.assertEqual(self.vfs.files[nfo_path], target_content)
+            self.assertEqual(self.vfs.files[bak_path], backup_content)
 
 
 class TestServiceV2Integration(unittest.TestCase):
@@ -604,6 +813,87 @@ class TestServiceV2Integration(unittest.TestCase):
         self.assertIsNotNone(v2_local.catalog.load(self.client_id))
         self.assertEqual(kodi_local.writes, 0)
         self.assertEqual(kodi_local.playcount, 0)
+
+    def test_05_v2_exception_prevents_v1_call(self):
+        """If v2_runtime.sync_cycle() raises any exception, v1 sync MUST NOT be called."""
+        mock_v2 = MagicMock()
+        mock_v2.sync_cycle.side_effect = RuntimeError("V2 storage corrupted")
+        monitor = MagicMock()
+        monitor.abortRequested.return_value = False
+
+        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+            res = sudosync_service._execute_integrated_live_cycle(
+                v2_runtime=mock_v2,
+                monitor=monitor,
+                show_notification=True,
+                suppress_local_changes=False,
+                collect_local=True,
+                skip_if_no_remote_change=False,
+                notify_local_changes=False,
+                receiver_notification_delay_ms=0,
+            )
+
+            self.assertTrue(res["busy"])
+            self.assertEqual(res["error"], "V2 storage corrupted")
+            self.assertEqual(res["applied_items"], 0)
+            mock_v1.assert_not_called()
+
+    def test_06_invalid_or_unknown_v2_result_prevents_v1_call(self):
+        """If v2_runtime.sync_cycle() returns None, non-dict, or unknown status, v1 sync MUST NOT be called."""
+        monitor = MagicMock()
+        monitor.abortRequested.return_value = False
+
+        # Case A: returns None
+        mock_v2 = MagicMock()
+        mock_v2.sync_cycle.return_value = None
+        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+            res = sudosync_service._execute_integrated_live_cycle(
+                v2_runtime=mock_v2,
+                monitor=monitor,
+                show_notification=True,
+                suppress_local_changes=False,
+                collect_local=True,
+                skip_if_no_remote_change=False,
+                notify_local_changes=False,
+                receiver_notification_delay_ms=0,
+            )
+            self.assertTrue(res["busy"])
+            self.assertEqual(res["error"], "invalid_v2_result")
+            mock_v1.assert_not_called()
+
+        # Case B: returns non-dict
+        mock_v2.sync_cycle.return_value = "invalid_string_result"
+        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+            res = sudosync_service._execute_integrated_live_cycle(
+                v2_runtime=mock_v2,
+                monitor=monitor,
+                show_notification=True,
+                suppress_local_changes=False,
+                collect_local=True,
+                skip_if_no_remote_change=False,
+                notify_local_changes=False,
+                receiver_notification_delay_ms=0,
+            )
+            self.assertTrue(res["busy"])
+            self.assertEqual(res["error"], "invalid_v2_result")
+            mock_v1.assert_not_called()
+
+        # Case C: returns unexpected status
+        mock_v2.sync_cycle.return_value = {"status": "corrupt_state", "applied_count": 0}
+        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+            res = sudosync_service._execute_integrated_live_cycle(
+                v2_runtime=mock_v2,
+                monitor=monitor,
+                show_notification=True,
+                suppress_local_changes=False,
+                collect_local=True,
+                skip_if_no_remote_change=False,
+                notify_local_changes=False,
+                receiver_notification_delay_ms=0,
+            )
+            self.assertTrue(res["busy"])
+            self.assertEqual(res["error"], "unexpected_v2_status")
+            mock_v1.assert_not_called()
 
 
 if __name__ == "__main__":

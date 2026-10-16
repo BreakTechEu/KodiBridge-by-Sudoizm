@@ -136,32 +136,61 @@ def _execute_integrated_live_cycle(
                 suppress_local_changes=suppress_local_changes,
                 publish_local=collect_local,
             )
-            v2_status = v2_result.get("status")
-            v2_applied = int(v2_result.get("applied_count") or 0)
-            if v2_status == "blocked":
-                log(
-                    "V2 live sync blocked by unrecovered session; skipping cycle until resolved.",
-                    xbmc.LOGERROR,
-                )
-                return {
-                    "busy": True,
-                    "blocked": True,
-                    "v2": v2_result,
-                    "applied_items": 0,
-                }
-            if v2_status == "deferred":
-                log(
-                    "V2 live sync deferred (reason={}).".format(v2_result.get("reason", "unknown")),
-                    xbmc.LOGINFO,
-                )
-            elif v2_status == "committed":
-                v2_committed = True
-                log(
-                    "V2 live sync committed {} item(s).".format(v2_applied),
-                    xbmc.LOGINFO,
-                )
         except Exception as exc:
-            log("V2 live sync cycle error: {}".format(exc), xbmc.LOGWARNING)
+            log("V2 live sync cycle error: {}".format(exc), xbmc.LOGERROR)
+            return {
+                "busy": True,
+                "error": str(exc),
+                "v2": None,
+                "applied_items": 0,
+            }
+
+        if not isinstance(v2_result, dict):
+            log("V2 live sync returned invalid result: {}".format(v2_result), xbmc.LOGERROR)
+            return {
+                "busy": True,
+                "error": "invalid_v2_result",
+                "v2": v2_result,
+                "applied_items": 0,
+            }
+
+        v2_status = v2_result.get("status")
+        v2_applied = int(v2_result.get("applied_count") or 0)
+        if v2_status == "blocked":
+            log(
+                "V2 live sync blocked by unrecovered session; skipping cycle until resolved.",
+                xbmc.LOGERROR,
+            )
+            return {
+                "busy": True,
+                "blocked": True,
+                "v2": v2_result,
+                "applied_items": 0,
+            }
+
+        if v2_status not in ("committed", "no_changes", "deferred"):
+            log(
+                "V2 live sync returned non-ok status '{}'; stopping cycle without running v1.".format(v2_status),
+                xbmc.LOGERROR,
+            )
+            return {
+                "busy": True,
+                "error": "unexpected_v2_status",
+                "v2": v2_result,
+                "applied_items": 0,
+            }
+
+        if v2_status == "deferred":
+            log(
+                "V2 live sync deferred (reason={}).".format(v2_result.get("reason", "unknown")),
+                xbmc.LOGINFO,
+            )
+        elif v2_status == "committed":
+            v2_committed = True
+            log(
+                "V2 live sync committed {} item(s).".format(v2_applied),
+                xbmc.LOGINFO,
+            )
 
     # If v2 committed remote changes to Kodi, update the v1 live snapshot with
     # suppress_local_changes=True so v1 records the newly applied state with

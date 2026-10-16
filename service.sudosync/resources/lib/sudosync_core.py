@@ -555,7 +555,6 @@ def select_this_as_initial_base():
 
 def clear_initial_base_selection():
     """Clear the shared base selection only before initialization is completed."""
-    addon = xbmcaddon.Addon(ADDON_ID)
     settings = addon_settings()
     config = read_shared_config(settings["base_path"])
     init = config.get("initialization") or {}
@@ -2875,6 +2874,38 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
     return True, "ok", ""
 
 
+def _safe_restore_modified_nfo(bak_path, target_path):
+    """Restore bak_path to target_path safely, protecting target_path from data loss."""
+    try:
+        os.replace(bak_path, target_path)
+        return True
+    except (OSError, IOError, ValueError):
+        pass
+
+    tmp_safety = target_path + ".rollback_tmp"
+    if xbmcvfs.exists(tmp_safety):
+        xbmcvfs.delete(tmp_safety)
+
+    had_target = xbmcvfs.exists(target_path)
+    moved_to_safety = False
+    if had_target:
+        moved_to_safety = xbmcvfs.rename(target_path, tmp_safety)
+        if not moved_to_safety:
+            raise IOError("Nie można przenieść pliku docelowego do tymczasowej kopii bezpieczeństwa: {}".format(target_path))
+
+    try:
+        success = xbmcvfs.rename(bak_path, target_path)
+        if not success:
+            raise IOError("Operacja xbmcvfs.rename nie powiodła się przy przywracaniu pliku z kopii zapasowej")
+        if moved_to_safety and xbmcvfs.exists(tmp_safety):
+            xbmcvfs.delete(tmp_safety)
+        return True
+    except Exception as exc:
+        if moved_to_safety and xbmcvfs.exists(tmp_safety):
+            xbmcvfs.rename(tmp_safety, target_path)
+        raise exc
+
+
 def rollback_sudosync_ids(manifest_path=None):
     if not manifest_path:
         manifest_path = os.path.join(_addon_profile_path(), "assign_ids_manifest.json")
@@ -2947,25 +2978,57 @@ def rollback_sudosync_ids(manifest_path=None):
                 )
                 continue
 
-            if xbmcvfs.exists(best_path):
-                if not xbmcvfs.delete(best_path):
-                    errors += 1
-                    _record_error(
-                        best_path,
-                        "delete_failed",
-                        "Nie udało się zastąpić zmodyfikowanego pliku .nfo kopią zapasową.",
-                    )
-                    continue
-
-            if xbmcvfs.rename(bak_path, best_path):
-                rollbacks += 1
-                restored += 1
-            else:
+            if not xbmcvfs.exists(best_path):
                 errors += 1
                 _record_error(
                     best_path,
-                    "rename_failed",
-                    "Nie udało się przywrócić kopii zapasowej .bak do pliku .nfo.",
+                    "missing_target_file",
+                    "Docelowy plik .nfo nie istnieje; zachowano plik kopii zapasowej (.bak).",
+                )
+                continue
+
+            expected_hash = entry.get("content_sha256")
+            if not expected_hash:
+                errors += 1
+                _record_error(
+                    best_path,
+                    "unverifiable_modified_file",
+                    "Brak sumy kontrolnej w manifeście dla zmodyfikowanego pliku; zachowano plik .nfo i kopię .bak.",
+                )
+                continue
+
+            try:
+                raw_bytes = _read_vfs_all(best_path)
+            except Exception as exc:
+                errors += 1
+                _record_error(
+                    best_path,
+                    "read_failed",
+                    "Nie udało się odczytać bieżącego pliku .nfo: {}".format(exc),
+                )
+                continue
+
+            actual_hash = hashlib.sha256(raw_bytes).hexdigest()
+            if actual_hash != expected_hash:
+                errors += 1
+                skipped_modified += 1
+                _record_error(
+                    best_path,
+                    "file_modified",
+                    "Plik .nfo został zmodyfikowany po przypisaniu SudoSync ID; zachowano plik .nfo i kopię .bak.",
+                )
+                continue
+
+            try:
+                _safe_restore_modified_nfo(bak_path, best_path)
+                rollbacks += 1
+                restored += 1
+            except Exception as exc:
+                errors += 1
+                _record_error(
+                    best_path,
+                    "restore_failed",
+                    "Nie udało się przywrócić kopii zapasowej .bak do pliku .nfo: {}".format(exc),
                 )
 
     _NFO_ID_CACHE.clear()
