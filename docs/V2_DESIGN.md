@@ -16,8 +16,8 @@ pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
 - Bez MySQL/MariaDB, bez serwera centralnego i bez chmury. Wspólnym transportem danych jest katalog dostępny dla wszystkich urządzeń Kodi: SMB, NFS lub lokalny udział.
 - Współdzielony katalog nie może zawierać danych, które należą wyłącznie do jednej instancji Kodi.
 - Zmiany biblioteki Kodi wyłącznie przez oficjalne JSON-RPC. Nie otwierać ani nie modyfikować plików `MyVideos*.db`.
-- Aktualizacje są dostarczane jako ZIP umieszczony przez administratora w katalogu współdzielonym. Wtyczka sama wykrywa i weryfikuje pakiet; nie dodawać do jej UI funkcji przesyłania/wgrywania ZIP-a.
-- Aktualizacje nie mogą być opcjonalnie wyłączane przez ustawienie użytkownika. Brak poprawnej, zaufanej aktualizacji nie może jednak oznaczać instalacji niezweryfikowanego kodu: w razie błędu instalacja zostaje przerwana i szczegółowo zalogowana.
+- Aktualizacje są pobierane z oficjalnego GitHub Releases (`BreakTechEu/SudoSync-Kodi-addon`, sprawdzane najwyżej raz na dobę i instalowane wyłącznie za jawną zgodą użytkownika) lub instalowane ręcznie ze wskazanego przez użytkownika pliku `.zip`.
+- W pliku `SudoSync.cfg` utrzymywana jest minimalna wymagana wersja wtyczki w sieci (`min_addon_version`). Urządzenie ze starszą wersją wtyczki jest zatrzymywane na etapie bootstrapu lub odświeżenia dzierżawy do czasu aktualizacji.
 - Wspierane są dwie najnowsze główne wersje Kodi. Zmianę zakresu wsparcia dokumentować w każdym wydaniu.
 
 ## Cele v2
@@ -36,7 +36,7 @@ pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
 - **Domena** — czyste funkcje do normalizacji identyfikatorów, walidacji rekordów, budowania planów i rozstrzygania konfliktów. Bez I/O i bez skutków ubocznych.
 - **Repozytorium współdzielone** — schematy JSON wersjonowane, walidacja danych wejściowych, zapis przez plik tymczasowy i bezpieczną podmianę, kopie odzyskiwania oraz jawna obsługa równoczesnego dostępu.
 - **Silnik synchronizacji** — osobne fazy: odkrywanie klientów, snapshot, analiza, podgląd, zatwierdzenie, zapis przez JSON-RPC, weryfikacja wyniku i dziennik operacji.
-- **Aktualizator** — osobny moduł z walidacją manifestu, wersji, podpisu, zawartości ZIP i zgodności dodatku; nie mieszać go z logiką biblioteki.
+- **Aktualizator** — sprawdzanie wydań GitHub Releases (raz na 24 h za zgodą użytkownika), ręczna instalacja z pliku ZIP, pełna walidacja struktury paczki i manifestu `addon.xml`, atomowa podmiana katalogu z kopią zapasową oraz egzekwowanie `min_addon_version` w `SudoSync.cfg`.
 - **Interfejs** — ustawienia i operacje administracyjne; każda operacja mogąca zmienić stan biblioteki musi wyświetlać zakres zmian i wymagać jawnego potwierdzenia.
 
 ## Model synchronizacji i bezpieczeństwo danych
@@ -50,15 +50,13 @@ pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
 - Operacje inicjalizacji muszą mieć plan tylko do odczytu, backup przed zapisem, wyraźne potwierdzenie i dziennik pozwalający wznowić lub bezpiecznie przerwać proces.
 - Nie traktować uszkodzonego lub nieczytelnego pliku konfiguracyjnego jak braku konfiguracji. Zachować oryginał, zgłosić błąd i przerwać operację, która mogłaby nadpisać dane.
 
-## Wymagania dla auto-update
+## Wymagania dla aktualizatora i strażnika wersji
 
-- Użyć standardowego, sprawdzonego w Pythonie mechanizmu RSA PKCS#1 v1.5 z SHA-256 albo innej dobrze zdefiniowanej biblioteki kryptograficznej, jeśli jest dostępna we wspieranych instalacjach Kodi. Nie implementować własnego parsera kryptograficznego, jeśli da się tego uniknąć.
-- Podpis musi obejmować dokładnie określone bajty manifestu i identyfikować wersję, identyfikator dodatku, minimalną wersję Kodi oraz skrót SHA-256 ZIP-a. Nie ufać nazwie pliku ani polu wersji bez weryfikacji podpisu.
-- Klucz prywatny nigdy nie może znaleźć się w repozytorium ani w ZIP-ie dodatku. Klucz publiczny jest przypięty w kliencie.
-- Odrzucać błędny podpis, błędny/niezgodny manifest, obcy identyfikator dodatku, nieobsługiwaną wersję, downgrade bez jawnej procedury odzyskiwania, nieoczekiwane pliki, zduplikowane ścieżki ZIP, ścieżki absolutne, `..`, symlinki, nadmierną liczbę plików i nadmierny rozmiar rozpakowanej zawartości.
-- Najpierw weryfikować całe archiwum i jego zawartość, dopiero potem rozpoczynać instalację. Nie rozpakowywać niezaufanych ścieżek bezpiecznie ograniczonych do katalogu dodatku.
-- Po instalacji weryfikować wersję i stan; jeśli Kodi wymaga restartu, jasno to komunikować. Nie usuwać ostatniej działającej kopii, dopóki nowa instalacja nie przejdzie walidacji.
-- Testy muszą obejmować poprawny podpis, zmieniony ZIP, zmieniony manifest, zły klucz, obcięty podpis, błędne kodowanie, złośliwe ścieżki, duplikaty, limity rozmiaru, downgrade i błędy I/O.
+- Sprawdzanie aktualizacji na GitHub Releases odbywa się najwyżej raz na dobę (lub na żądanie w ustawieniach) i wymaga jawnej zgody użytkownika przed pobraniem i instalacją.
+- Ręczna instalacja z lokalnego lub sieciowego pliku ZIP jest dostępna z poziomu ustawień wtyczki.
+- Przed rozpakowaniem weryfikować całe archiwum ZIP i jego zawartość (`_validate_addon_zip_package`): odrzucać uszkodzone archiwa, obcy identyfikator dodatku, niezgodną wersję w `addon.xml`, ścieżki absolutne, `..` oraz pliki spoza prefiksu `service.sudosync/`.
+- Rozpakowywać paczkę do katalogu tymczasowego obok dodatku i podmieniać katalog dodatku z zachowaniem kopii zapasowej poprzedniej wersji na wypadek błędu (`_extract_and_swap_addon`).
+- Po udanej instalacji podbijać `min_addon_version` w `SudoSync.cfg`. Na starcie usługi oraz podczas odświeżania dzierżawy sesji (`refresh_network_active_kodi_lease`) egzekwować, by żadne Kodi w sieci nie działało ze starszą wersją wtyczki niż `min_addon_version`.
 
 ## Ochrona przed podwójnym uruchomieniem usługi lokalnie
 
@@ -70,7 +68,7 @@ pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
 ## Wyłączność operacji synchronizacji
 
 - Wyłączność dotyczy mutującego cyklu synchronizacji, nie całego czasu życia dodatku Kodi.
-- Przy uzgodnionej pracy jednym Kodi naraz wystarcza blokada procesowa usługi. Fizyczna blokada między hostami i jej test są wymagane dopiero wtedy, gdy projekt zacznie dopuszczać jednoczesną pracę wielu usług Kodi.
+- Przy uzgodnionej pracy jednym Kodi naraz wystarcza blokada procesowa usługi oraz pomocnicza dzierżawa aktywnego Kodi na udziale NAS (`active_kodi_lock.json`, odświeżana w pętli usługi). Fizyczna blokada między hostami i jej test są wymagane dopiero wtedy, gdy projekt zacznie dopuszczać jednoczesną pracę wielu usług Kodi.
 - Po zdobyciu blokady klient tworzy znacznik zawierający session ID, client ID i czas rozpoczęcia; kolejna instancja odmawia rozpoczęcia operacji, dopóki znacznik istnieje.
 - Znacznik jest usuwany wyłącznie przez właściciela sesji po prawidłowym zakończeniu. Błąd odczytu, zapisu lub usunięcia oznacza odmowę dalszej pracy.
 - Znacznik pozostawiony po awarii nie może być automatycznie uznawany za osierocony na podstawie wieku. Przy starcie każda wtyczka najpierw odczytuje właściciela: urządzenie zapisane jako właściciel automatycznie podejmuje odzyskiwanie z dziennika, a inne urządzenia pozostają zablokowane. Nie ma automatycznego przejęcia sesji przez inne Kodi.
@@ -93,16 +91,16 @@ pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
 4. **Adapter Kodi i podgląd** — JSON-RPC, bezpieczna inicjalizacja, backup i jawne zatwierdzanie.
 5. **Synchronizacja LIVE** — wykrywanie zmian, opóźnianie podczas odtwarzania, idempotencja i ochrona przed pętlami.
 6. **SudoSync ID** — generowanie, walidacja, podgląd, backup i rollback.
-7. **Aktualizator** — manifest podpisany kryptograficznie, walidacja ZIP i pełne testy negatywne/pozytywne.
+7. **Aktualizator i strażnik wersji** — sprawdzanie GitHub Releases, walidacja ZIP i egzekwowanie `min_addon_version`.
 8. **Dokumentacja, CI i wydanie beta** — dopiero po przejściu wszystkich bramek i osobnej zgodzie właściciela na publikację.
 
 ## Zasada migracji
 
 Nie zakładać, że istniejące pliki współdzielone można nadpisać nowym schematem. Każda migracja musi być jawna, odwracalna i przetestowana na kopii. W razie niepewności v2 ma odmówić zapisu, zachowując dane źródłowe.
 
-## Stan implementacji fundamentu v2
+## Stan implementacji v2
 
-Stan po wdrożeniu modułów domenowych i adapterów (nie oznacza gotowości do wydania):
+Stan aktualnego kodu w repozytorium (wydanie Beta — wymaga odróżnienia testów jednostkowych od testów funkcjonalnych na rzeczywistym Kodi):
 
 - Zaimplementowano walidację snapshotów, normalizację silnych identyfikatorów, wersjonowanie pól, budowanie snapshotu z wyników JSON-RPC oraz czysty planer dry-run.
 - Planer grupuje rekordy tylko po typowanych silnych identyfikatorach. Niejednoznaczne grupy i konflikty pól są raportowane, nie nadpisywane. Rekordy zdalne nie są dodawane do lokalnej biblioteki.
@@ -110,7 +108,6 @@ Stan po wdrożeniu modułów domenowych i adapterów (nie oznacza gotowości do 
 - Zaimplementowano testowalny adapter JSON-RPC, adapter plikowy xbmcvfs, katalog współdzielonych snapshotów oraz abstrakcję repozytorium z kopią odzyskiwania.
 - Dodano runner transakcji z backupem przed zapisem, trwałym dziennikiem zamiaru, weryfikacją po każdej zmianie i pozostawieniem blokady przy niepewnym wyniku. Dodano też repozytorium backupów i dzienników z walidacją, kontrolą odczytu zwrotnego i odmową traktowania brakującego dziennika jako pustej operacji. Nie wykonuje automatycznego rollbacku.
 - Dodano protokół znacznika aktywnej sesji, rozpoznawanie właściciela po restarcie oraz runner odzyskiwania, który weryfikuje rzeczywisty stan Kodi, bezpiecznie wznawia nieukończone pozycje i pozostawia blokadę przy niepewnym wyniku. `service.py` wywołuje go przy starcie przed podglądem v2. Sam znacznik nie stanowi blokady.
-- Fizyczna weryfikacja międzyprocesowej blokady wspólnego zasobu jest wymagana tylko po rozszerzeniu projektu o równoczesną pracę usług Kodi. Nie jest bramką dla uzgodnionego sekwencyjnego użycia.
-- `service.py` uruchamia na starcie odzyskiwanie i diagnostyczny podgląd v2, ale zwykła synchronizacja nadal działa ścieżką dotychczasowego silnika v1 (linia 1.x). Główny pozostały etap: dokończyć bezpieczny przepływ podglądu, jawnego zatwierdzenia, transakcji i zwykłego cyklu synchronizacji v2. Kompozytor `build_kodi_v2_runtime` oraz czytanie NFO przez Kodi VFS są już zaimplementowane.
-- Adapter VFS i runner transakcji są testowane z atrapami API; sekwencyjne działanie na wspieranych wersjach Kodi pozostaje do potwierdzenia po przygotowaniu przepływu do testu.
-- Do ukończenia integracji z `service.py` i sekwencyjnej weryfikacji nie tworzyć paczki instalacyjnej ani nie deklarować, że synchronizacja działa end-to-end.
+- `service.py` jest zintegrowany z `v2_runtime`: na starcie wykonuje odzyskiwanie i podgląd (`v2_runtime.start()`), a w cyklu synchronizacji wywołuje `v2_runtime.sync_cycle()` (w `_execute_integrated_live_cycle`) oraz publikację snapshotu (`v2_runtime.publish_local_snapshot()`). Dodatkowo w `sudosync_bootstrap.py` i `service.py` działa dzierżawa pojedynczego aktywnego Kodi (`active_kodi_lock.json`) oraz egzekwowanie `min_addon_version`.
+- Powyższe moduły oraz ich integracja z `service.py` są przetestowane w testach jednostkowych z użyciem atrap (mocków) API Kodi. Weryfikacja funkcjonalna na rzeczywistych urządzeniach Kodi jest wykonywana osobno przez Agenta Antigravity i właściciela projektu.
+

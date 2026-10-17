@@ -26,103 +26,6 @@ SCHEMA_VERSION = 2
 DRY_RUN_REPORT_SCHEMA = 2
 LIVE_SCHEMA_VERSION = 1
 
-
-# --- SECURITY ---
-PUBLIC_KEY_PEM = """-----BEGIN RSA PUBLIC KEY-----
-MIIBCgKCAQEAxN/ThdQ2SImecef7Q53O0umPoHM2yYZO6WUeyyPyn9IdynrVyBT/
-yHgTXFoGsLupQbVjjlJFXRm0yfOCqAeS3Co8NPYFf+xTK+OiM9eleDFHYn3SQGoN
-zPN7bCCNxAPSR5nauJ7fYJarwUmjjBRDfd5/e6s3hwMBiy6EYUOYi+f8WErZrd/Z
-7t5UsH5ElqsK6mt/tE8G8KkONoFQ0fCDgTFE1HqBQA6eeZ5NoqoJi9Co+A3aJLbC
-gn1KEoH4u3eqS6pc5k1fcyr0BxKf7qj3ZqyQVNU+To0uT4wseX9uVrpWclckvWXI
-floamhW9nGAWsRGr9baG7nLh4mUi/yA+9QIDAQAB
------END RSA PUBLIC KEY-----"""
-
-def _verify_rsa_pkcs1_sha256(public_key_pem, message_bytes, signature_bytes):
-    import base64
-    import hashlib
-    
-    lines = [line.strip() for line in public_key_pem.strip().splitlines() if not line.startswith("---")]
-    der = base64.b64decode("".join(lines))
-    
-    def _read_length(der, idx):
-        length = der[idx]
-        idx += 1
-        if length & 0x80:
-            num_bytes = length & 0x7F
-            length = int.from_bytes(der[idx:idx+num_bytes], 'big')
-            idx += num_bytes
-        return length, idx
-        
-    def _read_integer(der, idx):
-        if der[idx] != 0x02:
-            raise ValueError("Expected INTEGER")
-        idx += 1
-        length, idx = _read_length(der, idx)
-        if der[idx] == 0x00:
-            val = int.from_bytes(der[idx+1:idx+length], 'big')
-        else:
-            val = int.from_bytes(der[idx:idx+length], 'big')
-        return val, idx+length
-
-    idx = 0
-    if der[idx] != 0x30:
-        raise ValueError("Expected SEQUENCE")
-    idx += 1
-    length, idx = _read_length(der, idx)
-    
-    if der[idx] == 0x30:
-        found = False
-        while idx < len(der):
-            if der[idx] == 0x03:
-                idx += 1
-                length, idx = _read_length(der, idx)
-                idx += 1 
-                found = True
-                break
-            idx += 1
-        if not found:
-            raise ValueError("No BIT STRING found")
-        
-        if der[idx] != 0x30:
-            raise ValueError("Expected SEQUENCE inside BIT STRING")
-        idx += 1
-        length, idx = _read_length(der, idx)
-        
-    n, idx = _read_integer(der, idx)
-    e, idx = _read_integer(der, idx)
-        
-    sig_int = int.from_bytes(signature_bytes, 'big')
-    if sig_int >= n:
-        raise ValueError("Signature integer too large")
-        
-    decrypted_int = pow(sig_int, e, n)
-    k = (n.bit_length() + 7) // 8
-    decrypted_bytes = decrypted_int.to_bytes(k, 'big')
-    
-    if decrypted_bytes[0:2] != b'\x00\x01':
-        return False
-        
-    sep_idx = decrypted_bytes.find(b'\x00', 2)
-    if sep_idx == -1:
-        return False
-        
-    for i in range(2, sep_idx):
-        if decrypted_bytes[i] != 0xFF:
-            return False
-            
-    payload = decrypted_bytes[sep_idx+1:]
-    
-    sha256_prefix = b'\x30\x31\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x01\x05\x00\x04\x20'
-    if not payload.startswith(sha256_prefix):
-        return False
-        
-    expected_hash = payload[len(sha256_prefix):]
-    actual_hash = hashlib.sha256(message_bytes).digest()
-    
-    return expected_hash == actual_hash
-
-# --- END SECURITY ---
-
 LIVE_FIELDS = ("playcount", "lastplayed", "userrating", "resume")
 RATING_IMPORT_WHITELIST = {6, 7, 8}
 _LIVE_LOCK_HANDLE = None
@@ -641,78 +544,6 @@ def _numeric_version(text):
     return (major, minor, patch, stage_rank, stage_num)
 
 
-def find_latest_update(base_path=None):
-    settings = addon_settings()
-    current_text = xbmcaddon.Addon(ADDON_ID).getAddonInfo("version") or "0.0.0"
-    base = (base_path or settings["base_path"]).strip()
-    if not base:
-        return {
-            "available": False,
-            "current_version": current_text,
-            "base_path": "",
-        }
-    base = base.rstrip("/") + "/"
-    current = _numeric_version(current_text)
-    try:
-        dirs, files = xbmcvfs.listdir(base)
-    except Exception as exc:
-        return {
-            "available": False,
-            "current_version": current_text,
-            "error": str(exc),
-            "base_path": base,
-        }
-
-    candidates = []
-    for filename in files:
-        match = UPDATE_ZIP_RE.match(filename or "")
-        if not match:
-            continue
-        ver_tuple = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-        suffix = match.group(4) or ""
-        version_text = "{}.{}.{}".format(*ver_tuple)
-        if suffix:
-            version_text += "-" + suffix
-        
-        full_numeric = _numeric_version(version_text)
-        candidates.append((full_numeric, version_text, filename))
-
-    if not candidates:
-        return {
-            "available": False,
-            "current_version": current_text,
-            "base_path": base,
-        }
-
-    candidates.sort(key=lambda x: (x[0], x[2]), reverse=True)
-    latest_tuple, latest_text, latest_file = candidates[0]
-    return {
-        "available": latest_tuple > current,
-        "current_version": current_text,
-        "version": latest_text,
-        "filename": latest_file,
-        "path": base + latest_file,
-        "base_path": base,
-    }
-
-
-def check_for_update(show_notification=True, manual=False):
-    result = find_latest_update()
-    if result.get("available") and show_notification:
-        xbmcgui.Dialog().notification(
-            "SudoSync — aktualizacja",
-            "Dostępna {}. Ustawienia SudoSync → Zainstaluj aktualizację.".format(result.get("version", "nowsza wersja")),
-            xbmcgui.NOTIFICATION_INFO,
-            9000,
-        )
-        log("Update available: {} -> {}".format(result.get("current_version"), result.get("version")))
-    elif result.get("error"):
-        log("Cannot check updates: {}".format(result["error"]), xbmc.LOGWARNING)
-    elif manual:
-        log("No newer update in {}".format(result.get("base_path", "")))
-    return result
-
-
 def _copy_vfs_to_local(src, dst):
     parent = os.path.dirname(dst)
     if parent and not os.path.isdir(parent):
@@ -735,44 +566,8 @@ def _safe_zip_member(name):
     return all(part not in (".", "..") for part in parts)
 
 
-def _validate_update_zip(zip_path, expected_version=None):
-    # Security: Verify RSA Signature appended to the end of the ZIP file
-    # The last 256 bytes (2048-bit RSA) is the signature. The rest is the ZIP message.
-    try:
-        with open(zip_path, "rb") as f:
-            data = f.read()
-    except Exception as exc:
-        raise ValueError("Nie mozna odczytac ZIP: {}".format(exc))
-        
-    if len(data) < 256:
-        raise ValueError("Brak podpisu lub plik za krotki (ZIP < 256).")
-        
-    message_bytes = data[:-256]
-    signature_bytes = data[-256:]
-    
-    if not _verify_rsa_pkcs1_sha256(PUBLIC_KEY_PEM, message_bytes, signature_bytes):
-        raise ValueError("Odmowa dostepu: Nieprawidlowy podpis kryptograficzny paczki! STATE UPDATE BLOCKED.")
-        
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        names = zf.namelist()
-        normalized_map = {str(name or "").replace("\\", "/"): name for name in names}
-        if not names or not all(_safe_zip_member(name) for name in normalized_map.keys() if name and not name.endswith("/")):
-            raise ValueError("Pakiet ZIP ma nieprawidłową strukturę lub zawiera niedozwoloną ścieżkę.")
-        manifest_name = ADDON_ID + "/addon.xml"
-        if manifest_name not in normalized_map:
-            raise ValueError("Pakiet nie zawiera {}.".format(manifest_name))
-        actual_name = normalized_map[manifest_name]
-        manifest = ET.fromstring(zf.read(actual_name))
-        if manifest.tag != "addon" or manifest.attrib.get("id") != ADDON_ID:
-            raise ValueError("To nie jest pakiet SudoSync.")
-        version = manifest.attrib.get("version") or "0.0.0"
-        if expected_version and _numeric_version(version) != _numeric_version(expected_version):
-            raise ValueError("Wersja w addon.xml ({}) nie zgadza się z nazwą pakietu ({}).".format(version, expected_version))
-        return version
-
-
 def _validate_addon_zip_package(zip_path, expected_version=None):
-    """Validate structure and addon.xml of a standard or signed SudoSync ZIP package."""
+    """Validate structure and addon.xml of a SudoSync ZIP package."""
     if not os.path.isfile(zip_path) or os.path.getsize(zip_path) < 100:
         raise ValueError("Pakiet aktualizacji ZIP nie istnieje lub jest pusty.")
     try:
@@ -887,30 +682,6 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
         "remote_path": source_desc,
         "local_package": local_zip,
     }
-
-
-def install_latest_update(show_dialogs=True):
-    """Install the newest SudoSync package directly from the hidden shared folder.
-
-    This intentionally does not use Kodi's file picker. The package is copied through
-    xbmcvfs, validated, staged beside the installed add-on, then atomically swapped.
-    The current Python process may keep running old code until Kodi is restarted.
-    """
-    result = find_latest_update()
-    if result.get("error"):
-        raise IOError(result["error"])
-    if not result.get("available"):
-        return {"installed": False, "available": False, "current_version": result.get("current_version")}
-
-    remote_zip = result["path"]
-    filename = result["filename"]
-    package_dir = xbmcvfs.translatePath("special://home/addons/packages/")
-    if not os.path.isdir(package_dir):
-        os.makedirs(package_dir)
-    local_zip = os.path.join(package_dir, filename)
-    _copy_vfs_to_local(remote_zip, local_zip)
-    package_version = _validate_update_zip(local_zip, result.get("version"))
-    return _extract_and_swap_addon(local_zip, package_version, remote_zip, show_dialogs=show_dialogs)
 
 
 GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/BreakTechEu/SudoSync-Kodi-addon/releases/latest"

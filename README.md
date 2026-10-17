@@ -3,8 +3,8 @@
 ---
 
 > [!WARNING]
-> **Beta Release Notice (SudoSync 2.0.1):**
-> SudoSync 2.0.1 is a **public beta / testing release** featuring the rebuilt v2 architecture and experimental SudoSync ID system for private videos. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
+> **Beta Release Notice (SudoSync 2.0.2):**
+> SudoSync 2.0.2 is a **public beta / testing release** featuring the rebuilt v2 architecture and experimental SudoSync ID system for private videos. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
 > Both releases are available in the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section.
 
 # SudoSync for Kodi
@@ -25,7 +25,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 - **Scraper & NFO Quarantine:** Newly scanned library items and NFO imports receive older internal versions to prevent accidental overwrites of existing shared playback progress.
 - **Experimental SudoSync ID:** Automatically assigns and securely injects unique identifiers into `.nfo` files for private home videos that lack standard online scraper IDs.
 - **Network ID vs UI Alias:** Distinctly separates internal network identifiers from user-friendly UI aliases to keep network mapping robust while displaying readable names.
-- **Cryptographic Security:** Self-updates via NAS are authenticated with a 2048-bit RSA signature. Untrusted or modified zip files are securely rejected.
+- **GitHub Releases & Version Guard:** Checks GitHub Releases once per day (with explicit user consent), supports manual ZIP installation, and enforces a minimum add-on version (`min_addon_version` in `SudoSync.cfg`) across all Kodi devices in the network.
 - **Journaled Sync:** Network sync gracefully handles partial Kodi API errors with an incremental journaling system, allowing for safe recovery.
 - **Strong File Limits:** Automatic file size and record count limits prevent Kodi memory exhaustion.
 
@@ -43,7 +43,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **SudoSync 2.0.1 (Beta):** Download `service.sudosync-2.0.1.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for testing new v2 features and SudoSync ID).
+   - **SudoSync 2.0.2 (Beta):** Download `service.sudosync-2.0.2.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for testing new v2 features and SudoSync ID).
    - **SudoSync 1.0.0 (Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for production environments requiring maximum stability).
 
 2. **Install in Kodi:**

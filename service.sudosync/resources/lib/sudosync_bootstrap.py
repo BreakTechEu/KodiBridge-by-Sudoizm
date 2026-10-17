@@ -328,36 +328,63 @@ def acquire_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
 
 
 def refresh_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
-    """Refresh the active Kodi heartbeat on NAS; return False if another Kodi took over."""
+    """Refresh the active Kodi heartbeat on NAS; return False on peer takeover or outdated addon version."""
     try:
         base = (base_path or get_base_path()).rstrip("/")
         if not base:
             return True
         lock_path = _active_kodi_lock_path(base)
         client_id, client_name = _local_client_identity()
+        local_version = _get_local_addon_version()
         now = float(now_epoch if now_epoch is not None else time.time())
+
+        if local_version:
+            cfg_status, cfg = read_sudosync_cfg(base + "/")
+            if cfg_status == "VALID" and isinstance(cfg, dict):
+                net = cfg.get("network_settings")
+                if isinstance(net, dict):
+                    remote_min = str(net.get("min_addon_version") or "").strip()
+                    if remote_min:
+                        from resources.lib.sudosync_core import _numeric_version
+                        if _numeric_version(local_version) < _numeric_version(remote_min):
+                            log(
+                                "Wykryto nowszą wymaganą wersję SudoSync w sieci ({}) podczas działania usługi (lokalna: {}). Zatrzymuję usługę.".format(
+                                    remote_min, local_version
+                                ),
+                                xbmc.LOGWARNING,
+                            )
+                            return False
 
         status, existing = _read_json_file(lock_path)
         if status == "VALID" and isinstance(existing, dict):
             owner_id = str(existing.get("client_id") or "").strip()
+            owner_name = str(existing.get("client_name") or owner_id or "Inne Kodi").strip()
             try:
                 updated_at = float(existing.get("updated_at_epoch") or 0.0)
             except Exception:
                 updated_at = 0.0
             if owner_id and owner_id != client_id and updated_at > 0.0 and (now - updated_at) < float(ttl_seconds):
+                log(
+                    "Dzierżawa aktywnego Kodi została przejęta przez inne urządzenie: {} (id={}).".format(
+                        owner_name, owner_id
+                    ),
+                    xbmc.LOGWARNING,
+                )
                 return False
 
         lease_payload = {
             "client_id": client_id,
             "client_name": client_name,
-            "addon_version": _get_local_addon_version(),
+            "addon_version": local_version,
             "updated_at_epoch": now,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(now))),
         }
         _write_json_file(lock_path, lease_payload)
         return True
-    except Exception:
-        return False
+    except Exception as exc:
+        log("Błąd odświeżania dzierżawy aktywnego Kodi: {}".format(exc), xbmc.LOGWARNING)
+        # Przejściowy błąd I/O sieci nie oznacza konfliktu urządzeń
+        return True
 
 
 def release_network_active_kodi_lease(base_path=None):
@@ -522,6 +549,7 @@ def run_bootstrap(force_select_path=False):
     """Zwraca True, jeśli bootstrap zakończony i można przejść do logiki operacyjnej, False w przypadku wstrzymania/błędu."""
     log("Rozpoczęcie fazy BOOTSTRAP")
     base_path = get_base_path()
+    old_base_path = base_path
     
     # 1. USTALENIE BASE PATH
     # Brak ustawienia (pusty ciąg) lub ręczne wywołanie konfiguratora z ustawień uruchamia kreator wyboru folderu
@@ -556,6 +584,8 @@ def run_bootstrap(force_select_path=False):
         else:
             base_path = selected_path + ".SudoSync/"
             
+        if old_base_path and old_base_path.rstrip("/") != base_path.rstrip("/"):
+            release_network_active_kodi_lease(old_base_path)
         set_base_path(base_path)
     elif not base_path.endswith("/"):
         base_path += "/"
@@ -638,53 +668,3 @@ def run_bootstrap(force_select_path=False):
         xbmcgui.Dialog().ok("Błąd Krytyczny", "Nie udało się odczytać SudoSync.cfg pomimo jego zapisu.")
         return False
 
-def check_and_enforce_updates_before_bootstrap():
-    """Check mandatory updates before bootstrap.
-
-    Returns ``False`` when no update is available, ``"restart"`` after an
-    update was installed, or ``"blocked"`` when a discovered update could not
-    be verified or installed. A rejected update must not silently fall through
-    to normal service startup.
-    """
-    from resources.lib.sudosync_core import check_for_update, install_latest_update
-    # Sprawdzamy czy base_path jest ustawiony (jeśli pusty, to pomijamy)
-    base_path = get_base_path()
-    if not base_path:
-        return False  # brak ścieżki do folderu aktualizacji
-        
-    try:
-        result = check_for_update(show_notification=False, manual=False)
-    except Exception as exc:
-        log("Cannot check mandatory updates: {}".format(exc), xbmc.LOGWARNING)
-        return False
-    if result.get("error"):
-        log("Cannot check mandatory updates: {}".format(result["error"]), xbmc.LOGWARNING)
-        return False
-
-    if result.get("available"):
-        try:
-            installed = install_latest_update(show_dialogs=False)
-            if installed.get("installed"):
-                xbmcgui.Dialog().notification(
-                    "SudoSync zaktualizowano",
-                    "Zainstalowano {}. Kodi zostanie zrestartowane, aby wczytac nowa wersje.".format(installed.get("version")),
-                    xbmcgui.NOTIFICATION_INFO,
-                    10000,
-                )
-                xbmc.sleep(2000)
-                xbmc.executebuiltin("RestartApp")
-                return "restart"
-            return False
-        except Exception as exc:
-            filename = result.get("filename") or "nieznany plik ZIP"
-            log("Mandatory update {} was rejected or could not be installed: {}".format(filename, exc), xbmc.LOGERROR)
-            xbmcgui.Dialog().ok(
-                "SudoSync — aktualizacja zablokowana",
-                "W folderze .SudoSync znaleziono nowszy pakiet aktualizacji ({}), "
-                "ale nie można potwierdzić jego autentyczności lub poprawnie go "
-                "zainstalować. SudoSync nie uruchomi synchronizacji na starej "
-                "wersji. Administrator powinien zastąpić albo usunąć tę paczkę. "
-                "Szczegóły zapisano w dzienniku Kodi.".format(filename),
-            )
-            return "blocked"
-    return False

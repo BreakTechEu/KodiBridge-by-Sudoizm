@@ -281,19 +281,10 @@ def _run_service():
     settings = addon_settings()
     
     from resources.lib.sudosync_bootstrap import (
-        check_and_enforce_updates_before_bootstrap,
         refresh_network_active_kodi_lease,
         release_network_active_kodi_lease,
         run_bootstrap,
     )
-
-    update_status = check_and_enforce_updates_before_bootstrap()
-    if update_status == "restart":
-        log("Aktualizacja zainstalowana. SudoSync przerywa działanie obecnej instancji i czeka na restart.")
-        return
-    if update_status == "blocked":
-        log("SudoSync nie uruchamia usługi, ponieważ wykryta paczka aktualizacji nie przeszła weryfikacji.", xbmc.LOGERROR)
-        return
 
     if not run_bootstrap():
         log("Bootstrap konfiguracji zatrzymany. Zatrzymuje serwis.")
@@ -399,8 +390,23 @@ def _run_service():
                 settings = addon_settings()
                 base_for_lease = settings.get("base_path") or base_for_lease
                 if (now - last_lease_refresh) >= 60:
-                    refresh_network_active_kodi_lease(base_for_lease, now_epoch=now)
+                    lease_ok = refresh_network_active_kodi_lease(base_for_lease, now_epoch=now)
                     last_lease_refresh = now
+                    if not lease_ok:
+                        log(
+                            "Wykryto inne aktywne Kodi w sieci lub nowszą wymaganą wersję wtyczki — utrata dzierżawy. Zatrzymuję usługę.",
+                            xbmc.LOGWARNING,
+                        )
+                        try:
+                            xbmcgui.Dialog().notification(
+                                "SudoSync",
+                                "Inne Kodi przejęło sesję lub wymaga nowszej wersji. Usługa wstrzymana.",
+                                xbmcgui.NOTIFICATION_WARNING,
+                                5000,
+                            )
+                        except Exception:
+                            pass
+                        break
                 snapshot_interval = settings["interval_seconds"]
                 live_poll = settings.get("live_poll_seconds", 60)
                 shared = read_shared_config(settings["base_path"])

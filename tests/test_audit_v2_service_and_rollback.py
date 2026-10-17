@@ -656,8 +656,7 @@ class TestServiceV2Integration(unittest.TestCase):
         mock_monitor.playback_dirty = False
         mock_monitor.user_update_dirty = False
 
-        with patch("resources.lib.sudosync_bootstrap.check_and_enforce_updates_before_bootstrap", return_value="ok"), \
-                patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=True), \
+        with patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=True), \
                 patch("resources.lib.sudosync_v2.runtime.build_kodi_v2_runtime", return_value=v2_local), \
                 patch.object(sudosync_service, "SudoSyncMonitor", return_value=mock_monitor), \
                 patch.object(sudosync_service, "addon_settings", return_value={
