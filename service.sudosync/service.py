@@ -86,32 +86,44 @@ class SudoSyncMonitor(xbmc.Monitor):
             self._mark_dirty()
 
 
-def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_client_id=None):
+def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_client_id=None, init_completed=False):
     if v2_runtime is not None:
-        try:
-            v2_pub = v2_runtime.publish_local_snapshot(
-                abort_requested=abort_requested,
-                suppress_local_changes=False,
-            )
-            log("V2 initial snapshot status={}".format(v2_pub.get("status")), xbmc.LOGINFO)
-            if base_client_id:
-                try:
-                    if v2_runtime.catalog.load(base_client_id, abort_requested=abort_requested) is not None:
-                        v2_init = v2_runtime.initialization_preview(
-                            base_client_id,
-                            abort_requested=abort_requested,
-                        )
-                        log("V2 initialization preview status={}".format(v2_init.get("status")), xbmc.LOGINFO)
-                except Exception as exc:
-                    log("V2 initialization preview skipped: {}".format(exc), xbmc.LOGWARNING)
-        except Exception as exc:
-            log("V2 initial snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
+        if init_completed:
+            try:
+                v2_pub = v2_runtime.publish_local_snapshot(
+                    abort_requested=abort_requested,
+                    suppress_local_changes=False,
+                )
+                log("V2 initial snapshot status={}".format(v2_pub.get("status")), xbmc.LOGINFO)
+            except Exception as exc:
+                log("V2 initial snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
+        if base_client_id:
+            try:
+                if v2_runtime.catalog.load(base_client_id, abort_requested=abort_requested) is not None:
+                    v2_init = v2_runtime.initialization_preview(
+                        base_client_id,
+                        abort_requested=abort_requested,
+                    )
+                    log("V2 initialization preview status={}".format(v2_init.get("status")), xbmc.LOGINFO)
+            except Exception as exc:
+                log("V2 initialization preview skipped: {}".format(exc), xbmc.LOGWARNING)
 
     collect_and_write(show_notification=False)
     try:
         run_dry_run(show_notification=False)
     except Exception as exc:
         log("DRY RUN skipped/failed: {}".format(exc), xbmc.LOGWARNING)
+
+
+def _live_retry_delay_seconds(result, live_poll):
+    """Return backoff delay in seconds if live sync failed or is blocked, else 0."""
+    if isinstance(result, dict) and (bool(result.get("error")) or bool(result.get("blocked"))):
+        try:
+            poll_val = int(live_poll)
+        except (ValueError, TypeError):
+            poll_val = 60
+        return max(poll_val, 30)
+    return 0
 
 
 def _execute_integrated_live_cycle(
@@ -320,6 +332,7 @@ def _run_service():
     live_poll = settings.get("live_poll_seconds", 60)
     last_snapshot = 0.0
     last_live_poll = 0.0
+    live_retry_not_before = 0.0
 
     try:
         sync_initial_base_selection(show_notification=False)
@@ -341,11 +354,15 @@ def _run_service():
             if result.get("waiting"):
                 log("LIVE waiting for clients: {}".format(", ".join(result.get("waiting_for_clients") or [])))
             last_live_poll = time.time()
+            startup_delay = _live_retry_delay_seconds(result, live_poll)
+            if startup_delay > 0:
+                live_retry_not_before = time.time() + startup_delay
         else:
             _initial_snapshot_and_analyse(
                 v2_runtime=v2_runtime,
                 abort_requested=monitor.abortRequested,
                 base_client_id=init.get("base_client_id"),
+                init_completed=bool(init.get("completed", False)),
             )
             last_snapshot = time.time()
     except Exception as exc:
@@ -395,7 +412,7 @@ def _run_service():
                         )
                     if poll_due:
                         last_live_poll = time.time()
-                elif (event_due or poll_due) and not monitor.scanning:
+                elif (event_due or poll_due) and not monitor.scanning and time.time() >= live_retry_not_before:
                     suppress = bool(
                         monitor.scan_refresh_pending
                         and not monitor.playback_dirty
@@ -416,6 +433,9 @@ def _run_service():
                         receiver_notification_delay_ms=0,
                     )
                     last_live_poll = time.time()
+                    retry_delay = _live_retry_delay_seconds(result, live_poll)
+                    if retry_delay > 0:
+                        live_retry_not_before = time.time() + retry_delay
                     if not result.get("busy"):
                         monitor.dirty = False
                         monitor.dirty_since = 0.0
@@ -430,6 +450,7 @@ def _run_service():
                         v2_runtime=v2_runtime,
                         abort_requested=monitor.abortRequested,
                         base_client_id=init.get("base_client_id"),
+                        init_completed=bool(init.get("completed", False)),
                     )
                     last_snapshot = time.time()
                     monitor.dirty = False

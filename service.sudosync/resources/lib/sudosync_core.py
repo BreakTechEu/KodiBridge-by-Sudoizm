@@ -2720,7 +2720,8 @@ def _sync_v2_after_initial_apply(settings, client_id):
             client_id,
             settings["client_name"],
         )
-        v2_runtime.publish_local_snapshot(suppress_local_changes=False)
+        # Wartosci zapisane przez inicjalizacje pochodza ze snapshotu bazowego, a nie z lokalnej edycji, wiec nie moga otrzymac najwyzszej wersji i nadpisac nowszych zmian innych urzadzen.
+        v2_runtime.publish_local_snapshot(suppress_local_changes=True)
     except Exception as exc:
         log("V2 post-initialization snapshot publish skipped: {}".format(exc), xbmc.LOGWARNING)
 

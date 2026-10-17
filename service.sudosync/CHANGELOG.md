@@ -26,6 +26,11 @@ Przebudowa architektury SudoSync (architektura v2) oraz kluczowe usprawnienia be
   - Jawne logowanie ostrzeżeń (`LOGWARNING`) przy błędach odczytu filmów lub odcinków podczas budowania bezpiecznej mapy tożsamości (`_get_secure_local_identity_map`).
   - Obsługa znaczników czasu `generated_at` z milisekundami w `_validate_remote_snapshot` (blokada zegarów z przyszłości o tolerancji 1 godziny działa również dla snapshotów LIVE).
   - Dodanie testów jednostkowych ścieżki zapisu LIVE i weryfikacji tożsamości (`tests/test_live_apply_identity.py`).
+  - Pierwsza publikacja snapshotu klienta w katalogu v2 (`_record_versions` przy `previous_snapshot is None`) przypisuje wszystkim polom wersje zerowe (`lc=0, seq=0`), zapobiegając nadpisywaniu historii peerów przez nowo dołączone urządzenie.
+  - Wywołanie `publish_local_snapshot` w `_initial_snapshot_and_analyse` bramkowane parametrem `init_completed=True` (brak publikacji lokalnego snapshotu do v2 przed ukończeniem inicjalizacji).
+  - Publikacja snapshotu po zaaplikowaniu inicjalizacji bazowej (`_sync_v2_after_initial_apply`) z jawnym `suppress_local_changes=True`, zapobiegającym podbijaniu wersji pól przejętych ze snapshotu bazy.
+  - Mechanizm backoffu po błędzie lub blokadzie cyklu LIVE (`_live_retry_delay_seconds` w `service.py` z minimalnym opóźnieniem `max(live_poll, 30)` sekund) z zachowaniem flag `dirty` na kolejną próbę.
+  - Zestaw testów jednostkowych weryfikujących wersje zerowe pierwszego snapshotu, scenariusz audytu z peerem, brak publikacji przed inicjalizacją, backoff pętli usługi i kontrolę flag (`tests/test_v2_first_publish_and_backoff.py`).
 
 SudoSync 1.1.0 (v2 Beta)
 ======================

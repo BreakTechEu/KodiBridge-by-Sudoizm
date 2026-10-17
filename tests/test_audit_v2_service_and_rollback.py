@@ -777,8 +777,8 @@ class TestServiceV2Integration(unittest.TestCase):
             self.assertEqual(res["applied_items"], 0)
             mock_v1.assert_not_called()
 
-    def test_04_pre_initialization_publishes_v2_snapshot_and_runs_readonly_preview(self):
-        """Before initial sync is completed, _initial_snapshot_and_analyse publishes v2 snapshot and runs read-only initialization_preview without modifying Kodi."""
+    def test_04_pre_initialization_runs_readonly_preview_without_publishing(self):
+        """Before initial sync is completed, _initial_snapshot_and_analyse runs read-only initialization_preview without publishing v2 snapshot or modifying Kodi."""
         lock_factory = ProcessLocalLockFactory()
         kodi_local = MutableFakeKodi(movie_id=10, playcount=0)
         kodi_base = MutableFakeKodi(movie_id=1, playcount=3)
@@ -807,10 +807,11 @@ class TestServiceV2Integration(unittest.TestCase):
                 v2_runtime=v2_local,
                 abort_requested=lambda: False,
                 base_client_id=self.peer_id,
+                init_completed=False,
             )
 
-        # Local v2 snapshot was published, and 0 Kodi writes were executed (user approval required first)
-        self.assertIsNotNone(v2_local.catalog.load(self.client_id))
+        # Local v2 snapshot must NOT be published before initialization completes, and 0 Kodi writes executed
+        self.assertIsNone(v2_local.catalog.load(self.client_id))
         self.assertEqual(kodi_local.writes, 0)
         self.assertEqual(kodi_local.playcount, 0)
 

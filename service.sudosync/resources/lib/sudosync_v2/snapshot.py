@@ -77,6 +77,11 @@ def _state(item):
 
 
 def _record_versions(state, prior, client_id, logical_clock, has_previous_snapshot=False, suppress_local_changes=False):
+    if not has_previous_snapshot:
+        return {
+            field: {"lc": 0, "seq": 0, "client_id": client_id}
+            for field in SYNC_FIELDS
+        }
     prior_state = prior.get("state", {}) if isinstance(prior, dict) else {}
     prior_versions = prior.get("versions", {}) if isinstance(prior, dict) else {}
     versions = {}
