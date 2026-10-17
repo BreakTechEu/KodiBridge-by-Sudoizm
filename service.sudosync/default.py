@@ -20,9 +20,12 @@ from resources.lib.sudosync_core import (
     check_for_update,
     clear_initial_base_selection,
     collect_and_write,
+    find_github_update,
     find_latest_update,
     get_or_create_client_id,
+    install_github_update,
     install_latest_update,
+    install_update_from_zip_path,
     read_local_status,
     read_shared_config,
     run_dry_run,
@@ -42,13 +45,16 @@ def show_status():
     if isinstance(rpcv, dict):
         rpcv = "{}.{}.{}".format(rpcv.get("major", 0), rpcv.get("minor", 0), rpcv.get("patch", 0))
 
-    upd = check_for_update(show_notification=False)
-    if upd.get("available"):
-        update_text = "Dostępna: {} ({})".format(upd.get("version"), upd.get("filename"))
-    elif upd.get("error"):
-        update_text = "Nie udało się sprawdzić: {}".format(upd.get("error"))
+    import xbmcaddon
+    addon_version = xbmcaddon.Addon("service.sudosync").getAddonInfo("version")
+    gh_upd = status.get("last_github_update_result") or {}
+    gh_when = status.get("last_github_update_check_at") or "nie sprawdzano"
+    if gh_upd.get("available"):
+        update_text = "Dostępna na GitHub: {} (sprawdzono: {})".format(gh_upd.get("version"), gh_when)
+    elif gh_upd.get("error"):
+        update_text = "Błąd sprawdzenia GitHub ({}): {}".format(gh_when, gh_upd.get("error"))
     else:
-        update_text = "Brak nowszej wersji (zainstalowana {})".format(upd.get("current_version", "—"))
+        update_text = "Brak nowszej wersji (zainstalowana {}, sprawdzono: {})".format(addon_version, gh_when)
 
     try:
         shared = sync_initial_base_selection(show_notification=False)
@@ -386,30 +392,56 @@ def live_sync_dialog():
     )
 
 def update_dialog():
-    result = check_for_update(show_notification=False, manual=True)
+    import os
+    import time
+    from resources.lib.sudosync_core import _addon_profile_path, _write_local_json, utc_now
+
+    result = find_github_update()
+    local_status = read_local_status()
+    local_status["last_github_update_check_epoch"] = time.time()
+    local_status["last_github_update_check_at"] = utc_now()
+    local_status["last_github_update_result"] = {
+        "available": bool(result.get("available")),
+        "version": str(result.get("version") or ""),
+        "current_version": str(result.get("current_version") or ""),
+        "error": str(result.get("error") or ""),
+    }
+    _write_local_json(os.path.join(_addon_profile_path(), "status.json"), local_status)
+
     if result.get("error"):
         xbmcgui.Dialog().ok(
-            "SudoSync — aktualizacja",
-            "Nie udało się sprawdzić aktualizacji:\n{}".format(result["error"]),
+            "SudoSync — aktualizacja (GitHub)",
+            "Nie udało się sprawdzić aktualizacji na GitHub Releases:\n{}\n\n"
+            "Możesz użyć opcji instalacji ze wskazanego pliku ZIP.".format(result["error"]),
         )
         return
     if not result.get("available"):
         xbmcgui.Dialog().ok(
-            "SudoSync — aktualizacja",
-            "Masz najnowszą wersję dostępną w folderze .SudoSync.\n\nZainstalowana: {}".format(
+            "SudoSync — aktualizacja (GitHub)",
+            "Masz najnowszą wersję dostępną w GitHub Releases.\n\nZainstalowana: {}".format(
                 result.get("current_version", "—")
             ),
         )
         return
     if xbmcgui.Dialog().yesno(
-        "SudoSync — aktualizacja",
-        "Dostępna jest wersja {}.\n\nSudoSync może pobrać ją bezpośrednio z ukrytego folderu .SudoSync i zainstalować bez szukania ZIP-a. Zainstalować teraz?".format(
-            result.get("version")
+        "SudoSync — dostępna aktualizacja",
+        "Na GitHub Releases dostępna jest nowa wersja SudoSync {} (obecnie zainstalowana: {}).\n\n"
+        "Pobrać i zainstalować aktualizację teraz?".format(
+            result.get("version"), result.get("current_version", "—")
         ),
         yeslabel="Zainstaluj",
         nolabel="Anuluj",
     ):
-        install_latest_update(show_dialogs=True)
+        install_github_update(update_info=result, show_dialogs=True)
+
+
+def install_local_zip_dialog():
+    zip_path = xbmcgui.Dialog().browse(
+        1, "Wybierz pakiet aktualizacji SudoSync (.zip)", "files", ".zip"
+    )
+    if not zip_path:
+        return
+    install_update_from_zip_path(zip_path, show_dialogs=True)
 
 
 def main():
@@ -417,7 +449,7 @@ def main():
     try:
         if action == "bootstrap":
             from resources.lib.sudosync_bootstrap import run_bootstrap
-            if run_bootstrap():
+            if run_bootstrap(force_select_path=True):
                 xbmcgui.Dialog().ok("SudoSync", "Konfigurator zakończony pomyślnie. Środowisko gotowe.")
         elif action == "collect":
             collect_and_write(show_notification=True)
@@ -454,19 +486,21 @@ def main():
             live_sync_dialog()
         elif action in ("checkupdate", "update"):
             update_dialog()
+        elif action in ("installlocalzip", "localupdate"):
+            install_local_zip_dialog()
         elif action in ("installupdate", "selfupdate"):
-            result = find_latest_update()
+            result = find_github_update()
             if result.get("error"):
                 raise IOError(result["error"])
             if not result.get("available"):
-                xbmcgui.Dialog().ok("SudoSync — aktualizacja", "Brak nowszej wersji w .SudoSync.")
+                xbmcgui.Dialog().ok("SudoSync — aktualizacja", "Brak nowszej wersji na GitHub Releases.")
             elif xbmcgui.Dialog().yesno(
                 "SudoSync — aktualizacja",
-                "Zainstalować wersję {} bezpośrednio z .SudoSync?".format(result.get("version")),
+                "Zainstalować wersję {} z GitHub Releases?".format(result.get("version")),
                 yeslabel="Zainstaluj",
                 nolabel="Anuluj",
             ):
-                install_latest_update(show_dialogs=True)
+                install_github_update(update_info=result, show_dialogs=True)
         elif action in ("assignids", "assign_ids"):
             from resources.lib.sudosync_core import assign_sudosync_ids, preview_sudosync_ids
             if not addon_settings().get("sudosync_id_enabled"):

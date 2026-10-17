@@ -4,8 +4,8 @@
 
 > [!WARNING]
 > **Ostrzeżenie o wersji Beta (SudoSync 2.0.0):**
-> SudoSync 2.0.0 jest **wersją testową (Beta)** wprowadzającą przebudowaną architekturę v2 oraz eksperymentalną obsługę identyfikatorów SudoSync ID dla prywatnych wideo. Mimo szczegółowych testów jednostkowych i odpornościowych, wydanie to jest przeznaczone do testów i dla wczesnych użytkowników. Jeżeli potrzebujesz w 100% sprawdzonego i stabilnego środowiska produkcyjnego, zalecamy korzystanie ze stabilnej wersji **SudoSync 1.0.0** na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync/tree/v1-stable).
-> Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/SudoSync/releases)**.
+> SudoSync 2.0.0 jest **wersją testową (Beta)** wprowadzającą przebudowaną architekturę v2 oraz eksperymentalną obsługę identyfikatorów SudoSync ID dla prywatnych wideo. Mimo szczegółowych testów jednostkowych i odpornościowych, wydanie to jest przeznaczone do testów i dla wczesnych użytkowników. Jeżeli potrzebujesz w 100% sprawdzonego i stabilnego środowiska produkcyjnego, zalecamy korzystanie ze stabilnej wersji **SudoSync 1.0.0** na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
+> Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)**.
 
 # SudoSync dla Kodi
 
@@ -42,8 +42,8 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 ## Instalacja i konfiguracja
 
 1. **Źródło instalacji:**
-   - **SudoSync 2.0.0 (Beta):** Pobierz plik `service.sudosync-2.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** (zalecany do testowania nowych funkcji v2 i SudoSync ID).
-   - **SudoSync 1.0.0 (Stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** (zalecany do środowisk produkcyjnych wymagających maksymalnej stabilności).
+   - **SudoSync 2.0.0 (Beta):** Pobierz plik `service.sudosync-2.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecany do testowania nowych funkcji v2 i SudoSync ID).
+   - **SudoSync 1.0.0 (Stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecany do środowisk produkcyjnych wymagających maksymalnej stabilności).
 
 2. **Instalacja w Kodi:**
    - W Kodi przejdź do: *Ustawienia -> Dodatki -> Zainstaluj z pliku zip*.
@@ -64,10 +64,11 @@ Szczegółowa instrukcja bezpiecznego ręcznego testu wersji 2.0.0 (Beta) krok p
 ## Aktualizacja wtyczki
 
 > [!IMPORTANT]
-> **Ważna informacja dotycząca aktualizacji:**
-> Obecnie (czasowo) jedynym prawidłowym i nie psującym instalacji sposobem aktualizacji wtyczki jest umieszczenie nowej wersji (pliku `.zip`) bezpośrednio we wspólnym folderze sieciowym `.SudoSync` (np. `smb://.../.SudoSync/service.sudosync-X.X.X.zip`).
->
-> SudoSync samoczynnie wykryje nowy pakiet w udziale sieciowym i przeprowadzi aktualizację (wyświetlając powiadomienie z pytaniem o instalację lub instalując go w tle, o ile włączono automatyczne aktualizacje w konfiguracji wtyczki). Nie należy instalować nowej wersji na istniejącą instalację poprzez standardową opcję Kodi „Zainstaluj z pliku zip”.
+> **Mechanizm bezpiecznej aktualizacji:**
+> Wtyczka SudoSync posiada wbudowany system aktualizacji chroniący spójność sieci:
+> 1. **Automatyczne sprawdzanie w GitHub Releases (raz na dobę):** Wtyczka sprawdza raz na 24 godziny dostępność nowego wydania w oficjalnym repozytorium GitHub (`BreakTechEu/SudoSync-Kodi-addon`). Nie wykonuje cichych aktualizacji w tle — po wykryciu nowej wersji wyświetla pytanie o zgodę na pobranie i instalację (można też wywołać sprawdzenie ręcznie w ustawieniach wtyczki).
+> 2. **Aktualizacja z lokalnego pliku ZIP:** W ustawieniach wtyczki znajduje się opcja ręcznego wskazania i zainstalowania paczki `service.sudosync-X.X.X.zip` z dysku lokalnego lub udziału sieciowego.
+> 3. **Strażnik zgodności wersji w sieci (`min_addon_version` w `SudoSync.cfg`):** Gdy którekolwiek urządzenie Kodi w sieci zostanie zaktualizowane do nowszej wersji, zapisuje wymaganą minimalną wersję we wspólnym pliku `SudoSync.cfg`. Jeśli inne urządzenie Kodi uruchomi się ze starszą wersją wtyczki, SudoSync wymusi aktualizację (z GitHub Releases lub wskazanego pliku ZIP) albo zablokuje działanie usługi do czasu zaktualizowania wtyczki.
 
 ---
 

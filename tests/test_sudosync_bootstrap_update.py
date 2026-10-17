@@ -114,5 +114,173 @@ class TestSentinelPathRemoval(unittest.TestCase):
             self.assertEqual(settings["base_path"], sentinel_path)
 
 
+class TestSettingsAndIconIntegrity(unittest.TestCase):
+    @staticmethod
+    def _parse_po(path):
+        entries = {}
+        current_ctx = None
+        current_id = None
+        current_str = None
+        with open(path, "r", encoding="utf-8") as handle:
+            for raw_line in handle:
+                line = raw_line.strip()
+                if line.startswith('msgctxt "#') and line.endswith('"'):
+                    current_ctx = line[len('msgctxt "#'):-1]
+                elif line.startswith('msgid "') and line.endswith('"'):
+                    current_id = line[len('msgid "'):-1]
+                elif line.startswith('msgstr "') and line.endswith('"'):
+                    current_str = line[len('msgstr "'):-1]
+                    if current_ctx is not None:
+                        entries[current_ctx] = (current_id, current_str)
+                        current_ctx = None
+        return entries
+
+    def test_settings_xml_uses_valid_numeric_string_ids_in_both_languages(self):
+        import xml.etree.ElementTree as ET
+        addon_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync"))
+        settings_path = os.path.join(addon_dir, "resources", "settings.xml")
+        en_po = self._parse_po(os.path.join(addon_dir, "resources", "language", "resource.language.en_gb", "strings.po"))
+        pl_po = self._parse_po(os.path.join(addon_dir, "resources", "language", "resource.language.pl_pl", "strings.po"))
+
+        # Every string ID in en_gb must exist in pl_pl with the exact same msgid
+        for ctx, (en_msgid, en_msgstr) in en_po.items():
+            self.assertIn(ctx, pl_po, "Missing msgctxt #{} in pl_pl/strings.po".format(ctx))
+            pl_msgid, pl_msgstr = pl_po[ctx]
+            self.assertEqual(
+                en_msgid,
+                pl_msgid,
+                "Mismatched msgid for #{}: en='{}' vs pl='{}'".format(ctx, en_msgid, pl_msgid),
+            )
+            self.assertTrue(en_msgstr.strip(), "Empty msgstr for #{} in en_gb".format(ctx))
+            self.assertTrue(pl_msgstr.strip(), "Empty msgstr for #{} in pl_pl".format(ctx))
+
+        root = ET.parse(settings_path).getroot()
+        for elem in root.iter():
+            if elem.tag not in ("category", "group", "setting"):
+                continue
+            if elem.attrib.get("visible", "").lower() == "false":
+                continue
+            label = elem.attrib.get("label", "")
+            self.assertTrue(
+                label.isdigit(),
+                "Non-numeric label '{}' on <{} id='{}'>".format(label, elem.tag, elem.attrib.get("id")),
+            )
+            self.assertIn(label, pl_po, "Label ID #{} not found in pl_pl/strings.po".format(label))
+            help_id = elem.attrib.get("help", "")
+            if help_id:
+                self.assertTrue(
+                    help_id.isdigit(),
+                    "Non-numeric help '{}' on <{} id='{}'>".format(help_id, elem.tag, elem.attrib.get("id")),
+                )
+                self.assertIn(help_id, pl_po, "Help ID #{} not found in pl_pl/strings.po".format(help_id))
+
+    def test_addon_xml_declares_existing_icon(self):
+        import xml.etree.ElementTree as ET
+        addon_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync"))
+        root = ET.parse(os.path.join(addon_dir, "addon.xml")).getroot()
+        icon_el = root.find("./extension[@point='xbmc.addon.metadata']/assets/icon")
+        self.assertIsNotNone(icon_el)
+        self.assertEqual(icon_el.text, "resources/icon.png")
+        icon_path = os.path.join(addon_dir, "resources", "icon.png")
+        self.assertTrue(os.path.isfile(icon_path))
+        self.assertGreater(os.path.getsize(icon_path), 1024)
+
+
+class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
+    def test_network_version_guard_promotes_newer_local_version(self):
+        cfg = {
+            "schema_version": 1,
+            "configuration": {"completed": True},
+            "network_settings": {
+                "sudosync_id_enabled": False,
+                "sudosync_id_prefix": "",
+                "min_addon_version": "2.0.0",
+            },
+        }
+        with patch.object(bootstrap, "_get_local_addon_version", return_value="2.1.0"), \
+                patch.object(bootstrap, "write_sudosync_cfg", return_value=True) as mock_write:
+            allowed = bootstrap.enforce_network_version_guard("smb://nas/video/.SudoSync/", cfg)
+            self.assertTrue(allowed)
+            self.assertEqual(cfg["network_settings"]["min_addon_version"], "2.1.0")
+            mock_write.assert_called_once()
+
+    def test_network_version_guard_blocks_older_local_version_and_offers_update(self):
+        cfg = {
+            "schema_version": 1,
+            "configuration": {"completed": True},
+            "network_settings": {
+                "sudosync_id_enabled": False,
+                "sudosync_id_prefix": "",
+                "min_addon_version": "2.1.0",
+            },
+        }
+        dialog = MagicMock()
+        dialog.yesno.side_effect = [False, False]  # Użytkownik wybiera wyłączenie do czasu aktualizacji
+        with patch.object(bootstrap, "_get_local_addon_version", return_value="2.0.0"), \
+                patch.object(bootstrap.xbmcgui, "Dialog", return_value=dialog):
+            allowed = bootstrap.enforce_network_version_guard("smb://nas/video/.SudoSync/", cfg)
+            self.assertFalse(allowed)
+            dialog.ok.assert_called_once()
+            self.assertIn("2.1.0", dialog.ok.call_args[0][1])
+
+    def test_find_github_update_parses_latest_release(self):
+        import io
+        import json
+        fake_payload = json.dumps({
+            "tag_name": "v2.1.0",
+            "html_url": "https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases/tag/v2.1.0",
+            "assets": [
+                {
+                    "name": "service.sudosync-2.1.0.zip",
+                    "browser_download_url": "https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases/download/v2.1.0/service.sudosync-2.1.0.zip",
+                }
+            ],
+        }).encode("utf-8")
+
+        resp_mock = MagicMock()
+        resp_mock.read.return_value = fake_payload
+        resp_mock.__enter__.return_value = resp_mock
+        resp_mock.__exit__.return_value = False
+
+        addon_mock = MagicMock()
+        addon_mock.getAddonInfo.return_value = "2.0.0"
+
+        with patch.object(core.xbmcaddon, "Addon", return_value=addon_mock), \
+                patch("urllib.request.urlopen", return_value=resp_mock):
+            res = core.find_github_update()
+            self.assertTrue(res["available"])
+            self.assertEqual(res["version"], "2.1.0")
+            self.assertEqual(res["filename"], "service.sudosync-2.1.0.zip")
+
+    def test_maybe_check_github_update_daily_respects_24h_interval_and_consent(self):
+        status_store = {"last_github_update_check_epoch": 1000.0}
+        dialog = MagicMock()
+        dialog.yesno.return_value = False  # Użytkownik klika "Później"
+
+        with patch.object(core, "addon_settings", return_value={"check_updates": True}), \
+                patch.object(core, "read_local_status", side_effect=lambda: dict(status_store)), \
+                patch.object(core, "_write_local_json", side_effect=lambda _p, data: status_store.update(data)), \
+                patch.object(core, "find_github_update", return_value={
+                    "available": True,
+                    "version": "2.1.0",
+                    "current_version": "2.0.0",
+                }) as mock_find, \
+                patch.object(core, "install_github_update") as mock_install, \
+                patch.object(core.xbmcgui, "Dialog", return_value=dialog):
+            # Przed upływem 24h (np. 1h później) -> nie odpytuje GitHuba
+            early = core.maybe_check_github_update_daily(now_epoch=4600.0, ask_and_install=True)
+            self.assertFalse(early.get("checked", True))
+            self.assertEqual(early.get("reason"), "not_due")
+            mock_find.assert_not_called()
+
+            # Po upływie >24h (86400s) -> odpytuje GitHuba i pyta o zgodę
+            due = core.maybe_check_github_update_daily(now_epoch=1000.0 + 86401.0, ask_and_install=True)
+            self.assertTrue(due.get("available"))
+            mock_find.assert_called_once()
+            dialog.yesno.assert_called_once()
+            mock_install.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
+

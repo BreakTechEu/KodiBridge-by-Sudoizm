@@ -124,6 +124,127 @@ def is_legacy_installation(base_path):
     clients_dir = base_path + "clients/"
     return xbmcvfs.exists(sys_config) and xbmcvfs.exists(clients_dir)
 
+def _get_local_addon_version():
+    try:
+        raw = xbmcaddon.Addon(ADDON_ID).getAddonInfo("version")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def update_network_min_version(base_path, new_version):
+    """Update min_addon_version in SudoSync.cfg if new_version is newer."""
+    from resources.lib.sudosync_core import _numeric_version
+    if not base_path or not isinstance(new_version, str) or not new_version.strip():
+        return False
+    base = base_path.rstrip("/") + "/"
+    status, cfg = read_sudosync_cfg(base)
+    if status != "VALID" or not isinstance(cfg, dict):
+        return False
+    net = cfg.setdefault("network_settings", {})
+    if not isinstance(net, dict):
+        return False
+    current_min = str(net.get("min_addon_version") or "").strip()
+    if not current_min or _numeric_version(new_version) > _numeric_version(current_min):
+        net["min_addon_version"] = new_version.strip()
+        return write_sudosync_cfg(base, cfg)
+    return False
+
+
+def enforce_network_version_guard(base_path, cfg):
+    """Ensure this Kodi's SudoSync version is not older than min_addon_version in SudoSync.cfg.
+
+    If this Kodi has a newer version than recorded in SudoSync.cfg, promotes
+    min_addon_version in SudoSync.cfg.
+    If another Kodi already promoted min_addon_version above this Kodi's version,
+    prompts the user to update (from GitHub or local ZIP) or disables SudoSync
+    until updated.
+    """
+    from resources.lib.sudosync_core import (
+        _numeric_version,
+        install_github_update,
+        install_update_from_zip_path,
+    )
+    local_version = _get_local_addon_version()
+    if not local_version:
+        return True
+
+    net = cfg.setdefault("network_settings", {})
+    if not isinstance(net, dict):
+        return True
+
+    remote_min = str(net.get("min_addon_version") or "").strip()
+    local_num = _numeric_version(local_version)
+    remote_num = _numeric_version(remote_min) if remote_min else (0, 0, 0, 3, 0)
+
+    if not remote_min or local_num > remote_num:
+        if local_num > (0, 0, 0, 3, 0):
+            net["min_addon_version"] = local_version
+            write_sudosync_cfg(base_path, cfg)
+            log("Zaktualizowano minimalną wersję sieciową SudoSync w SudoSync.cfg: {}".format(local_version))
+        return True
+
+    if local_num == remote_num:
+        return True
+
+    # local_num < remote_num -> inne Kodi w sieci ma już nowszą wersję!
+    log(
+        "Wykryto nowszą wersję w sieci SudoSync ({}) niż zainstalowana lokalnie ({}). Wstrzymuję start.".format(
+            remote_min, local_version
+        ),
+        xbmc.LOGERROR,
+    )
+    dialog = xbmcgui.Dialog()
+    if dialog.yesno(
+        "SudoSync — wymagana aktualizacja",
+        "Na innym urządzeniu Kodi w tej sieci zainstalowano już nowszą wersję SudoSync ({remote}), "
+        "natomiast tutaj działa starsza wersja ({local}).\n\n"
+        "Aby chronić spójność biblioteki, SudoSync jest wyłączony do czasu aktualizacji. "
+        "Czy chcesz pobrać i zainstalować aktualizację z GitHub teraz?".format(
+            remote=remote_min, local=local_version
+        ),
+        yeslabel="Aktualizuj z GitHub",
+        nolabel="Inna opcja / Wyłącz",
+    ):
+        try:
+            res = install_github_update(show_dialogs=True)
+            if res.get("installed"):
+                return False
+        except Exception as exc:
+            log("GitHub update during version guard failed: {}".format(exc), xbmc.LOGERROR)
+            dialog.ok(
+                "SudoSync — błąd pobierania z GitHub",
+                "Nie udało się pobrać aktualizacji z GitHub:\n{}".format(exc),
+            )
+
+    if dialog.yesno(
+        "SudoSync — aktualizacja z pliku ZIP",
+        "Wymagana jest wersja co najmniej {remote} (obecna: {local}).\n\n"
+        "Czy chcesz wskazać plik aktualizacji .zip z dysku lokalnego lub udziału sieciowego?".format(
+            remote=remote_min, local=local_version
+        ),
+        yeslabel="Wybierz plik ZIP",
+        nolabel="Wyłącz SudoSync",
+    ):
+        zip_path = dialog.browse(1, "Wybierz pakiet aktualizacji SudoSync (.zip)", "files", ".zip")
+        if zip_path:
+            try:
+                install_update_from_zip_path(zip_path, show_dialogs=True)
+            except Exception as exc:
+                dialog.ok("SudoSync — błąd aktualizacji", str(exc))
+            return False
+
+    dialog.ok(
+        "SudoSync — usługa wstrzymana",
+        "SudoSync został wyłączony na tym urządzeniu do czasu aktualizacji wtyczki do wersji {}.".format(
+            remote_min
+        ),
+    )
+    return False
+
+
 def run_migration_wizard(base_path):
     xbmcgui.Dialog().ok(
         "SudoSync - Migracja",
@@ -140,7 +261,15 @@ def run_migration_wizard(base_path):
     addon = xbmcaddon.Addon(ADDON_ID)
     sudosync_id_enabled = old_net.get("sudosync_id_enabled", addon.getSetting("sudosync_id_enabled").strip().lower() == "true")
     sudosync_id_prefix = old_net.get("sudosync_id_prefix", addon.getSetting("sudosync_id_prefix").strip() or "NAS")
+    local_version = _get_local_addon_version()
     
+    net_settings = {
+        "sudosync_id_enabled": bool(sudosync_id_enabled),
+        "sudosync_id_prefix": str(sudosync_id_prefix),
+    }
+    if local_version:
+        net_settings["min_addon_version"] = local_version
+
     new_cfg = {
         "format": "SudoSync configuration",
         "schema_version": 1,
@@ -148,10 +277,7 @@ def run_migration_wizard(base_path):
             "completed": True,
             "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         },
-        "network_settings": {
-            "sudosync_id_enabled": bool(sudosync_id_enabled),
-            "sudosync_id_prefix": str(sudosync_id_prefix)
-        }
+        "network_settings": net_settings,
     }
     
     if not write_sudosync_cfg(base_path, new_cfg):
@@ -170,6 +296,13 @@ def run_new_config_wizard(base_path):
         sudosync_id_enabled = True
         prefix = dialog.input("Podaj krótki prefiks dla tej sieci (np. NAS lub DOM):", type=xbmcgui.INPUT_ALPHANUM)
         sudosync_id_prefix = prefix.strip() if prefix.strip() else "NAS"
+    local_version = _get_local_addon_version()
+    net_settings = {
+        "sudosync_id_enabled": sudosync_id_enabled,
+        "sudosync_id_prefix": sudosync_id_prefix,
+    }
+    if local_version:
+        net_settings["min_addon_version"] = local_version
         
     new_cfg = {
         "format": "SudoSync configuration",
@@ -178,10 +311,7 @@ def run_new_config_wizard(base_path):
             "completed": True,
             "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         },
-        "network_settings": {
-            "sudosync_id_enabled": sudosync_id_enabled,
-            "sudosync_id_prefix": sudosync_id_prefix
-        }
+        "network_settings": net_settings,
     }
     
     if not write_sudosync_cfg(base_path, new_cfg):
@@ -214,16 +344,28 @@ def apply_network_settings(cfg):
     if changed:
         log("Konfiguracja sieciowa SudoSync ID została wymuszona na lokalnym kliencie.")
 
-def run_bootstrap():
+def run_bootstrap(force_select_path=False):
     """Zwraca True, jeśli bootstrap zakończony i można przejść do logiki operacyjnej, False w przypadku wstrzymania/błędu."""
     log("Rozpoczęcie fazy BOOTSTRAP")
     base_path = get_base_path()
     
     # 1. USTALENIE BASE PATH
-    # Brak ustawienia (pusty ciąg) uruchamia kreator wyboru folderu
-    if not base_path:
+    # Brak ustawienia (pusty ciąg) lub ręczne wywołanie konfiguratora z ustawień uruchamia kreator wyboru folderu
+    choose_new_path = not base_path
+    if base_path and force_select_path:
         dialog = xbmcgui.Dialog()
-        dialog.ok("SudoSync", "Musisz wskazać folder sieciowy (np. SMB/NFS), w którym SudoSync będzie przechowywać wspólną konfigurację i bazę dla wszystkich urządzeń Kodi w tej sieci.")
+        if dialog.yesno(
+            "SudoSync — Konfigurator",
+            "Obecny folder synchronizacji:\n{}\n\nCzy chcesz wskazać inny folder współdzielony?".format(base_path),
+            yeslabel="Zmień folder",
+            nolabel="Sprawdź obecny",
+        ):
+            choose_new_path = True
+
+    if choose_new_path:
+        dialog = xbmcgui.Dialog()
+        if not base_path:
+            dialog.ok("SudoSync", "Musisz wskazać folder sieciowy (np. SMB/NFS), w którym SudoSync będzie przechowywać wspólną konfigurację i bazę dla wszystkich urządzeń Kodi w tej sieci.")
         
         selected_path = dialog.browse(3, "Wybierz katalog współdzielony (np. Wideo)", "network")
         if not selected_path:
@@ -271,8 +413,15 @@ def run_bootstrap():
         if not isinstance(cfg.get("network_settings", {}).get("sudosync_id_prefix"), str):
             xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Zły typ danych w sudosync_id_prefix.")
             return False
+        min_ver = cfg.get("network_settings", {}).get("min_addon_version")
+        if min_ver is not None and not isinstance(min_ver, str):
+            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Zły typ danych w min_addon_version.")
+            return False
         if not cfg.get("configuration", {}).get("completed"):
             xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Konfiguracja w SudoSync.cfg nie jest oznaczona jako ukończona.")
+            return False
+
+        if not enforce_network_version_guard(base_path, cfg):
             return False
             
         log("SudoSync.cfg poprawnie zweryfikowany. Aplikowanie ustawień sieciowych.")
@@ -301,6 +450,8 @@ def run_bootstrap():
         # 5. PONOWNY ODCZYT I WALIDACJA PO WIZARDZIE
         status, cfg = read_sudosync_cfg(base_path)
         if status == "VALID" and cfg.get("configuration", {}).get("completed"):
+            if not enforce_network_version_guard(base_path, cfg):
+                return False
             apply_network_settings(cfg)
             return True
             

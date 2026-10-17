@@ -12,5 +12,8 @@
     <description lang="en_GB">SudoSync 2.0.0 provides local synchronization of watch state, resume position and user ratings between Kodi installations through a shared NAS folder, without cloud services or a shared Kodi database.</description>
     <platform>all</platform>
     <license>GPL-3.0-or-later</license>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
   </extension>
 </addon>

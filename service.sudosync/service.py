@@ -22,6 +22,7 @@ from resources.lib.sudosync_core import (
     collect_live_snapshot,
     get_or_create_client_id,
     log,
+    maybe_check_github_update_daily,
     read_shared_config,
     run_dry_run,
     run_live_sync_cycle,
@@ -294,6 +295,14 @@ def _run_service():
         return
 
     settings = addon_settings()
+    if settings.get("check_updates", False):
+        try:
+            gh_upd = maybe_check_github_update_daily(ask_and_install=True)
+            if isinstance(gh_upd, dict) and gh_upd.get("installed"):
+                log("Zainstalowano aktualizację z GitHub Releases. Zatrzymuję bieżącą instancję usługi.")
+                return
+        except Exception as exc:
+            log("Daily GitHub update check skipped: {}".format(exc), xbmc.LOGWARNING)
 
     # Initialize v2 runtime and run startup recovery/preview after bootstrap.
     v2_runtime = None
@@ -466,6 +475,15 @@ def _run_service():
                     monitor.scan_refresh_pending = False
                     monitor.playback_dirty = False
                     monitor.user_update_dirty = False
+
+            if settings.get("check_updates", False) and not _is_playing_video():
+                try:
+                    gh_upd = maybe_check_github_update_daily(now_epoch=now, ask_and_install=True)
+                    if isinstance(gh_upd, dict) and gh_upd.get("installed"):
+                        log("Zainstalowano aktualizację z GitHub Releases. Zatrzymuję bieżącą instancję usługi.")
+                        break
+                except Exception as exc:
+                    log("Daily GitHub update check in loop skipped: {}".format(exc), xbmc.LOGWARNING)
 
             sync_initial_base_selection(show_notification=False)
         except Exception as exc:

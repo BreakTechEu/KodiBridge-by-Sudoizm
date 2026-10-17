@@ -3,12 +3,12 @@
   <section id="service.sudosync">
     <category id="general" label="32000" help="">
       <group id="1" label="32001">
-        <setting id="action_bootstrap" type="action" label="Wybierz folder SudoSync / Konfigurator" help="Kliknij aby uruchomić konfigurację sieciową SudoSync.">
+        <setting id="action_bootstrap" type="action" label="32070" help="32071">
           <level>0</level>
-          <data>RunScript(service.sudosync, bootstrap)</data>
-          <control type="button" format="action" />
+          <data>RunScript(service.sudosync,bootstrap)</data>
+          <control type="button" format="action"><close>false</close></control>
         </setting>
-        <setting id="base_path" type="string" label="Obecna ścieżka bazowa (Tylko odczyt)" help="Użyj konfiguratora wyżej, aby zmienić tę ścieżkę.">
+        <setting id="base_path" type="string" label="32002" help="32003">
           <level>0</level>
           <default></default>
           <constraints><allowempty>true</allowempty></constraints>
@@ -26,7 +26,7 @@
           <constraints><minimum>60</minimum><step>60</step><maximum>3600</maximum></constraints>
           <control type="slider" format="integer"><popup>true</popup></control>
         </setting>
-        <setting id="notifications" type="boolean" label="32008" help="">
+        <setting id="notifications" type="boolean" label="32008" help="32009">
           <level>0</level>
           <default>true</default>
           <control type="toggle"/>
@@ -43,7 +43,12 @@
           <data>RunScript(service.sudosync,checkupdate)</data>
           <control type="button" format="action"><close>false</close></control>
         </setting>
-        <setting id="auto_install_updates" type="boolean" label="32035" help="32036">
+        <setting id="install_local_zip" type="action" label="32074" help="32075">
+          <level>0</level>
+          <data>RunScript(service.sudosync,installlocalzip)</data>
+          <control type="button" format="action"><close>false</close></control>
+        </setting>
+        <setting id="auto_install_updates" type="boolean" label="32035" help="32036" visible="false">
           <level>0</level>
           <default>false</default>
           <control type="toggle"/>
@@ -98,7 +103,7 @@
             </dependency>
           </dependencies>
         </setting>
-        <setting id="rollback_sudosync_ids" type="action" label="Wycofaj ostatnio przypisane ID">
+        <setting id="rollback_sudosync_ids" type="action" label="32072" help="32073">
           <level>0</level>
           <data>RunScript(service.sudosync,rollbackids)</data>
           <control type="button" format="action"><close>false</close></control>

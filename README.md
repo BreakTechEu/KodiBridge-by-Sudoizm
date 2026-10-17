@@ -4,8 +4,8 @@
 
 > [!WARNING]
 > **Beta Release Notice (SudoSync 2.0.0):**
-> SudoSync 2.0.0 is a **public beta / testing release** featuring the rebuilt v2 architecture and experimental SudoSync ID system for private videos. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync/tree/v1-stable).
-> Both releases are available in the **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** section.
+> SudoSync 2.0.0 is a **public beta / testing release** featuring the rebuilt v2 architecture and experimental SudoSync ID system for private videos. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
+> Both releases are available in the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section.
 
 # SudoSync for Kodi
 
@@ -42,8 +42,8 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **SudoSync 2.0.0 (Beta):** Download `service.sudosync-2.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** section (recommended for testing new v2 features and SudoSync ID).
-   - **SudoSync 1.0.0 (Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync/releases)** section (recommended for production environments requiring maximum stability).
+   - **SudoSync 2.0.0 (Beta):** Download `service.sudosync-2.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for testing new v2 features and SudoSync ID).
+   - **SudoSync 1.0.0 (Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for production environments requiring maximum stability).
 
 2. **Install in Kodi:**
    - In Kodi, navigate to: *Settings -> Add-ons -> Install from zip file*.
@@ -64,10 +64,11 @@ For a step-by-step safe manual testing guide for version 2.0.0 (Beta) on Kodi (i
 ## Updating the Add-on
 
 > [!IMPORTANT]
-> **Important Update Notice:**
-> Currently (temporarily), the only valid and safe way to update the add-on without breaking the existing installation is to place the new release package (`.zip`) directly into the shared `.SudoSync` network folder (e.g. `smb://.../.SudoSync/service.sudosync-X.X.X.zip`).
->
-> SudoSync will detect the new package in the shared directory and handle the update (either prompting you or installing automatically if enabled in add-on settings). Do not reinstall over an existing setup using Kodi's standard "Install from zip file" dialog.
+> **Safe Update & Network Version Guard:**
+> SudoSync includes a built-in update mechanism that protects network consistency:
+> 1. **Automatic GitHub Releases Check (Once Every 24 Hours):** SudoSync checks the official GitHub Releases (`BreakTechEu/SudoSync-Kodi-addon`) at most once per day. Silent background updates are disabled — when a newer release is found, SudoSync prompts you for explicit consent before downloading and installing (you can also trigger the check manually in add-on settings).
+> 2. **Update from Local ZIP File:** Add-on settings provide an option to browse and install a `service.sudosync-X.X.X.zip` package directly from local storage or a network share.
+> 3. **Network Minimum Version Guard (`min_addon_version` in `SudoSync.cfg`):** Whenever a Kodi device on the shared network runs a newer SudoSync version, it records that version as `min_addon_version` in `SudoSync.cfg`. Any other Kodi instance starting with an older version will detect the mismatch and either force an immediate update (via GitHub Releases or local ZIP) or stay paused until updated.
 
 ---
 

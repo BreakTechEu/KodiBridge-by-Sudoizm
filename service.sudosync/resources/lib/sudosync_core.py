@@ -762,28 +762,38 @@ def _validate_update_zip(zip_path, expected_version=None):
         return version
 
 
-def install_latest_update(show_dialogs=True):
-    """Install the newest SudoSync package directly from the hidden shared folder.
+def _validate_addon_zip_package(zip_path, expected_version=None):
+    """Validate structure and addon.xml of a standard or signed SudoSync ZIP package."""
+    if not os.path.isfile(zip_path) or os.path.getsize(zip_path) < 100:
+        raise ValueError("Pakiet aktualizacji ZIP nie istnieje lub jest pusty.")
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            names = zf.namelist()
+            normalized_map = {str(name or "").replace("\\", "/"): name for name in names}
+            if not names or not all(
+                _safe_zip_member(name) for name in normalized_map.keys() if name and not name.endswith("/")
+            ):
+                raise ValueError("Pakiet ZIP ma nieprawidłową strukturę lub zawiera niedozwoloną ścieżkę.")
+            manifest_name = ADDON_ID + "/addon.xml"
+            if manifest_name not in normalized_map:
+                raise ValueError("Pakiet nie zawiera {}.".format(manifest_name))
+            actual_name = normalized_map[manifest_name]
+            manifest = ET.fromstring(zf.read(actual_name))
+            if manifest.tag != "addon" or manifest.attrib.get("id") != ADDON_ID:
+                raise ValueError("To nie jest pakiet SudoSync.")
+            version = manifest.attrib.get("version") or "0.0.0"
+            if expected_version and _numeric_version(version) != _numeric_version(expected_version):
+                raise ValueError(
+                    "Wersja w addon.xml ({}) nie zgadza się z oczekiwaną wersją pakietu ({}).".format(
+                        version, expected_version
+                    )
+                )
+            return version
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Uszkodzony plik archiwum ZIP: {}".format(exc))
 
-    This intentionally does not use Kodi's file picker. The package is copied through
-    xbmcvfs, validated, staged beside the installed add-on, then atomically swapped.
-    The current Python process may keep running old code until Kodi is restarted.
-    """
-    result = find_latest_update()
-    if result.get("error"):
-        raise IOError(result["error"])
-    if not result.get("available"):
-        return {"installed": False, "available": False, "current_version": result.get("current_version")}
 
-    remote_zip = result["path"]
-    filename = result["filename"]
-    package_dir = xbmcvfs.translatePath("special://home/addons/packages/")
-    if not os.path.isdir(package_dir):
-        os.makedirs(package_dir)
-    local_zip = os.path.join(package_dir, filename)
-    _copy_vfs_to_local(remote_zip, local_zip)
-    package_version = _validate_update_zip(local_zip, result.get("version"))
-
+def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialogs=True):
     addon_path = xbmcvfs.translatePath(xbmcaddon.Addon(ADDON_ID).getAddonInfo("path"))
     addon_path = os.path.abspath(addon_path.rstrip("/\\"))
     addons_parent = os.path.dirname(addon_path)
@@ -840,12 +850,21 @@ def install_latest_update(show_dialogs=True):
             os.rename(backup, addon_path)
         raise
 
-    log("Self-update installed from {} -> {}".format(remote_zip, package_version))
+    # Po udanej instalacji podbijamy min_addon_version w SudoSync.cfg (jeśli skonfigurowano udział)
+    try:
+        from resources.lib.sudosync_bootstrap import update_network_min_version
+        base_path = addon_settings().get("base_path") or ""
+        if base_path:
+            update_network_min_version(base_path, package_version)
+    except Exception as exc:
+        log("Cannot update network min_addon_version after install: {}".format(exc), xbmc.LOGWARNING)
+
+    log("Self-update installed from {} -> {}".format(source_desc, package_version))
     if show_dialogs:
         restart = xbmcgui.Dialog().yesno(
             "SudoSync — aktualizacja zainstalowana",
-            "Zainstalowano wersję {} bez otwierania ukrytego folderu .SudoSync.\n\n"
-            "Nowa wersja będzie pewnie aktywna po ponownym uruchomieniu Kodi. Uruchomić Kodi ponownie teraz?".format(package_version),
+            "Zainstalowano wersję {}.\n\n"
+            "Nowa wersja stanie się w pełni aktywna po ponownym uruchomieniu Kodi. Uruchomić Kodi ponownie teraz?".format(package_version),
             yeslabel="Uruchom ponownie",
             nolabel="Później",
         )
@@ -855,10 +874,250 @@ def install_latest_update(show_dialogs=True):
         "installed": True,
         "available": True,
         "version": package_version,
-        "filename": filename,
-        "remote_path": remote_zip,
+        "filename": os.path.basename(local_zip),
+        "remote_path": source_desc,
         "local_package": local_zip,
     }
+
+
+def install_latest_update(show_dialogs=True):
+    """Install the newest SudoSync package directly from the hidden shared folder.
+
+    This intentionally does not use Kodi's file picker. The package is copied through
+    xbmcvfs, validated, staged beside the installed add-on, then atomically swapped.
+    The current Python process may keep running old code until Kodi is restarted.
+    """
+    result = find_latest_update()
+    if result.get("error"):
+        raise IOError(result["error"])
+    if not result.get("available"):
+        return {"installed": False, "available": False, "current_version": result.get("current_version")}
+
+    remote_zip = result["path"]
+    filename = result["filename"]
+    package_dir = xbmcvfs.translatePath("special://home/addons/packages/")
+    if not os.path.isdir(package_dir):
+        os.makedirs(package_dir)
+    local_zip = os.path.join(package_dir, filename)
+    _copy_vfs_to_local(remote_zip, local_zip)
+    package_version = _validate_update_zip(local_zip, result.get("version"))
+    return _extract_and_swap_addon(local_zip, package_version, remote_zip, show_dialogs=show_dialogs)
+
+
+GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/BreakTechEu/SudoSync-Kodi-addon/releases/latest"
+DAILY_UPDATE_CHECK_INTERVAL_SECONDS = 86400
+
+
+def find_github_update(timeout=10, api_url=None):
+    """Query GitHub Releases API for the latest published SudoSync package."""
+    import urllib.request
+    current_text = xbmcaddon.Addon(ADDON_ID).getAddonInfo("version") or "0.0.0"
+    current = _numeric_version(current_text)
+    url = api_url or GITHUB_RELEASES_LATEST_URL
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "SudoSync-Kodi-Addon/{}".format(current_text),
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8", errors="replace")
+        data = json.loads(raw)
+    except Exception as exc:
+        return {
+            "available": False,
+            "current_version": current_text,
+            "error": str(exc),
+            "source": "github",
+        }
+
+    if not isinstance(data, dict):
+        return {
+            "available": False,
+            "current_version": current_text,
+            "error": "Nieprawidłowa odpowiedź z GitHub API.",
+            "source": "github",
+        }
+
+    tag_name = str(data.get("tag_name") or "").strip()
+    clean_tag = tag_name[1:] if tag_name.lower().startswith("v") else tag_name
+    assets = data.get("assets") if isinstance(data.get("assets"), list) else []
+
+    chosen_asset = None
+    chosen_version_text = clean_tag
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name") or "").strip()
+        dl_url = str(asset.get("browser_download_url") or "").strip()
+        if not name or not dl_url or not name.lower().endswith(".zip"):
+            continue
+        match = UPDATE_ZIP_RE.match(name)
+        if match:
+            ver_tuple = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            suffix = match.group(4) or ""
+            ver_text = "{}.{}.{}".format(*ver_tuple) + ("-" + suffix if suffix else "")
+            chosen_asset = (name, dl_url)
+            chosen_version_text = ver_text
+            break
+        if chosen_asset is None:
+            chosen_asset = (name, dl_url)
+
+    if not chosen_asset or not chosen_version_text:
+        return {
+            "available": False,
+            "current_version": current_text,
+            "version": clean_tag or current_text,
+            "source": "github",
+        }
+
+    remote_tuple = _numeric_version(chosen_version_text)
+    return {
+        "available": remote_tuple > current,
+        "current_version": current_text,
+        "version": chosen_version_text,
+        "filename": chosen_asset[0],
+        "download_url": chosen_asset[1],
+        "html_url": str(data.get("html_url") or ""),
+        "source": "github",
+    }
+
+
+def install_github_update(update_info=None, show_dialogs=True, timeout=30):
+    """Download and install the latest release ZIP from GitHub Releases."""
+    import urllib.request
+    info = update_info if isinstance(update_info, dict) else find_github_update(timeout=timeout)
+    if info.get("error"):
+        raise IOError(info["error"])
+    if not info.get("available"):
+        return {
+            "installed": False,
+            "available": False,
+            "current_version": info.get("current_version"),
+        }
+
+    download_url = str(info.get("download_url") or "").strip()
+    filename = os.path.basename(str(info.get("filename") or "service.sudosync-update.zip"))
+    if not download_url.lower().startswith("https://"):
+        raise ValueError("Niedozwolony adres pobierania aktualizacji (wymagany HTTPS): {}".format(download_url))
+
+    package_dir = xbmcvfs.translatePath("special://home/addons/packages/")
+    if not os.path.isdir(package_dir):
+        os.makedirs(package_dir)
+    local_zip = os.path.join(package_dir, filename)
+    part_zip = local_zip + ".part"
+
+    req = urllib.request.Request(
+        download_url,
+        headers={"User-Agent": "SudoSync-Kodi-Addon/{}".format(info.get("current_version") or "2.0.0")},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp, open(part_zip, "wb") as dst:
+            shutil.copyfileobj(resp, dst)
+        os.replace(part_zip, local_zip)
+    except Exception as exc:
+        if os.path.exists(part_zip):
+            try:
+                os.remove(part_zip)
+            except Exception:
+                pass
+        raise IOError("Nie udało się pobrać pakietu z GitHub Releases: {}".format(exc))
+
+    package_version = _validate_addon_zip_package(local_zip, info.get("version"))
+    return _extract_and_swap_addon(local_zip, package_version, download_url, show_dialogs=show_dialogs)
+
+
+def install_update_from_zip_path(zip_path, allow_same_or_older=False, show_dialogs=True):
+    """Install SudoSync from a user-selected local or VFS ZIP file."""
+    zip_path = str(zip_path or "").strip()
+    if not zip_path:
+        return {"installed": False, "cancelled": True}
+
+    current_text = xbmcaddon.Addon(ADDON_ID).getAddonInfo("version") or "0.0.0"
+    filename = os.path.basename(zip_path.replace("\\", "/")) or "service.sudosync-local.zip"
+    package_dir = xbmcvfs.translatePath("special://home/addons/packages/")
+    if not os.path.isdir(package_dir):
+        os.makedirs(package_dir)
+    local_zip = os.path.join(package_dir, filename)
+
+    if os.path.isfile(zip_path):
+        if os.path.abspath(zip_path) != os.path.abspath(local_zip):
+            shutil.copyfile(zip_path, local_zip)
+    else:
+        _copy_vfs_to_local(zip_path, local_zip)
+
+    package_version = _validate_addon_zip_package(local_zip)
+    if not allow_same_or_older and _numeric_version(package_version) < _numeric_version(current_text):
+        raise ValueError(
+            "Wybrany pakiet ({}) jest starszy niż obecnie zainstalowana wersja ({}).".format(
+                package_version, current_text
+            )
+        )
+
+    if show_dialogs:
+        if not xbmcgui.Dialog().yesno(
+            "SudoSync — instalacja z pliku ZIP",
+            "Zweryfikowano pakiet SudoSync w wersji {} (obecnie zainstalowana: {}).\n\n"
+            "Czy na pewno chcesz zainstalować tę wersję?".format(package_version, current_text),
+            yeslabel="Zainstaluj",
+            nolabel="Anuluj",
+        ):
+            return {"installed": False, "cancelled": True, "version": package_version}
+
+    return _extract_and_swap_addon(local_zip, package_version, zip_path, show_dialogs=show_dialogs)
+
+
+def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True):
+    """Check GitHub Releases at most once per 24 hours and ask user consent before installing."""
+    settings = addon_settings()
+    if not settings.get("check_updates", True):
+        return {"checked": False, "reason": "disabled"}
+
+    now = float(now_epoch if now_epoch is not None else datetime.now(timezone.utc).timestamp())
+    local_status = read_local_status()
+    try:
+        last_check = float(local_status.get("last_github_update_check_epoch") or 0.0)
+    except Exception:
+        last_check = 0.0
+
+    if last_check > 0.0 and (now - last_check) < DAILY_UPDATE_CHECK_INTERVAL_SECONDS:
+        return {"checked": False, "reason": "not_due", "last_check_epoch": last_check}
+
+    result = find_github_update()
+    local_status["last_github_update_check_epoch"] = now
+    local_status["last_github_update_check_at"] = utc_now()
+    local_status["last_github_update_result"] = {
+        "available": bool(result.get("available")),
+        "version": str(result.get("version") or ""),
+        "current_version": str(result.get("current_version") or ""),
+        "error": str(result.get("error") or ""),
+    }
+    _write_local_json(os.path.join(_addon_profile_path(), "status.json"), local_status)
+
+    if result.get("available") and ask_and_install:
+        if xbmcgui.Dialog().yesno(
+            "SudoSync — dostępna aktualizacja",
+            "Dostępna jest nowa wersja SudoSync {} na GitHub Releases (obecnie zainstalowana: {}).\n\n"
+            "Czy chcesz pobrać i zainstalować aktualizację teraz?".format(
+                result.get("version"), result.get("current_version")
+            ),
+            yeslabel="Zainstaluj",
+            nolabel="Później",
+        ):
+            try:
+                installed = install_github_update(update_info=result, show_dialogs=True)
+                result["installed"] = bool(installed.get("installed"))
+            except Exception as exc:
+                log("GitHub update installation failed: {}".format(exc), xbmc.LOGERROR)
+                xbmcgui.Dialog().ok(
+                    "SudoSync — błąd aktualizacji",
+                    "Nie udało się zainstalować aktualizacji z GitHub:\n{}".format(exc),
+                )
+    return result
 
 
 def _platform_name():

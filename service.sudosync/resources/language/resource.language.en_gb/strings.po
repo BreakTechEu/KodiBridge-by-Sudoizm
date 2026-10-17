@@ -14,11 +14,11 @@ msgstr "Connection"
 
 msgctxt "#32002"
 msgid "Synchronization folder"
-msgstr "Synchronization folder"
+msgstr "Current base path (Read-only)"
 
 msgctxt "#32003"
 msgid "SMB folder shared by all Kodi installations."
-msgstr "SMB folder shared by all Kodi installations."
+msgstr "Use the configurator button above to change this shared path."
 
 msgctxt "#32004"
 msgid "Device name"
@@ -39,6 +39,10 @@ msgstr "Collect-only mode periodically refreshes this device snapshot."
 msgctxt "#32008"
 msgid "Show notifications"
 msgstr "Show notifications for data received from another Kodi"
+
+msgctxt "#32009"
+msgid "Shows a toast notification when remote changes are applied to this Kodi library."
+msgstr "Shows a toast notification when remote changes are applied to this Kodi library."
 
 msgctxt "#32010"
 msgid "Tools"
@@ -78,19 +82,19 @@ msgstr "Updates"
 
 msgctxt "#32031"
 msgid "Check for updates in .SudoSync at startup"
-msgstr "Check for updates in .SudoSync at startup"
+msgstr "Automatically check for updates on GitHub (once a day)"
 
 msgctxt "#32032"
 msgid "Looks for newer service.sudosync-*.zip packages in the shared synchronization folder."
-msgstr "Looks for newer service.sudosync-*.zip packages in the shared synchronization folder."
+msgstr "Checks GitHub Releases at most once every 24 hours and asks for your consent before installing."
 
 msgctxt "#32033"
 msgid "Check for update now"
-msgstr "Check and install update"
+msgstr "Check for updates on GitHub now"
 
 msgctxt "#32034"
 msgid "Checks the shared .SudoSync folder for a newer SudoSync ZIP package."
-msgstr "Checks .SudoSync and, if a newer version exists, installs it without opening the hidden folder."
+msgstr "Queries GitHub Releases immediately and lets you download and install a newer version with confirmation."
 
 msgctxt "#32015"
 msgid "Run DRY RUN analysis now"
@@ -102,7 +106,7 @@ msgstr "Compares all client snapshots and writes a report. It never modifies Kod
 
 msgctxt "#32035"
 msgid "Install updates automatically"
-msgstr "Install updates automatically from .SudoSync"
+msgstr "Install updates automatically"
 
 msgctxt "#32036"
 msgid "Installs a newer package directly from the shared hidden folder. The new code becomes fully active after Kodi restarts."
@@ -199,3 +203,27 @@ msgstr "Assign SudoSync IDs to all video items in the library"
 msgctxt "#32066"
 msgid "Injects SudoSync IDs to all items in Kodi library missing a standard ID."
 msgstr "Injects SudoSync IDs to all items in Kodi library missing a standard ID."
+
+msgctxt "#32070"
+msgid "Select SudoSync folder / Configurator"
+msgstr "Select SudoSync folder / Configurator"
+
+msgctxt "#32071"
+msgid "Click to run the SudoSync network configurator or change the shared folder."
+msgstr "Click to run the SudoSync network configurator or change the shared folder."
+
+msgctxt "#32072"
+msgid "Rollback last assigned IDs"
+msgstr "Rollback last assigned IDs"
+
+msgctxt "#32073"
+msgid "Restores .nfo files from .bak backups created during the last SudoSync ID assignment."
+msgstr "Restores .nfo files from .bak backups created during the last SudoSync ID assignment."
+
+msgctxt "#32074"
+msgid "Install update from local ZIP file..."
+msgstr "Install update from local ZIP file..."
+
+msgctxt "#32075"
+msgid "Opens a file browser so you can select a SudoSync .zip update package from a local drive or network share."
+msgstr "Opens a file browser so you can select a SudoSync .zip update package from a local drive or network share."
