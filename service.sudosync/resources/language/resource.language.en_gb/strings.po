@@ -104,14 +104,6 @@ msgctxt "#32016"
 msgid "Compares all client snapshots and writes a report. It never modifies Kodi libraries."
 msgstr "Compares all client snapshots and writes a report. It never modifies Kodi libraries."
 
-msgctxt "#32035"
-msgid "Install updates automatically"
-msgstr "Install updates automatically"
-
-msgctxt "#32036"
-msgid "Installs a newer package directly from the shared hidden folder. The new code becomes fully active after Kodi restarts."
-msgstr "Installs a newer package directly from the shared hidden folder. The new code becomes fully active after Kodi restarts."
-
 msgctxt "#32040"
 msgid "Initial synchronization"
 msgstr "Initial synchronization"

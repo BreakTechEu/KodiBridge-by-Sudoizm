@@ -280,7 +280,17 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             dialog.yesno.assert_called_once()
             mock_install.assert_not_called()
 
+    def test_mask_vfs_credentials_strips_login_and_password(self):
+        raw_url = "smb://user:Secret%24Pass@192.168.69.100/Wideo/.SudoSync/"
+        self.assertEqual(
+            core.mask_vfs_credentials(raw_url),
+            "smb://192.168.69.100/Wideo/.SudoSync/",
+        )
+        self.assertEqual(
+            bootstrap.mask_vfs_credentials(raw_url),
+            "smb://192.168.69.100/Wideo/.SudoSync/",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
-

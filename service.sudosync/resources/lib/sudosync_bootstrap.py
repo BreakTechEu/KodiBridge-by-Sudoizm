@@ -6,6 +6,7 @@
 # (at your option) any later version.
 # -------------------------------------------------------------------------
 import os
+import re
 import time
 import json
 import xbmc
@@ -14,9 +15,16 @@ import xbmcvfs
 import xbmcaddon
 
 ADDON_ID = "service.sudosync"
+_VFS_CRED_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\s]+@)")
+
+def mask_vfs_credentials(text):
+    """Usuwa poświadczenia user[:password]@ ze ścieżek VFS przed wyświetleniem lub logowaniem."""
+    if not isinstance(text, str) or "@" not in text:
+        return text
+    return _VFS_CRED_RE.sub(r"\1", text)
 
 def log(msg, level=xbmc.LOGINFO):
-    xbmc.log("[SudoSync Bootstrap] {}".format(msg), level)
+    xbmc.log("[SudoSync Bootstrap] {}".format(mask_vfs_credentials(str(msg))), level)
 
 def get_addon_setting(key):
     return xbmcaddon.Addon(ADDON_ID).getSetting(key)
@@ -356,7 +364,7 @@ def run_bootstrap(force_select_path=False):
         dialog = xbmcgui.Dialog()
         if dialog.yesno(
             "SudoSync — Konfigurator",
-            "Obecny folder synchronizacji:\n{}\n\nCzy chcesz wskazać inny folder współdzielony?".format(base_path),
+            "Obecny folder:\n{}\nCzy chcesz wskazać inny folder współdzielony?".format(mask_vfs_credentials(base_path)),
             yeslabel="Zmień folder",
             nolabel="Sprawdź obecny",
         ):

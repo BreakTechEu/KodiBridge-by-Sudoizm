@@ -127,10 +127,18 @@ LIVE_FIELDS = ("playcount", "lastplayed", "userrating", "resume")
 RATING_IMPORT_WHITELIST = {6, 7, 8}
 _LIVE_LOCK_HANDLE = None
 UPDATE_ZIP_RE = re.compile(r"^service[._]sudosync[_-](\d+)[._](\d+)[._](\d+)(?:-([A-Za-z0-9._-]+))?\.zip$", re.IGNORECASE)
+_VFS_CRED_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\s]+@)")
+
+
+def mask_vfs_credentials(text):
+    """Strip user[:password]@ credentials from VFS URLs for safe UI/log display."""
+    if not isinstance(text, str) or "@" not in text:
+        return text
+    return _VFS_CRED_RE.sub(r"\1", text)
 
 
 def log(message, level=xbmc.LOGINFO):
-    xbmc.log("[SudoSync] {}".format(message), level)
+    xbmc.log("[SudoSync] {}".format(mask_vfs_credentials(str(message))), level)
 
 
 def utc_now():

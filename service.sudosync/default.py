@@ -26,6 +26,7 @@ from resources.lib.sudosync_core import (
     install_github_update,
     install_latest_update,
     install_update_from_zip_path,
+    mask_vfs_credentials,
     read_local_status,
     read_shared_config,
     run_dry_run,
@@ -92,7 +93,7 @@ def show_status():
         lp=plan.get("lastplayed", 0),
         ur=plan.get("userrating", 0),
         rs=plan.get("resume", 0),
-        report=status.get("dry_run_report_path", "—"),
+        report=mask_vfs_credentials(status.get("dry_run_report_path", "—")),
     )
 
     live_enabled = settings.get("live_sync_enabled", True)
@@ -124,7 +125,7 @@ def show_status():
         probe_changed="tak" if status.get("last_local_probe_changed") else "nie",
         probe_items=status.get("last_local_probe_changed_items", 0),
         waiting=", ".join(waiting) if waiting else "nie",
-        report=status.get("last_live_report_path", "—"),
+        report=mask_vfs_credentials(status.get("last_live_report_path", "—")),
     )
 
     import xbmcaddon
@@ -157,7 +158,7 @@ def show_status():
         when=status.get("last_snapshot_at", "—"),
         movies=counts.get("movies", 0),
         episodes=counts.get("episodes", 0),
-        path=status.get("remote_path", "—"),
+        path=mask_vfs_credentials(status.get("remote_path", "—")),
         dry=dry_text,
         live=live_text,
         update=update_text,
@@ -255,7 +256,7 @@ def apply_initial_dialog():
         "Pozostały plan na tym Kodi: {left} pozycji.\n"
         "Stan całej inicjalizacji: {state}\n\n"
         "Po pełnym zakończeniu inicjalizacji synchronizacja bieżąca może uruchomić się automatycznie.".format(
-            backup=result.get("backup_path", "—"), left=post.get("items", 0),
+            backup=mask_vfs_credentials(result.get("backup_path", "—")), left=post.get("items", 0),
             state="ZAKOŃCZONA" if completed else "jeszcze niezakończona",
         ),
     )
@@ -533,7 +534,7 @@ def main():
             result = assign_sudosync_ids()
             xbmcgui.Dialog().ok(
                 "SudoSync",
-                "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}".format(result.get("manifest_path"), result.get("movies", 0), result.get("episodes", 0))
+                "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}".format(mask_vfs_credentials(result.get("manifest_path")), result.get("movies", 0), result.get("episodes", 0))
             )
         elif action == "rollbackids":
             from resources.lib.sudosync_core import rollback_sudosync_ids
@@ -549,7 +550,7 @@ def main():
         else:
             show_status()
     except Exception as exc:
-        xbmcgui.Dialog().ok("SudoSync — błąd", str(exc))
+        xbmcgui.Dialog().ok("SudoSync — błąd", mask_vfs_credentials(str(exc)))
 
 
 if __name__ == "__main__":
