@@ -295,7 +295,7 @@ def _run_service():
         return
 
     settings = addon_settings()
-    if settings.get("check_updates", False):
+    if settings.get("check_updates", True):
         try:
             gh_upd = maybe_check_github_update_daily(ask_and_install=True)
             if isinstance(gh_upd, dict) and gh_upd.get("installed"):
@@ -476,7 +476,7 @@ def _run_service():
                     monitor.playback_dirty = False
                     monitor.user_update_dirty = False
 
-            if settings.get("check_updates", False) and not _is_playing_video():
+            if settings.get("check_updates", True) and not _is_playing_video():
                 try:
                     gh_upd = maybe_check_github_update_daily(now_epoch=now, ask_and_install=True)
                     if isinstance(gh_upd, dict) and gh_upd.get("installed"):

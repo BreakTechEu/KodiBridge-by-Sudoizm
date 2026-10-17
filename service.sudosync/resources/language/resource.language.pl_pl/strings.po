@@ -81,19 +81,19 @@ msgid "Updates"
 msgstr "Aktualizacje"
 
 msgctxt "#32031"
-msgid "Check for updates in .SudoSync at startup"
+msgid "Automatically check for updates on GitHub (once a day)"
 msgstr "Automatycznie sprawdzaj aktualizacje na GitHub (raz na dobę)"
 
 msgctxt "#32032"
-msgid "Looks for newer service.sudosync-*.zip packages in the shared synchronization folder."
+msgid "Checks GitHub Releases at most once every 24 hours and asks for your consent before installing."
 msgstr "Raz na 24 godziny sprawdza GitHub Releases i informuje o nowej wersji z pytaniem o zgodę na instalację."
 
 msgctxt "#32033"
-msgid "Check for update now"
+msgid "Check for updates on GitHub now"
 msgstr "Sprawdź dostępność aktualizacji na GitHub teraz"
 
 msgctxt "#32034"
-msgid "Checks the shared .SudoSync folder for a newer SudoSync ZIP package."
+msgid "Queries GitHub Releases immediately and lets you download and install a newer version with confirmation."
 msgstr "Odpytuje GitHub Releases natychmiast i po Twojej zgodzie pobiera oraz instaluje nową wersję."
 
 msgctxt "#32015"
