@@ -280,7 +280,12 @@ def _run_service():
     monitor = SudoSyncMonitor()
     settings = addon_settings()
     
-    from resources.lib.sudosync_bootstrap import check_and_enforce_updates_before_bootstrap, run_bootstrap
+    from resources.lib.sudosync_bootstrap import (
+        check_and_enforce_updates_before_bootstrap,
+        refresh_network_active_kodi_lease,
+        release_network_active_kodi_lease,
+        run_bootstrap,
+    )
 
     update_status = check_and_enforce_updates_before_bootstrap()
     if update_status == "restart":
@@ -295,205 +300,217 @@ def _run_service():
         return
 
     settings = addon_settings()
-    if settings.get("check_updates", True):
+    base_for_lease = settings.get("base_path", "")
+    try:
+        if settings.get("check_updates", True):
+            try:
+                gh_upd = maybe_check_github_update_daily(ask_and_install=True)
+                if isinstance(gh_upd, dict) and gh_upd.get("installed"):
+                    log("Zainstalowano aktualizację z GitHub Releases. Zatrzymuję bieżącą instancję usługi.")
+                    return
+            except Exception as exc:
+                log("Daily GitHub update check skipped: {}".format(exc), xbmc.LOGWARNING)
+
+        # Initialize v2 runtime and run startup recovery/preview after bootstrap.
+        v2_runtime = None
+        v2_blocked = False
         try:
-            gh_upd = maybe_check_github_update_daily(ask_and_install=True)
-            if isinstance(gh_upd, dict) and gh_upd.get("installed"):
-                log("Zainstalowano aktualizację z GitHub Releases. Zatrzymuję bieżącą instancję usługi.")
-                return
-        except Exception as exc:
-            log("Daily GitHub update check skipped: {}".format(exc), xbmc.LOGWARNING)
-
-    # Initialize v2 runtime and run startup recovery/preview after bootstrap.
-    v2_runtime = None
-    v2_blocked = False
-    try:
-        from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend
-        from resources.lib.sudosync_v2.runtime import (
-            ProcessLocalLockFactory,
-            build_kodi_v2_runtime,
-        )
-
-        v2_runtime = build_kodi_v2_runtime(
-            xbmc.executeJSONRPC,
-            KodiVFSBackend(),
-            settings["base_path"],
-            ProcessLocalLockFactory(),
-            get_or_create_client_id(),
-            settings["client_name"],
-            abort_requested=monitor.abortRequested,
-        )
-        v2_startup = v2_runtime.start(abort_requested=monitor.abortRequested)
-        if v2_startup.get("status") == "blocked":
-            v2_blocked = True
-            log("V2 startup blocked by unrecovered session marker.", xbmc.LOGERROR)
-        v2_preview = v2_startup.get("preview")
-        if v2_preview is None:
-            log("V2 startup preview {}: {}".format(
-                v2_startup.get("status"),
-                (v2_startup.get("recovery") or {}).get("status", "no preview"),
-            ), xbmc.LOGINFO)
-        else:
-            log("V2 startup preview active={} reason={}".format(
-                v2_preview.get("active"), v2_preview.get("reason", ""),
-            ), xbmc.LOGINFO)
-            if v2_preview.get("skipped_nfo_count"):
-                log("V2 startup preview skipped {} corrupted NFO file(s)".format(
-                    v2_preview.get("skipped_nfo_count")
-                ), xbmc.LOGWARNING)
-    except Exception as exc:
-        # A preview failure must not disable the currently working service.
-        log("V2 startup preview unavailable: {}".format(exc), xbmc.LOGWARNING)
-
-    snapshot_interval = settings["interval_seconds"]
-    live_poll = settings.get("live_poll_seconds", 60)
-    last_snapshot = 0.0
-    last_live_poll = 0.0
-    live_retry_not_before = 0.0
-
-    try:
-        sync_initial_base_selection(show_notification=False)
-        shared = read_shared_config(settings["base_path"])
-        init = shared.get("initialization") or {}
-        if v2_blocked:
-            log("Skipping startup synchronization because v2 session recovery is blocked.", xbmc.LOGERROR)
-        elif init.get("completed", False) and settings.get("live_sync_enabled", True):
-            result = _execute_integrated_live_cycle(
-                v2_runtime=v2_runtime,
-                monitor=monitor,
-                show_notification=False,
-                suppress_local_changes=False,
-                collect_local=True,
-                skip_if_no_remote_change=False,
-                notify_local_changes=False,
-                receiver_notification_delay_ms=12000,
+            from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend
+            from resources.lib.sudosync_v2.runtime import (
+                ProcessLocalLockFactory,
+                build_kodi_v2_runtime,
             )
-            if result.get("waiting"):
-                log("LIVE waiting for clients: {}".format(", ".join(result.get("waiting_for_clients") or [])))
-            last_live_poll = time.time()
-            startup_delay = _live_retry_delay_seconds(result, live_poll)
-            if startup_delay > 0:
-                live_retry_not_before = time.time() + startup_delay
-        else:
-            _initial_snapshot_and_analyse(
-                v2_runtime=v2_runtime,
+
+            v2_runtime = build_kodi_v2_runtime(
+                xbmc.executeJSONRPC,
+                KodiVFSBackend(),
+                settings["base_path"],
+                ProcessLocalLockFactory(),
+                get_or_create_client_id(),
+                settings["client_name"],
                 abort_requested=monitor.abortRequested,
-                base_client_id=init.get("base_client_id"),
-                init_completed=bool(init.get("completed", False)),
             )
-            last_snapshot = time.time()
-    except Exception as exc:
-        log("Startup synchronization failed: {}".format(exc), xbmc.LOGERROR)
+            v2_startup = v2_runtime.start(abort_requested=monitor.abortRequested)
+            if v2_startup.get("status") == "blocked":
+                v2_blocked = True
+                log("V2 startup blocked by unrecovered session marker.", xbmc.LOGERROR)
+            v2_preview = v2_startup.get("preview")
+            if v2_preview is None:
+                log("V2 startup preview {}: {}".format(
+                    v2_startup.get("status"),
+                    (v2_startup.get("recovery") or {}).get("status", "no preview"),
+                ), xbmc.LOGINFO)
+            else:
+                log("V2 startup preview active={} reason={}".format(
+                    v2_preview.get("active"), v2_preview.get("reason", ""),
+                ), xbmc.LOGINFO)
+                if v2_preview.get("skipped_nfo_count"):
+                    log("V2 startup preview skipped {} corrupted NFO file(s)".format(
+                        v2_preview.get("skipped_nfo_count")
+                    ), xbmc.LOGWARNING)
+        except Exception as exc:
+            # A preview failure must not disable the currently working service.
+            log("V2 startup preview unavailable: {}".format(exc), xbmc.LOGWARNING)
 
-    while not monitor.abortRequested():
-        now = time.time()
+        snapshot_interval = settings["interval_seconds"]
+        live_poll = settings.get("live_poll_seconds", 60)
+        last_snapshot = 0.0
+        last_live_poll = 0.0
+        last_lease_refresh = 0.0
+        live_retry_not_before = 0.0
+
         try:
-            settings = addon_settings()
-            snapshot_interval = settings["interval_seconds"]
-            live_poll = settings.get("live_poll_seconds", 60)
+            sync_initial_base_selection(show_notification=False)
             shared = read_shared_config(settings["base_path"])
             init = shared.get("initialization") or {}
-            live_active = bool(init.get("completed", False) and settings.get("live_sync_enabled", True))
+            if v2_blocked:
+                log("Skipping startup synchronization because v2 session recovery is blocked.", xbmc.LOGERROR)
+            elif init.get("completed", False) and settings.get("live_sync_enabled", True):
+                result = _execute_integrated_live_cycle(
+                    v2_runtime=v2_runtime,
+                    monitor=monitor,
+                    show_notification=False,
+                    suppress_local_changes=False,
+                    collect_local=True,
+                    skip_if_no_remote_change=False,
+                    notify_local_changes=False,
+                    receiver_notification_delay_ms=12000,
+                )
+                if result.get("waiting"):
+                    log("LIVE waiting for clients: {}".format(", ".join(result.get("waiting_for_clients") or [])))
+                last_live_poll = time.time()
+                startup_delay = _live_retry_delay_seconds(result, live_poll)
+                if startup_delay > 0:
+                    live_retry_not_before = time.time() + startup_delay
+            else:
+                _initial_snapshot_and_analyse(
+                    v2_runtime=v2_runtime,
+                    abort_requested=monitor.abortRequested,
+                    base_client_id=init.get("base_client_id"),
+                    init_completed=bool(init.get("completed", False)),
+                )
+                last_snapshot = time.time()
+        except Exception as exc:
+            log("Startup synchronization failed: {}".format(exc), xbmc.LOGERROR)
 
-            if live_active:
-                # Never alter library state while a video is actively playing.
-                # Player.OnStop will trigger a prompt cycle a few seconds later.
-                playing = _is_playing_video()
-                event_due = monitor.dirty and monitor.dirty_since and (now - monitor.dirty_since) >= 2
-                poll_due = (now - last_live_poll) >= live_poll
-                local_probe = {"changed": False}
-                if poll_due and not monitor.scanning:
-                    # Notifications are the fast path; this lightweight probe is
-                    # the periodic safety net required for Android/Google TV.
-                    local_probe = live_local_changes_detected()
+        while not monitor.abortRequested():
+            now = time.time()
+            try:
+                settings = addon_settings()
+                base_for_lease = settings.get("base_path") or base_for_lease
+                if (now - last_lease_refresh) >= 60:
+                    refresh_network_active_kodi_lease(base_for_lease, now_epoch=now)
+                    last_lease_refresh = now
+                snapshot_interval = settings["interval_seconds"]
+                live_poll = settings.get("live_poll_seconds", 60)
+                shared = read_shared_config(settings["base_path"])
+                init = shared.get("initialization") or {}
+                live_active = bool(init.get("completed", False) and settings.get("live_sync_enabled", True))
 
-                if playing:
-                    # Never APPLY remote changes during playback. If the safety
-                    # probe sees a local change, however, publish our snapshot so
-                    # an abrupt Android kill cannot strand it only in this Kodi.
-                    if poll_due and local_probe.get("changed") and not monitor.scanning:
-                        if v2_runtime is not None:
-                            try:
-                                v2_runtime.publish_local_snapshot(
-                                    abort_requested=monitor.abortRequested,
-                                    suppress_local_changes=False,
-                                )
-                            except Exception as exc:
-                                log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
-                        collect_live_snapshot(
-                            show_notification=False,
-                            # While video is actively playing this state is a
-                            # genuine playback change, not an NFO/scan import.
-                            suppress_local_changes=False,
-                            notify_local_changes=False,
+                if live_active:
+                    # Never alter library state while a video is actively playing.
+                    # Player.OnStop will trigger a prompt cycle a few seconds later.
+                    playing = _is_playing_video()
+                    event_due = monitor.dirty and monitor.dirty_since and (now - monitor.dirty_since) >= 2
+                    poll_due = (now - last_live_poll) >= live_poll
+                    local_probe = {"changed": False}
+                    if poll_due and not monitor.scanning:
+                        # Notifications are the fast path; this lightweight probe is
+                        # the periodic safety net required for Android/Google TV.
+                        local_probe = live_local_changes_detected()
+
+                    if playing:
+                        # Never APPLY remote changes during playback. If the safety
+                        # probe sees a local change, however, publish our snapshot so
+                        # an abrupt Android kill cannot strand it only in this Kodi.
+                        if poll_due and local_probe.get("changed") and not monitor.scanning:
+                            if v2_runtime is not None:
+                                try:
+                                    v2_runtime.publish_local_snapshot(
+                                        abort_requested=monitor.abortRequested,
+                                        suppress_local_changes=False,
+                                    )
+                                except Exception as exc:
+                                    log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
+                            collect_live_snapshot(
+                                show_notification=False,
+                                # While video is actively playing this state is a
+                                # genuine playback change, not an NFO/scan import.
+                                suppress_local_changes=False,
+                                notify_local_changes=False,
+                            )
+                        if poll_due:
+                            last_live_poll = time.time()
+                    elif (event_due or poll_due) and not monitor.scanning and time.time() >= live_retry_not_before:
+                        suppress = bool(
+                            monitor.scan_refresh_pending
+                            and not monitor.playback_dirty
+                            and not monitor.user_update_dirty
                         )
-                    if poll_due:
+                        collect_local = bool(event_due or suppress or local_probe.get("changed"))
+                        result = _execute_integrated_live_cycle(
+                            v2_runtime=v2_runtime,
+                            monitor=monitor,
+                            # Background LIVE notifications are wanted only when this
+                            # Kodi actually receives/applies remote changes. The core
+                            # emits no source-side toast, so forcing this flag here is safe.
+                            show_notification=True,
+                            suppress_local_changes=suppress,
+                            collect_local=collect_local,
+                            skip_if_no_remote_change=bool(poll_due and not collect_local),
+                            notify_local_changes=False,
+                            receiver_notification_delay_ms=0,
+                        )
                         last_live_poll = time.time()
-                elif (event_due or poll_due) and not monitor.scanning and time.time() >= live_retry_not_before:
-                    suppress = bool(
-                        monitor.scan_refresh_pending
-                        and not monitor.playback_dirty
-                        and not monitor.user_update_dirty
-                    )
-                    collect_local = bool(event_due or suppress or local_probe.get("changed"))
-                    result = _execute_integrated_live_cycle(
-                        v2_runtime=v2_runtime,
-                        monitor=monitor,
-                        # Background LIVE notifications are wanted only when this
-                        # Kodi actually receives/applies remote changes. The core
-                        # emits no source-side toast, so forcing this flag here is safe.
-                        show_notification=True,
-                        suppress_local_changes=suppress,
-                        collect_local=collect_local,
-                        skip_if_no_remote_change=bool(poll_due and not collect_local),
-                        notify_local_changes=False,
-                        receiver_notification_delay_ms=0,
-                    )
-                    last_live_poll = time.time()
-                    retry_delay = _live_retry_delay_seconds(result, live_poll)
-                    if retry_delay > 0:
-                        live_retry_not_before = time.time() + retry_delay
-                    if not result.get("busy"):
+                        retry_delay = _live_retry_delay_seconds(result, live_poll)
+                        if retry_delay > 0:
+                            live_retry_not_before = time.time() + retry_delay
+                        if not result.get("busy"):
+                            monitor.dirty = False
+                            monitor.dirty_since = 0.0
+                            monitor.scan_refresh_pending = False
+                            monitor.playback_dirty = False
+                            monitor.user_update_dirty = False
+                else:
+                    periodic_due = (now - last_snapshot) >= snapshot_interval
+                    dirty_due = monitor.dirty and monitor.dirty_since and (now - monitor.dirty_since) >= 20 and (now - last_snapshot) >= 60
+                    if periodic_due or dirty_due:
+                        _initial_snapshot_and_analyse(
+                            v2_runtime=v2_runtime,
+                            abort_requested=monitor.abortRequested,
+                            base_client_id=init.get("base_client_id"),
+                            init_completed=bool(init.get("completed", False)),
+                        )
+                        last_snapshot = time.time()
                         monitor.dirty = False
                         monitor.dirty_since = 0.0
                         monitor.scan_refresh_pending = False
                         monitor.playback_dirty = False
                         monitor.user_update_dirty = False
-            else:
-                periodic_due = (now - last_snapshot) >= snapshot_interval
-                dirty_due = monitor.dirty and monitor.dirty_since and (now - monitor.dirty_since) >= 20 and (now - last_snapshot) >= 60
-                if periodic_due or dirty_due:
-                    _initial_snapshot_and_analyse(
-                        v2_runtime=v2_runtime,
-                        abort_requested=monitor.abortRequested,
-                        base_client_id=init.get("base_client_id"),
-                        init_completed=bool(init.get("completed", False)),
-                    )
-                    last_snapshot = time.time()
-                    monitor.dirty = False
-                    monitor.dirty_since = 0.0
-                    monitor.scan_refresh_pending = False
-                    monitor.playback_dirty = False
-                    monitor.user_update_dirty = False
 
-            if settings.get("check_updates", True) and not _is_playing_video():
-                try:
-                    gh_upd = maybe_check_github_update_daily(now_epoch=now, ask_and_install=True)
-                    if isinstance(gh_upd, dict) and gh_upd.get("installed"):
-                        log("Zainstalowano aktualizację z GitHub Releases. Zatrzymuję bieżącą instancję usługi.")
-                        break
-                except Exception as exc:
-                    log("Daily GitHub update check in loop skipped: {}".format(exc), xbmc.LOGWARNING)
+                if settings.get("check_updates", True) and not _is_playing_video():
+                    try:
+                        gh_upd = maybe_check_github_update_daily(now_epoch=now, ask_and_install=True)
+                        if isinstance(gh_upd, dict) and gh_upd.get("installed"):
+                            log("Zainstalowano aktualizację z GitHub Releases. Zatrzymuję bieżącą instancję usługi.")
+                            break
+                    except Exception as exc:
+                        log("Daily GitHub update check in loop skipped: {}".format(exc), xbmc.LOGWARNING)
 
-            sync_initial_base_selection(show_notification=False)
-        except Exception as exc:
-            log("Service cycle failed: {}".format(exc), xbmc.LOGERROR)
-            # Avoid a hot failure loop on broken NAS/network.
-            last_live_poll = time.time()
-            last_snapshot = time.time()
+                sync_initial_base_selection(show_notification=False)
+            except Exception as exc:
+                log("Service cycle failed: {}".format(exc), xbmc.LOGERROR)
+                # Avoid a hot failure loop on broken NAS/network.
+                last_live_poll = time.time()
+                last_snapshot = time.time()
 
-        if monitor.waitForAbort(2):
-            break
+            if monitor.waitForAbort(2):
+                break
+    finally:
+        try:
+            release_network_active_kodi_lease(base_for_lease)
+        except Exception:
+            pass
 
     log("Service stopped")
 

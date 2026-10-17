@@ -292,16 +292,17 @@ def addon_settings():
     if sudosync_id_prefix:
         sudosync_id_prefix = re.sub(r"[^A-Za-z0-9._-]", "-", sudosync_id_prefix)
 
-    if not sudosync_id_prefix and base.startswith("smb://"):
+    masked_base = mask_vfs_credentials(base)
+    if not sudosync_id_prefix and masked_base.startswith("smb://"):
         try:
-            host = base.split("://")[1].split("/")[0].upper()
-            sudosync_id_prefix = host
+            host = masked_base.split("://")[1].split("/")[0].upper()
+            sudosync_id_prefix = re.sub(r"[^A-Za-z0-9._-]", "-", host)
         except Exception:
             pass
-    elif not sudosync_id_prefix and base.startswith("nfs://"):
+    elif not sudosync_id_prefix and masked_base.startswith("nfs://"):
         try:
-            host = base.split("://")[1].split("/")[0]
-            sudosync_id_prefix = host
+            host = masked_base.split("://")[1].split("/")[0]
+            sudosync_id_prefix = re.sub(r"[^A-Za-z0-9._-]", "-", host)
         except Exception:
             pass
     if not sudosync_id_prefix:

@@ -181,8 +181,8 @@ msgid "Allows creating a custom ID for media not present in online databases."
 msgstr "Pozwala tworzyć własne ID dla wideo niewystępujących w bazach online."
 
 msgctxt "#32063"
-msgid "Network Name / Prefix (CHANGE ON BASE ONLY)"
-msgstr "Nazwa sieci / Prefiks (ZMIENIAJ TYLKO NA BAZIE)"
+msgid "Network Name (SudoSync ID prefix)"
+msgstr "Nazwa sieci (prefiks SudoSync ID)"
 
 msgctxt "#32064"
 msgid "Friendly name for the network. The internal NFO ID is generated once and remains permanent even if you rename this."

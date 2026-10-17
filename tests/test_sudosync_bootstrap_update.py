@@ -291,6 +291,84 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             "smb://192.168.69.100/Wideo/.SudoSync/",
         )
 
+    def test_addon_settings_prefix_fallback_strips_credentials(self):
+        raw_url = "smb://admin:TajneHaslo@192.168.69.100/Wideo/.SudoSync/"
+        addon_mock = MagicMock()
+        addon_mock.getSetting.side_effect = lambda key: raw_url if key == "base_path" else ""
+        with patch.object(core.xbmcaddon, "Addon", return_value=addon_mock):
+            settings = core.addon_settings()
+            self.assertEqual(settings["sudosync_id_prefix"], "192.168.69.100")
+            self.assertNotIn("TajneHaslo", settings["sudosync_id_prefix"])
+
+    def test_network_active_kodi_lease_blocks_second_active_client_and_allows_expired_takeover(self):
+        lock_store = {
+            "client_id": "client-A",
+            "client_name": "Salon",
+            "updated_at_epoch": 1000.0,
+        }
+        dialog = MagicMock()
+        with patch.object(bootstrap, "_local_client_identity", return_value=("client-B", "Sypialnia")), \
+                patch.object(bootstrap, "_read_json_file", return_value=("VALID", dict(lock_store))), \
+                patch.object(bootstrap, "_write_json_file", return_value=True) as mock_write, \
+                patch.object(bootstrap.xbmcgui, "Dialog", return_value=dialog):
+            # Lease held by client-A is only 50s old (< 180s TTL) -> blocks client-B
+            allowed = bootstrap.acquire_network_active_kodi_lease("smb://nas/video/.SudoSync/", now_epoch=1050.0)
+            self.assertFalse(allowed)
+            dialog.ok.assert_called_once()
+            self.assertIn("Salon", dialog.ok.call_args[0][1])
+            mock_write.assert_not_called()
+
+        # After TTL expires (e.g. 1300.0 - 1000.0 = 300s > 180s), client-B takes over the lease
+        written = {}
+        with patch.object(bootstrap, "_local_client_identity", return_value=("client-B", "Sypialnia")), \
+                patch.object(bootstrap, "_read_json_file", return_value=("VALID", dict(lock_store))), \
+                patch.object(bootstrap, "_write_json_file", side_effect=lambda _p, obj: written.update(obj) or True) as mock_write:
+            allowed = bootstrap.acquire_network_active_kodi_lease("smb://nas/video/.SudoSync/", now_epoch=1300.0)
+            self.assertTrue(allowed)
+            self.assertEqual(written["client_id"], "client-B")
+            self.assertEqual(written["client_name"], "Sypialnia")
+            self.assertEqual(written["updated_at_epoch"], 1300.0)
+            mock_write.assert_called_once()
+
+    def test_refresh_and_release_network_active_kodi_lease(self):
+        lock_store = {
+            "client_id": "client-A",
+            "client_name": "Salon",
+            "updated_at_epoch": 1000.0,
+        }
+        written = {}
+        with patch.object(bootstrap, "_read_json_file", return_value=("VALID", dict(lock_store))), \
+                patch.object(bootstrap, "_local_client_identity", return_value=("client-A", "Salon")), \
+                patch.object(bootstrap, "_write_json_file", side_effect=lambda _p, obj: written.update(obj) or True), \
+                patch.object(bootstrap.xbmcvfs, "exists", return_value=True), \
+                patch.object(bootstrap.xbmcvfs, "delete") as mock_delete:
+            self.assertTrue(bootstrap.refresh_network_active_kodi_lease("smb://nas/video/.SudoSync/", now_epoch=1060.0))
+            self.assertEqual(written["updated_at_epoch"], 1060.0)
+            self.assertTrue(bootstrap.release_network_active_kodi_lease("smb://nas/video/.SudoSync/"))
+            mock_delete.assert_called_once()
+
+    def test_ensure_client_enrolled_and_initialized_populates_shared_cfg(self):
+        shared_cfg = {}
+        local_reg = {}
+
+        def fake_update_shared(mutator, _base_path):
+            mutator(shared_cfg)
+            return shared_cfg
+
+        with patch.object(bootstrap, "_local_client_identity", return_value=("client-1", "Salon")), \
+                patch.object(core, "read_shared_config", return_value=shared_cfg), \
+                patch.object(core, "update_shared_config", side_effect=fake_update_shared), \
+                patch.object(core, "_live_registry_file", return_value="/tmp/live_reg.json"), \
+                patch.object(core, "_read_local_json", return_value=local_reg), \
+                patch.object(core, "_write_local_json", side_effect=lambda _p, data: local_reg.update(data)):
+            bootstrap._ensure_client_enrolled_and_initialized("smb://nas/video/.SudoSync/")
+            init = shared_cfg["initialization"]
+            self.assertEqual(init["base_client_id"], "client-1")
+            self.assertEqual(init["base_client_name"], "Salon")
+            self.assertTrue(init["completed"])
+            self.assertTrue(local_reg["bootstrapped"])
+            self.assertEqual(local_reg["client_id"], "client-1")
+
 
 if __name__ == "__main__":
     unittest.main()

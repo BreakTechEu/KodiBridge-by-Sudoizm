@@ -79,7 +79,7 @@ def _read_json_file(filepath):
         import json
         obj = json.loads(data)
         return "VALID", obj
-    except json.JSONDecodeError as exc:
+    except (ValueError, TypeError) as exc:
         log("Cannot parse JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
         return "INVALID", None
 
@@ -251,6 +251,172 @@ def enforce_network_version_guard(base_path, cfg):
         ),
     )
     return False
+
+
+ACTIVE_KODI_LOCK_FILENAME = "active_kodi_lock.json"
+ACTIVE_KODI_TTL_SECONDS = 180
+
+
+def _active_kodi_lock_path(base_path):
+    base = (base_path or get_base_path()).rstrip("/") + "/"
+    return base + ACTIVE_KODI_LOCK_FILENAME
+
+
+def _local_client_identity():
+    from resources.lib.sudosync_core import addon_settings, get_or_create_client_id
+    try:
+        client_id = str(get_or_create_client_id() or "").strip()
+    except Exception:
+        client_id = ""
+    try:
+        client_name = str(addon_settings().get("client_name") or "").strip()
+    except Exception:
+        client_name = ""
+    if not client_name:
+        try:
+            raw_friendly = xbmc.getInfoLabel("System.FriendlyName")
+            client_name = raw_friendly.strip() if isinstance(raw_friendly, str) else ""
+        except Exception:
+            client_name = ""
+    if not client_name:
+        client_name = "Kodi"
+    return client_id, client_name
+
+
+def acquire_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
+    """Ensure only one Kodi instance runs SudoSync in the shared network at a time."""
+    base = (base_path or get_base_path()).rstrip("/")
+    if not base:
+        return True
+    lock_path = _active_kodi_lock_path(base)
+    client_id, client_name = _local_client_identity()
+    now = float(now_epoch if now_epoch is not None else time.time())
+
+    status, existing = _read_json_file(lock_path)
+    if status == "VALID" and isinstance(existing, dict):
+        owner_id = str(existing.get("client_id") or "").strip()
+        owner_name = str(existing.get("client_name") or owner_id or "Inne Kodi").strip()
+        try:
+            updated_at = float(existing.get("updated_at_epoch") or 0.0)
+        except Exception:
+            updated_at = 0.0
+        if owner_id and owner_id != client_id and updated_at > 0.0 and (now - updated_at) < float(ttl_seconds):
+            log(
+                "Wykryto inne aktywne urządzenie Kodi w sieci ({}, id={}). Zatrzymuję start.".format(
+                    owner_name, owner_id
+                ),
+                xbmc.LOGWARNING,
+            )
+            xbmcgui.Dialog().ok(
+                "SudoSync — inne Kodi jest aktywne",
+                "W tej sieci działa już SudoSync na urządzeniu: {}.\n"
+                "Dozwolone jest tylko jedno aktywne Kodi naraz — zamknij tamto Kodi przed uruchomieniem kolejnego.".format(
+                    owner_name
+                ),
+            )
+            return False
+
+    lease_payload = {
+        "client_id": client_id,
+        "client_name": client_name,
+        "addon_version": _get_local_addon_version(),
+        "updated_at_epoch": now,
+        "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(now))),
+    }
+    _write_json_file(lock_path, lease_payload)
+    return True
+
+
+def refresh_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
+    """Refresh the active Kodi heartbeat on NAS; return False if another Kodi took over."""
+    try:
+        base = (base_path or get_base_path()).rstrip("/")
+        if not base:
+            return True
+        lock_path = _active_kodi_lock_path(base)
+        client_id, client_name = _local_client_identity()
+        now = float(now_epoch if now_epoch is not None else time.time())
+
+        status, existing = _read_json_file(lock_path)
+        if status == "VALID" and isinstance(existing, dict):
+            owner_id = str(existing.get("client_id") or "").strip()
+            try:
+                updated_at = float(existing.get("updated_at_epoch") or 0.0)
+            except Exception:
+                updated_at = 0.0
+            if owner_id and owner_id != client_id and updated_at > 0.0 and (now - updated_at) < float(ttl_seconds):
+                return False
+
+        lease_payload = {
+            "client_id": client_id,
+            "client_name": client_name,
+            "addon_version": _get_local_addon_version(),
+            "updated_at_epoch": now,
+            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(now))),
+        }
+        _write_json_file(lock_path, lease_payload)
+        return True
+    except Exception:
+        return False
+
+
+def release_network_active_kodi_lease(base_path=None):
+    """Release the active Kodi lease on NAS when this Kodi shuts down."""
+    base = (base_path or get_base_path()).rstrip("/")
+    if not base:
+        return False
+    lock_path = _active_kodi_lock_path(base)
+    try:
+        client_id, _ = _local_client_identity()
+        status, existing = _read_json_file(lock_path)
+        if status == "VALID" and isinstance(existing, dict):
+            owner_id = str(existing.get("client_id") or "").strip()
+            if owner_id and owner_id != client_id:
+                return False
+        if xbmcvfs.exists(lock_path):
+            xbmcvfs.delete(lock_path)
+        return True
+    except Exception as exc:
+        log("Nie udało się zwolnić blokady aktywnego Kodi: {}".format(exc), xbmc.LOGWARNING)
+        return False
+
+
+def _ensure_client_enrolled_and_initialized(base_path):
+    """Automatically mark shared config initialized and enroll this client after wizard/bootstrap."""
+    try:
+        from resources.lib.sudosync_core import (
+            _live_registry_file,
+            _read_local_json,
+            _write_local_json,
+            read_shared_config,
+            update_shared_config,
+            utc_now,
+        )
+        client_id, client_name = _local_client_identity()
+        shared = read_shared_config(base_path)
+        init = shared.get("initialization") or {}
+        if not init.get("completed", False):
+            def mutator(cfg):
+                cfg_init = cfg.setdefault("initialization", {})
+                cfg_init["completed"] = True
+                if not cfg_init.get("base_client_id"):
+                    cfg_init["base_client_id"] = client_id
+                    cfg_init["base_client_name"] = client_name
+                if not cfg_init.get("completed_at"):
+                    cfg_init["completed_at"] = utc_now()
+                return True
+            update_shared_config(mutator, base_path)
+
+        reg_path = _live_registry_file()
+        reg_data = _read_local_json(reg_path) or {}
+        if not reg_data.get("bootstrapped"):
+            reg_data["client_id"] = client_id
+            reg_data["bootstrapped"] = True
+            reg_data.setdefault("records", {})
+            reg_data["updated_at"] = utc_now()
+            _write_local_json(reg_path, reg_data)
+    except Exception as exc:
+        log("Pominięto automatyczną inicjalizację rejestru klienta: {}".format(exc), xbmc.LOGWARNING)
 
 
 def run_migration_wizard(base_path):
@@ -431,9 +597,12 @@ def run_bootstrap(force_select_path=False):
 
         if not enforce_network_version_guard(base_path, cfg):
             return False
+        if not acquire_network_active_kodi_lease(base_path):
+            return False
             
         log("SudoSync.cfg poprawnie zweryfikowany. Aplikowanie ustawień sieciowych.")
         apply_network_settings(cfg)
+        _ensure_client_enrolled_and_initialized(base_path)
         return True
     elif status in ("INVALID", "IO_ERROR"):
         import time
@@ -460,7 +629,10 @@ def run_bootstrap(force_select_path=False):
         if status == "VALID" and cfg.get("configuration", {}).get("completed"):
             if not enforce_network_version_guard(base_path, cfg):
                 return False
+            if not acquire_network_active_kodi_lease(base_path):
+                return False
             apply_network_settings(cfg)
+            _ensure_client_enrolled_and_initialized(base_path)
             return True
             
         xbmcgui.Dialog().ok("Błąd Krytyczny", "Nie udało się odczytać SudoSync.cfg pomimo jego zapisu.")

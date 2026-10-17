@@ -22,7 +22,8 @@
           <control type="edit" format="string"><heading>32004</heading></control>
         </setting>
         <setting id="interval_seconds" type="integer" label="32006" help="32007">
-          <level>0</level>
+          <level>4</level>
+          <visible>false</visible>
           <default>900</default>
           <constraints><minimum>60</minimum><step>60</step><maximum>3600</maximum></constraints>
           <control type="slider" format="integer"><popup>true</popup></control>
@@ -47,24 +48,6 @@
         <setting id="install_local_zip" type="action" label="32074" help="32075">
           <level>0</level>
           <data>RunScript(service.sudosync,installlocalzip)</data>
-          <control type="button" format="action"><close>false</close></control>
-        </setting>
-      </group>
-      <group id="5" label="32050">
-        <setting id="live_sync_enabled" type="boolean" label="32051" help="32052">
-          <level>0</level>
-          <default>true</default>
-          <control type="toggle"/>
-        </setting>
-        <setting id="live_poll_seconds" type="integer" label="32053" help="32054">
-          <level>0</level>
-          <default>60</default>
-          <constraints><minimum>30</minimum><step>30</step><maximum>600</maximum></constraints>
-          <control type="slider" format="integer"><popup>true</popup></control>
-        </setting>
-        <setting id="live_sync_now" type="action" label="32055" help="32056">
-          <level>0</level>
-          <data>RunScript(service.sudosync,livesync)</data>
           <control type="button" format="action"><close>false</close></control>
         </setting>
       </group>
@@ -113,39 +96,7 @@
           </dependencies>
         </setting>
       </group>
-      <group id="4" label="32040">
-        <setting id="select_initial_base" type="action" label="32045" help="32046">
-          <level>0</level>
-          <data>RunScript(service.sudosync,selectbase)</data>
-          <control type="button" format="action"><close>false</close></control>
-        </setting>
-        <setting id="reset_initial_base" type="action" label="32047" help="32048">
-          <level>0</level>
-          <data>RunScript(service.sudosync,resetbase)</data>
-          <control type="button" format="action"><close>false</close></control>
-        </setting>
-        <setting id="arm_initial_write" type="action" label="32041" help="32042">
-          <level>0</level>
-          <data>RunScript(service.sudosync,arminitial)</data>
-          <control type="button" format="action"><close>false</close></control>
-        </setting>
-        <setting id="apply_initial_now" type="action" label="32043" help="32044">
-          <level>0</level>
-          <data>RunScript(service.sudosync,applyinitial)</data>
-          <control type="button" format="action"><close>false</close></control>
-        </setting>
-      </group>
       <group id="2" label="32010">
-        <setting id="collect_now" type="action" label="32011" help="32012">
-          <level>0</level>
-          <data>RunScript(service.sudosync,collect)</data>
-          <control type="button" format="action"><close>false</close></control>
-        </setting>
-        <setting id="dry_run_now" type="action" label="32015" help="32016">
-          <level>0</level>
-          <data>RunScript(service.sudosync,dryrun)</data>
-          <control type="button" format="action"><close>false</close></control>
-        </setting>
         <setting id="show_status" type="action" label="32013" help="32014">
           <level>0</level>
           <data>RunScript(service.sudosync,status)</data>
