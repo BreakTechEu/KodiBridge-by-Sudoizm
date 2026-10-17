@@ -115,14 +115,22 @@ def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_cl
         log("DRY RUN skipped/failed: {}".format(exc), xbmc.LOGWARNING)
 
 
+# Short retry delay when the local v1 live lock is busy without an error or block.
+LIVE_BUSY_RETRY_SECONDS = 10
+
+
 def _live_retry_delay_seconds(result, live_poll):
-    """Return backoff delay in seconds if live sync failed or is blocked, else 0."""
-    if isinstance(result, dict) and (bool(result.get("error")) or bool(result.get("blocked"))):
+    """Return backoff delay in seconds if live sync failed, is blocked, or is busy."""
+    if not isinstance(result, dict):
+        return 0
+    if bool(result.get("error")) or bool(result.get("blocked")):
         try:
             poll_val = int(live_poll)
         except (ValueError, TypeError):
             poll_val = 60
         return max(poll_val, 30)
+    if bool(result.get("busy")):
+        return LIVE_BUSY_RETRY_SECONDS
     return 0
 
 

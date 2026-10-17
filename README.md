@@ -57,6 +57,8 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
      ```
    - In the settings, specify your **Network Identifier** (used internally for file sync) and your **UI Alias** (a friendly name displayed on screen).
 
+For a step-by-step safe manual testing guide for version 2.0.0 (Beta) on Kodi (in Polish), see [`docs/TEST_NA_KODI.md`](docs/TEST_NA_KODI.md).
+
 ---
 
 ## Updating the Add-on

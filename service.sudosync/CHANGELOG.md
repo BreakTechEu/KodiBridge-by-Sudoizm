@@ -31,6 +31,7 @@ Przebudowa architektury SudoSync (architektura v2) oraz kluczowe usprawnienia be
   - Publikacja snapshotu po zaaplikowaniu inicjalizacji bazowej (`_sync_v2_after_initial_apply`) z jawnym `suppress_local_changes=True`, zapobiegającym podbijaniu wersji pól przejętych ze snapshotu bazy.
   - Mechanizm backoffu po błędzie lub blokadzie cyklu LIVE (`_live_retry_delay_seconds` w `service.py` z minimalnym opóźnieniem `max(live_poll, 30)` sekund) z zachowaniem flag `dirty` na kolejną próbę.
   - Zestaw testów jednostkowych weryfikujących wersje zerowe pierwszego snapshotu, scenariusz audytu z peerem, brak publikacji przed inicjalizacją, backoff pętli usługi i kontrolę flag (`tests/test_v2_first_publish_and_backoff.py`).
+  - Rozszerzenie backoffu w pętli usługi (`_live_retry_delay_seconds` w `service.py`) o wynik `busy` bez błędu i blokady (stała `LIVE_BUSY_RETRY_SECONDS = 10` s) wraz z testami jednostkowymi (`tests/test_v2_busy_backoff.py`).
 
 SudoSync 1.1.0 (v2 Beta)
 ======================

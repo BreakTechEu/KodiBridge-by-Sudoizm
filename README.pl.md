@@ -57,6 +57,8 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
      ```
    - W ustawieniach określ swój **Identyfikator sieciowy** (używany wewnętrznie do synchronizacji plików) oraz **Alias UI** (przyjazną nazwę wyświetlananą na ekranie).
 
+Szczegółowa instrukcja bezpiecznego ręcznego testu wersji 2.0.0 (Beta) krok po kroku znajduje się w pliku [`docs/TEST_NA_KODI.md`](docs/TEST_NA_KODI.md).
+
 ---
 
 ## Aktualizacja wtyczki

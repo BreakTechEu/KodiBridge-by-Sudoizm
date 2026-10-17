@@ -268,7 +268,7 @@ class TestV2FirstPublishAndBackoff(unittest.TestCase):
         self.assertEqual(_live_retry_delay_seconds(res_blocked, 45), 45)
 
         # For busy without error/blocked
-        self.assertEqual(_live_retry_delay_seconds({"busy": True}, 60), 0)
+        self.assertEqual(_live_retry_delay_seconds({"busy": True}, 60), sudosync_service.LIVE_BUSY_RETRY_SECONDS)
 
         # For empty dict
         self.assertEqual(_live_retry_delay_seconds({}, 60), 0)
