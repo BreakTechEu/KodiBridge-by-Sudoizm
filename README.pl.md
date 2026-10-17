@@ -3,8 +3,8 @@
 ---
 
 > [!WARNING]
-> **Ostrzeżenie o wersji Beta (SudoSync 2.0.2):**
-> SudoSync 2.0.2 jest **wersją testową (Beta)** wprowadzającą przebudowaną architekturę v2 oraz eksperymentalną obsługę identyfikatorów SudoSync ID dla prywatnych wideo. Mimo szczegółowych testów jednostkowych i odpornościowych, wydanie to jest przeznaczone do testów i dla wczesnych użytkowników. Jeżeli potrzebujesz w 100% sprawdzonego i stabilnego środowiska produkcyjnego, zalecamy korzystanie ze stabilnej wersji **SudoSync 1.0.0** na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
+> **Ostrzeżenie o wersji Beta (SudoSync 2.0.3):**
+> SudoSync 2.0.3 jest **wersją testową (Beta)** wprowadzającą przebudowaną architekturę v2 oraz eksperymentalną obsługę identyfikatorów SudoSync ID dla prywatnych wideo. Mimo szczegółowych testów jednostkowych i odpornościowych, wydanie to jest przeznaczone do testów i dla wczesnych użytkowników. Jeżeli potrzebujesz w 100% sprawdzonego i stabilnego środowiska produkcyjnego, zalecamy korzystanie ze stabilnej wersji **SudoSync 1.0.0** na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
 > Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)**.
 
 # SudoSync dla Kodi
@@ -43,7 +43,7 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 ## Instalacja i konfiguracja
 
 1. **Źródło instalacji:**
-   - **SudoSync 2.0.2 (Beta):** Pobierz plik `service.sudosync-2.0.2.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecany do testowania nowych funkcji v2 i SudoSync ID).
+   - **SudoSync 2.0.3 (Beta):** Pobierz plik `service.sudosync-2.0.3.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecany do testowania nowych funkcji v2 i SudoSync ID).
    - **SudoSync 1.0.0 (Stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecany do środowisk produkcyjnych wymagających maksymalnej stabilności).
 
 2. **Instalacja w Kodi:**
