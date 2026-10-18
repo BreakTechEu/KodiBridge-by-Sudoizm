@@ -3,8 +3,8 @@
 ---
 
 > [!WARNING]
-> **Beta Release Notice (SudoSync 2.0.3):**
-> SudoSync 2.0.3 is a **public beta / testing release** featuring the rebuilt v2 architecture and experimental SudoSync ID system for private videos. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
+> **Beta Release Notice (SudoSync 2.0.4):**
+> SudoSync 2.0.4 is a **public beta / testing release** featuring the rebuilt v2 architecture and experimental SudoSync ID system for private videos. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
 > Both releases are available in the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section.
 
 # SudoSync for Kodi
@@ -23,7 +23,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 - **Robust Conflict Model:** Each synchronized field maintains its own logical version (Lamport clock) and client history, preventing race conditions, feedback loops, and desynchronization due to drifting client clocks. Atomic file locking safeguards the shared NAS state.
 - **Optimized for Android TV & Streaming Devices:** A lightweight state diff engine handles platforms where Kodi occasionally fails to trigger `OnUpdate` or `OnStop` notifications.
 - **Scraper & NFO Quarantine:** Newly scanned library items and NFO imports receive older internal versions to prevent accidental overwrites of existing shared playback progress.
-- **Experimental SudoSync ID:** Automatically assigns and securely injects unique identifiers into `.nfo` files for private home videos that lack standard online scraper IDs.
+- **Experimental SudoSync ID & Partial Library Support:** Automatically assigns and securely injects sequential unique identifiers (`{prefix}-{num:06d}`) into `.nfo` files for videos without standard online scraper IDs (even if a resource exists on only one specific Kodi instance). A shared counter (`sudosync_id_last_number` in `SudoSync.cfg` and `system/config.json`) ensures all Kodi devices in the network know the highest assigned number and allows Kodi instances with different library scopes (partial vs. full NAS access) to index and synchronize seamlessly without conflicts or duplicate IDs.
 - **Network ID vs UI Alias:** Distinctly separates internal network identifiers from user-friendly UI aliases to keep network mapping robust while displaying readable names.
 - **GitHub Releases & Version Guard:** Checks GitHub Releases once per day (with explicit user consent), supports manual ZIP installation, and enforces a minimum add-on version (`min_addon_version` in `SudoSync.cfg`) across all Kodi devices in the network.
 - **Journaled Sync:** Network sync gracefully handles partial Kodi API errors with an incremental journaling system, allowing for safe recovery.
@@ -43,7 +43,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **SudoSync 2.0.3 (Beta):** Download `service.sudosync-2.0.3.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for testing new v2 features and SudoSync ID).
+   - **SudoSync 2.0.4 (Beta):** Download `service.sudosync-2.0.4.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for testing new v2 features and SudoSync ID).
    - **SudoSync 1.0.0 (Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for production environments requiring maximum stability).
 
 2. **Install in Kodi:**

@@ -14,12 +14,43 @@ def version_key(version):
     """Return the total-order key used only to choose among equivalent values."""
     return (int(version.get("lc", 0)), int(version.get("seq", 0)), str(version.get("client_id", "")))
 
+
+def _is_empty_initial_value(field, value):
+    """Return True if value represents the default unwatched/empty state for an unedited item."""
+    if field == "playcount":
+        try:
+            return int(value or 0) <= 0
+        except (ValueError, TypeError):
+            return True
+    if field == "lastplayed":
+        return not str(value or "").strip()
+    if field == "userrating":
+        if value is None:
+            return True
+        try:
+            return int(value or 0) <= 0
+        except (ValueError, TypeError):
+            return True
+    if field == "resume":
+        if not isinstance(value, dict):
+            return True
+        try:
+            return float(value.get("position") or 0.0) <= 0.0
+        except (ValueError, TypeError):
+            return True
+    return False
+
+
 def plan_field_merge(records):
     """Return per-field targets and explicit conflicts without mutating inputs.
 
     Logical clock and sequence determine freshness. Different clients reporting
     the same newest clock/sequence are concurrent: different values are reported
     as a conflict, not resolved by an arbitrary client-id ordering.
+    When all newest candidates are at the initial unedited version (lc=0, seq=0)
+    and one client has a non-empty state while another newly indexed client has
+    an empty/unwatched state, the non-empty state is preferred unless multiple
+    distinct non-empty values exist.
     """
     targets, target_versions, conflicts = {}, {}, []
     for field in SYNC_FIELDS:
@@ -35,6 +66,10 @@ def plan_field_merge(records):
             continue
         newest_key = max(item[0] for item in candidates)
         newest = [item for item in candidates if item[0] == newest_key]
+        if newest_key == (0, 0) and len(newest) > 1:
+            non_empty = [item for item in newest if not _is_empty_initial_value(field, item[1])]
+            if non_empty:
+                newest = non_empty
         values = []
         for _, value, _ in newest:
             if value not in values:

@@ -127,13 +127,23 @@ def show_status():
 
     import xbmcaddon
     addon_version = xbmcaddon.Addon("service.sudosync").getAddonInfo("version")
+    try:
+        from resources.lib.sudosync_core import get_network_sudosync_id_last_number
+        last_sudosync_num = get_network_sudosync_id_last_number(settings.get("base_path"))
+    except Exception:
+        last_sudosync_num = int(status.get("sudosync_id_last_number") or settings.get("sudosync_id_last_number") or 0)
+    sudosync_id_state = "WŁĄCZONE (prefiks: {}, ostatni użyty numer: {})".format(
+        settings.get("sudosync_id_prefix") or "NAS",
+        last_sudosync_num,
+    ) if settings.get("sudosync_id_enabled") else "WYŁĄCZONE (ostatni użyty numer w sieci: {})".format(last_sudosync_num)
 
     text = (
         "Tryb: SudoSync {version} — LIVE + powiadomienia zmian i ochrona nowszego odtwarzania\n\n"
         "Urządzenie: {name}\n"
         "Client ID: {cid}\n"
         "Kodi: {kodi} ({platform})\n"
-        "JSON-RPC: {rpc}\n\n"
+        "JSON-RPC: {rpc}\n"
+        "SudoSync ID: {sid_state}\n\n"
         "Urządzenie bazowe inicjalizacji: {base}\n"
         "Pierwsza synchronizacja: {init_state}\n\n"
         "Ostatni snapshot: {when}\n"
@@ -150,6 +160,7 @@ def show_status():
         kodi=kodi.get("version", "—"),
         platform=kodi.get("platform", "—"),
         rpc=rpcv or "—",
+        sid_state=sudosync_id_state,
         base=base_name,
         init_state=init_state,
         when=status.get("last_snapshot_at", "—"),
@@ -510,7 +521,12 @@ def main():
                 
             preview = preview_sudosync_ids()
             if not preview:
-                xbmcgui.Dialog().ok("SudoSync", "Nie znaleziono żadnych plików wymagających przypisania ID.")
+                sync_res = assign_sudosync_ids(show_notification=False, auto_mode=True)
+                xbmcgui.Dialog().ok(
+                    "SudoSync",
+                    "Nie znaleziono żadnych nowych plików wymagających przypisania ID.\n"
+                    "Ostatni użyty numer SudoSync ID w sieci: {}".format(sync_res.get("last_number", 0)),
+                )
                 return
                 
             if not xbmcgui.Dialog().yesno(
@@ -531,7 +547,12 @@ def main():
             result = assign_sudosync_ids()
             xbmcgui.Dialog().ok(
                 "SudoSync",
-                "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}".format(mask_vfs_credentials(result.get("manifest_path")), result.get("movies", 0), result.get("episodes", 0))
+                "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}\nOstatni użyty numer SudoSync ID w sieci: {}".format(
+                    mask_vfs_credentials(result.get("manifest_path")),
+                    result.get("movies", 0),
+                    result.get("episodes", 0),
+                    result.get("last_number", 0),
+                )
             )
         elif action == "rollbackids":
             from resources.lib.sudosync_core import rollback_sudosync_ids

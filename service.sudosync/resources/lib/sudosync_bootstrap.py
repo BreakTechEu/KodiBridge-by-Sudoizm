@@ -462,11 +462,20 @@ def run_migration_wizard(base_path):
     addon = xbmcaddon.Addon(ADDON_ID)
     sudosync_id_enabled = old_net.get("sudosync_id_enabled", addon.getSetting("sudosync_id_enabled").strip().lower() == "true")
     sudosync_id_prefix = old_net.get("sudosync_id_prefix", addon.getSetting("sudosync_id_prefix").strip() or "NAS")
+    try:
+        raw_last_num = old_net.get(
+            "sudosync_id_last_number",
+            sys_config.get("sudosync_id_last_number", addon.getSetting("sudosync_id_last_number").strip() or 0),
+        )
+        sudosync_id_last_number = max(0, int(raw_last_num or 0))
+    except Exception:
+        sudosync_id_last_number = 0
     local_version = _get_local_addon_version()
     
     net_settings = {
         "sudosync_id_enabled": bool(sudosync_id_enabled),
         "sudosync_id_prefix": str(sudosync_id_prefix),
+        "sudosync_id_last_number": sudosync_id_last_number,
     }
     if local_version:
         net_settings["min_addon_version"] = local_version
@@ -501,6 +510,7 @@ def run_new_config_wizard(base_path):
     net_settings = {
         "sudosync_id_enabled": sudosync_id_enabled,
         "sudosync_id_prefix": sudosync_id_prefix,
+        "sudosync_id_last_number": 0,
     }
     if local_version:
         net_settings["min_addon_version"] = local_version
@@ -529,10 +539,16 @@ def apply_network_settings(cfg):
         
     remote_enabled = bool(net.get("sudosync_id_enabled", False))
     remote_prefix = str(net.get("sudosync_id_prefix") or "").strip()
+    raw_remote_last = net.get("sudosync_id_last_number")
+    remote_last_num = raw_remote_last if (isinstance(raw_remote_last, int) and not isinstance(raw_remote_last, bool) and raw_remote_last >= 0) else None
 
     addon = xbmcaddon.Addon(ADDON_ID)
     local_enabled = addon.getSetting("sudosync_id_enabled").strip().lower() == "true"
     local_prefix = addon.getSetting("sudosync_id_prefix").strip()
+    try:
+        local_last_num = max(0, int(addon.getSetting("sudosync_id_last_number").strip() or "0"))
+    except Exception:
+        local_last_num = 0
 
     changed = False
     if local_enabled != remote_enabled:
@@ -540,6 +556,9 @@ def apply_network_settings(cfg):
         changed = True
     if local_prefix != remote_prefix:
         addon.setSetting("sudosync_id_prefix", remote_prefix)
+        changed = True
+    if remote_last_num is not None and remote_last_num > local_last_num:
+        addon.setSetting("sudosync_id_last_number", str(remote_last_num))
         changed = True
 
     if changed:
@@ -616,6 +635,10 @@ def run_bootstrap(force_select_path=False):
             return False
         if not isinstance(cfg.get("network_settings", {}).get("sudosync_id_prefix"), str):
             xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Zły typ danych w sudosync_id_prefix.")
+            return False
+        last_num = cfg.get("network_settings", {}).get("sudosync_id_last_number")
+        if last_num is not None and (not isinstance(last_num, int) or isinstance(last_num, bool) or last_num < 0):
+            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Zły typ danych w sudosync_id_last_number.")
             return False
         min_ver = cfg.get("network_settings", {}).get("min_addon_version")
         if min_ver is not None and not isinstance(min_ver, str):

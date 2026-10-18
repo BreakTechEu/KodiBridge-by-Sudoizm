@@ -690,8 +690,15 @@ def build_live_plan(snapshots):
                 state = _live_state(node["record"])
                 version = _field_version(node["record"], field)
                 candidates.append((node, state[field], version, _version_tuple(version)))
-            top_key = max([candidate[3] for candidate in candidates] or [("", 0, "")])
+            top_key = max([candidate[3] for candidate in candidates] or [(0, "", 0, "")])
             top = [candidate for candidate in candidates if candidate[3] == top_key]
+            if top_key[0] == 0 and top_key[2] == 0 and len(top) > 1:
+                non_empty_top = [
+                    candidate for candidate in top
+                    if _field_value_key(field, candidate[1]) not in (0, "", (0.0, 0.0))
+                ]
+                if non_empty_top:
+                    top = non_empty_top
             distinct = {}
             for candidate in top:
                 distinct.setdefault(_field_value_key(field, candidate[1]), candidate)

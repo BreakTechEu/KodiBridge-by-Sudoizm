@@ -3,8 +3,8 @@
 ---
 
 > [!WARNING]
-> **Ostrzeżenie o wersji Beta (SudoSync 2.0.3):**
-> SudoSync 2.0.3 jest **wersją testową (Beta)** wprowadzającą przebudowaną architekturę v2 oraz eksperymentalną obsługę identyfikatorów SudoSync ID dla prywatnych wideo. Mimo szczegółowych testów jednostkowych i odpornościowych, wydanie to jest przeznaczone do testów i dla wczesnych użytkowników. Jeżeli potrzebujesz w 100% sprawdzonego i stabilnego środowiska produkcyjnego, zalecamy korzystanie ze stabilnej wersji **SudoSync 1.0.0** na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
+> **Ostrzeżenie o wersji Beta (SudoSync 2.0.4):**
+> SudoSync 2.0.4 jest **wersją testową (Beta)** wprowadzającą przebudowaną architekturę v2 oraz eksperymentalną obsługę identyfikatorów SudoSync ID dla prywatnych wideo. Mimo szczegółowych testów jednostkowych i odpornościowych, wydanie to jest przeznaczone do testów i dla wczesnych użytkowników. Jeżeli potrzebujesz w 100% sprawdzonego i stabilnego środowiska produkcyjnego, zalecamy korzystanie ze stabilnej wersji **SudoSync 1.0.0** na gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
 > Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)**.
 
 # SudoSync dla Kodi
@@ -23,7 +23,7 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 - **Niezawodny model rozwiązywania konfliktów:** Każde synchronizowane pole zachowuje własny znacznik czasu oraz wersję sekwencji klienta, zapobiegając wyścigom (*race conditions*) i pętlom zwrotnym.
 - **Optymalizacja dla Android TV i przystawek Smart TV:** Lekki silnik badania różnic w tle eliminuje problemy z gubieniem powiadomień systemowych `OnUpdate` i `OnStop` na przystawkach multimedialnych.
 - **Kwarantanna podczas skanowania i plików NFO:** Nowo zeskanowane elementy biblioteki oraz importy NFO otrzymują starsze wersje wewnętrzne, co zapobiega przypadkowemu nadpisaniu istniejącego, współdzielonego postępu oglądania.
-- **Eksperymentalne wsparcie dla SudoSync ID:** Automatycznie generuje i bezpiecznie wstrzykuje unikalne identyfikatory do plików `.nfo` dla prywatnych domowych wideo, które nie posiadają własnych wpisów w internetowych bazach danych.
+- **Eksperymentalne wsparcie dla SudoSync ID i częściowego dostępu do biblioteki:** Automatycznie generuje i bezpiecznie wstrzykuje kolejne unikalne identyfikatory (`{prefix}-{num:06d}`) do plików `.nfo` dla materiałów wideo nieposiadających wpisów w internetowych bazach danych (nawet jeśli dany zasób występuje tylko na jednym konkretnym Kodi). Współdzielony licznik (`sudosync_id_last_number` w `SudoSync.cfg` i `system/config.json`) gwarantuje, że wszystkie instancje Kodi w sieci wiedzą, do jakiego numeru identyfikatory są już używane, oraz pozwala urządzeniom o różnym dostępie do zasobów (np. częściowy vs pełny dostęp do NAS) bezawaryjnie indeksować i synchronizować bibliotekę.
 - **Rozdzielenie ID sieciowego od Aliasu UI:** Wyraźnie oddziela wewnętrzny identyfikator sieciowy od przyjaznego aliasu wyświetlanego w interfejsie. Zapewnia to stabilność przypisań przy jednoczesnym czytelnym nazewnictwie urządzeń.
 - **Aktualizacje z GitHub Releases i ochrona wersji w sieci:** Wtyczka sprawdza raz na dobę dostępność nowego wydania na GitHub Releases (za jawną zgodą użytkownika), umożliwia ręczną aktualizację ze wskazanego pliku ZIP i pilnuje w `SudoSync.cfg` wymaganej minimalnej wersji (`min_addon_version`), blokując start przestarzałych instancji Kodi.
 - **Dziennik Zdarzeń (Journaling):** Synchronizacja używa mechanizmu transakcyjnego z dziennikiem postępu, pozwalając na bezpieczne wznowienie po nieoczekiwanym błędzie.
@@ -43,7 +43,7 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 ## Instalacja i konfiguracja
 
 1. **Źródło instalacji:**
-   - **SudoSync 2.0.3 (Beta):** Pobierz plik `service.sudosync-2.0.3.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecany do testowania nowych funkcji v2 i SudoSync ID).
+   - **SudoSync 2.0.4 (Beta):** Pobierz plik `service.sudosync-2.0.4.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecany do testowania nowych funkcji v2 i SudoSync ID).
    - **SudoSync 1.0.0 (Stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecany do środowisk produkcyjnych wymagających maksymalnej stabilności).
 
 2. **Instalacja w Kodi:**

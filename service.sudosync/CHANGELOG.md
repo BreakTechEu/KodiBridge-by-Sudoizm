@@ -1,3 +1,16 @@
+SudoSync 2.0.4
+==============
+
+Bezawaryjna praca wielu instancji Kodi o różnym dostępie do zasobów wideo (np. częściowy vs pełny dostęp do udziałów NAS) oraz sekwencyjne, współdzielone numerowanie identyfikatorów SudoSync ID:
+- Współdzielony licznik identyfikatorów `sudosync_id_last_number` zapisywany w konfiguracji sieciowej (`SudoSync.cfg` oraz `system/config.json`) i synchronizowany pomiędzy wszystkimi instancjami Kodi w sieci. Każde urządzenie wie, do jakiego numeru `SudoSync ID` (`{prefix}-{num:06d}`) zostały już przydzielone identyfikatory.
+- Automatyczne nadawanie `SudoSync ID` nowym zasobom bez silnego identyfikatora podczas zbierania snapshotów (`_collect_initial_snapshot` oraz `collect_live_snapshot`), również wtedy, gdy dany zasób wideo występuje wyłącznie na jednym konkretnym urządzeniu Kodi.
+- Bezawaryjne indeksowanie po stronie kolejnego urządzenia Kodi z szerszym dostępem do zasobów:
+  - odświeżanie pamięci podręcznej `_NFO_ID_CACHE` przed każdym odczytem biblioteki, budowaniem bezpiecznej mapy tożsamości i przydzielaniem ID,
+  - wstępne skanowanie istniejących plików `.nfo` na NAS przed nadawaniem nowych numerów (ochrona przed nadpisaniem lub duplikacją ID utworzonych wcześniej przez inne Kodi, nawet jeśli lokalna baza SQLite Kodi jeszcze ich nie zaimportowała),
+  - obsługa istniejących plików `.nfo` zawierających jedynie słabe znaczniki `<uniqueid>` (np. `type="unknown"` lub `type="local"`) — dopisanie silnego identyfikatora `sudosync` bez błędu i bez naruszania plików posiadających już silne ID (`imdb`, `tmdb`, `tvdb`, `trakt`, `sudosync`),
+  - wzbogacanie `get_movie_details()` i `get_episode_details()` w adapterze `KodiJsonRpcAdapter` (v2) o identyfikatory z plików `.nfo`, co zapobiega błędom weryfikacji transakcji przed odświeżeniem lokalnej bazy SQLite Kodi,
+  - bezkonfliktowe łączenie stanu początkowego (`lc=0, seq=0`) w planerach `merge.py` (v2) i `sudosync_merge.py` (v1), gdy jedno urządzenie posiada już historię oglądania zasobu, a drugie urządzenie (z szerszym dostępem) dopiero zaindeksowało ten zasób jako nieobejrzany.
+
 SudoSync 2.0.0
 ==============
 
