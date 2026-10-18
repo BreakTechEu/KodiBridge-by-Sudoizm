@@ -2841,6 +2841,13 @@ def _has_strong_id(ids_dict):
     return False
 
 
+def _has_sudosync_id(ids_dict):
+    if not isinstance(ids_dict, dict):
+        return False
+    val = ids_dict.get("sudosync")
+    return bool(val is not None and str(val).strip())
+
+
 def _extract_sudosync_id_number(value):
     if not isinstance(value, str):
         return 0
@@ -2901,6 +2908,38 @@ def _nfo_raw_has_strong_id(raw_bytes, kind):
         if legacy and legacy.strip().startswith("tt") and "imdb" not in ids:
             ids["imdb"] = legacy.strip()
     return _has_strong_id(ids), ids
+
+
+def _nfo_raw_has_sudosync_id(raw_bytes, kind=None):
+    """Inspect raw NFO bytes and return (has_sudosync_id, extracted_ids_dict)."""
+    if not raw_bytes:
+        return False, {}
+    if isinstance(raw_bytes, (bytes, bytearray)):
+        text = bytes(raw_bytes).decode("utf-8-sig", errors="replace")
+        raw_lower = bytes(raw_bytes).lower()
+    else:
+        text = str(raw_bytes)
+        raw_lower = text.encode("utf-8", errors="replace").lower()
+    try:
+        root = ET.fromstring(text)
+    except Exception:
+        return (b'type="sudosync"' in raw_lower or b"type='sudosync'" in raw_lower), {}
+
+    ids = {}
+    for node in root.findall("uniqueid"):
+        typ = (node.attrib.get("type") or "").strip().lower()
+        val = (node.text or "").strip()
+        if typ and val:
+            ids[typ] = val
+    if kind == "movie":
+        tmdbid = root.findtext("tmdbid")
+        if tmdbid and tmdbid.strip() and "tmdb" not in ids:
+            ids["tmdb"] = tmdbid.strip()
+        legacy = root.findtext("id")
+        if legacy and legacy.strip().startswith("tt") and "imdb" not in ids:
+            ids["imdb"] = legacy.strip()
+    has_sudosync = bool(ids.get("sudosync") and str(ids["sudosync"]).strip())
+    return has_sudosync, ids
 
 
 def get_network_sudosync_id_last_number(base_path=None, local_records=None):
@@ -3127,7 +3166,14 @@ def get_or_sync_network_id_and_alias(base_path=None):
 
 def _build_created_nfo_xml(kind, title_text, full_id):
     import xml.sax.saxutils
-    root_tag = "movie" if kind == "movie" else "episodedetails"
+    if kind == "movie":
+        root_tag = "movie"
+    elif kind == "episode":
+        root_tag = "episodedetails"
+    elif kind == "musicvideo":
+        root_tag = "musicvideo"
+    else:
+        root_tag = kind
     escaped_title = xml.sax.saxutils.escape(title_text)
     escaped_full_id = xml.sax.saxutils.escape(full_id)
     return (
@@ -3402,13 +3448,14 @@ def preview_sudosync_ids():
     preview_list = []
 
     def _check_item(item, kind):
-        if _has_strong_id(item.get("ids")):
+        ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
+        if _has_sudosync_id(ids):
             return False
         file_path = item.get("file")
         if not file_path:
             return False
         best_path, nfo_ids, _ = _find_best_nfo(file_path, kind)
-        if isinstance(nfo_ids, dict) and _has_strong_id(nfo_ids):
+        if isinstance(nfo_ids, dict) and _has_sudosync_id(nfo_ids):
             return False
         if not best_path:
             return False
@@ -3417,12 +3464,13 @@ def preview_sudosync_ids():
                 raw = _read_vfs_all(best_path)
                 if not raw:
                     return False
-                has_strong, _ = _nfo_raw_has_strong_id(raw, kind)
-                if has_strong:
+                has_sudosync, _ = _nfo_raw_has_sudosync_id(raw, kind)
+                if has_sudosync:
                     return False
-                closing_tag = b"</movie>" if kind == "movie" else b"</episodedetails>"
+                closing_tags = (b"</movie>", b"</episodedetails>", b"</musicvideo>")
                 raw_bytes = raw.encode("utf-8") if isinstance(raw, str) else bytes(raw)
-                if raw_bytes.lower().rfind(closing_tag) < 0:
+                raw_lower = raw_bytes.lower()
+                if not any(tag in raw_lower for tag in closing_tags):
                     return False
                 return best_path
             except Exception:
@@ -3471,13 +3519,13 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
         except Exception:
             pass
 
-    # First pass: discover any strong IDs already written in .nfo files on NAS
+    # First pass: discover any sudosync IDs already written in .nfo files on NAS
     # (e.g. by another Kodi) so we never overwrite them and always advance
     # last_number past the highest existing sequential SudoSync ID.
     for kind, collection in (("movie", movies), ("episode", episodes)):
         for item in collection:
             ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
-            if _has_strong_id(ids):
+            if _has_sudosync_id(ids):
                 num = _extract_sudosync_id_number(ids.get("sudosync"))
                 if num > last_number:
                     last_number = num
@@ -3486,16 +3534,16 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
             if not file_path:
                 continue
             best_path, nfo_ids, _ = _find_best_nfo(file_path, kind)
-            found_ids = nfo_ids if isinstance(nfo_ids, dict) and _has_strong_id(nfo_ids) else {}
+            found_ids = nfo_ids if isinstance(nfo_ids, dict) and _has_sudosync_id(nfo_ids) else {}
             if not found_ids and best_path and xbmcvfs.exists(best_path):
                 try:
                     raw_existing = _read_vfs_all(best_path)
-                    has_strong, parsed_ids = _nfo_raw_has_strong_id(raw_existing, kind)
-                    if has_strong and parsed_ids:
+                    has_sudosync, parsed_ids = _nfo_raw_has_sudosync_id(raw_existing, kind)
+                    if has_sudosync and parsed_ids:
                         found_ids = parsed_ids
                 except Exception:
                     pass
-            if found_ids:
+            if found_ids and _has_sudosync_id(found_ids):
                 target_ids = item.setdefault("ids", {})
                 for k, v in found_ids.items():
                     if k not in target_ids and v:
@@ -3510,14 +3558,15 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
 
     def _process_item(item, kind):
         nonlocal last_number
-        if _has_strong_id(item.get("ids")):
+        ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
+        if _has_sudosync_id(ids):
             return False
         file_path = item.get("file")
         if not file_path:
             return False
 
         best_path, nfo_ids, _ = _find_best_nfo(file_path, kind)
-        if isinstance(nfo_ids, dict) and _has_strong_id(nfo_ids):
+        if isinstance(nfo_ids, dict) and _has_sudosync_id(nfo_ids):
             return False
         if not best_path:
             return False
@@ -3534,12 +3583,26 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                 else:
                     raw = bytearray(raw)
 
-                has_strong, _ = _nfo_raw_has_strong_id(raw, kind)
-                if has_strong:
+                has_sudosync, _ = _nfo_raw_has_sudosync_id(raw, kind)
+                if has_sudosync:
                     return False
 
-                closing_tag = b"</movie>" if kind == "movie" else b"</episodedetails>"
-                pos = raw.lower().rfind(closing_tag)
+                closing_tags = [b"</movie>", b"</episodedetails>", b"</musicvideo>"]
+                if kind == "movie":
+                    preferred = b"</movie>"
+                elif kind == "episode":
+                    preferred = b"</episodedetails>"
+                elif kind == "musicvideo":
+                    preferred = b"</musicvideo>"
+                else:
+                    preferred = b"</" + kind.encode("utf-8") + b">"
+
+                pos = raw.lower().rfind(preferred)
+                if pos < 0:
+                    for fallback in closing_tags:
+                        pos = raw.lower().rfind(fallback)
+                        if pos >= 0:
+                            break
                 if pos < 0:
                     return False
 
@@ -3547,7 +3610,10 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                 full_id = "{}-{:06d}".format(prefix, next_num)
                 escaped_full_id = xml.sax.saxutils.escape(full_id)
 
-                insert = ('    <uniqueid type="sudosync" default="true">' + escaped_full_id + '</uniqueid>\n').encode("utf-8")
+                has_default_true = bool(re.search(rb'default\s*=\s*["\']true["\']', raw, re.IGNORECASE))
+                default_attr = 'default="false"' if has_default_true else 'default="true"'
+
+                insert = ('    <uniqueid type="sudosync" ' + default_attr + '>' + escaped_full_id + '</uniqueid>\n').encode("utf-8")
                 new_raw = raw[:pos] + insert + raw[pos:]
                 new_raw_bytes = bytes(new_raw)
 

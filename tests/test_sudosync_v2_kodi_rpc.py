@@ -44,6 +44,18 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         adapter = KodiJsonRpcAdapter(transport, page_size=2)
         self.assertEqual([x["movieid"] for x in adapter.get_movies()], [1, 2, 3])
         self.assertEqual(transport.calls[1]["params"]["limits"]["start"], 2)
+        self.assertEqual(transport.calls[0]["params"].get("sort"), {"method": "title", "order": "ascending"})
+
+    def test_get_episodes_omits_sort_param_and_sorts_in_python(self):
+        def handler(req):
+            self.assertEqual(req["method"], "VideoLibrary.GetEpisodes")
+            self.assertNotIn("sort", req["params"])
+            return {"episodes": [{"episodeid": 20}, {"episodeid": 5}], "limits": {"start": 0, "end": 2, "total": 2}}
+        transport = FakeTransport(handler)
+        adapter = KodiJsonRpcAdapter(transport, page_size=10)
+        episodes = adapter.get_episodes()
+        self.assertEqual([x["episodeid"] for x in episodes], [5, 20])
+        self.assertNotIn("sort", transport.calls[0]["params"])
 
     def test_library_ids_are_enriched_from_nfo_without_losing_kodi_ids(self):
         transport = FakeTransport(lambda req: {

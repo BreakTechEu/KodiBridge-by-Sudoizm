@@ -100,7 +100,7 @@ class FakeAddon(object):
 
     def getAddonInfo(self, key):
         if key == "version":
-            return "2.0.4"
+            return "2.0.5"
         return ""
 
 
@@ -590,6 +590,147 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.assertEqual(kodi2_changes[0]["changes"]["lastplayed"]["to"], "2026-10-18 14:00:00")
         self.assertEqual(kodi2_changes[0]["changes"]["userrating"]["to"], 8)
 
+    def test_05_assign_sudosync_id_to_items_with_existing_external_ids_and_skip_existing_sudosync(self):
+        """SudoSync ID is assigned unconditionally to all items missing sudosync ID (preserving external IDs), and skips items already possessing sudosync ID."""
+        addon_kodi = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi Salon",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+
+        # Film A: has IMDb and TMDb in NFO and Kodi
+        self.vfs.files["smb://nas/wideo/filmy/FilmA.nfo"] = (
+            b'<?xml version="1.0" encoding="UTF-8"?>\n'
+            b"<movie>\n"
+            b"  <title>Film z IMDb</title>\n"
+            b'  <uniqueid type="imdb" default="true">tt1234567</uniqueid>\n'
+            b'  <uniqueid type="tmdb">99999</uniqueid>\n'
+            b"</movie>\n"
+        )
+        # Film B: already has sudosync ID DOM-000007 in NFO
+        self.vfs.files["smb://nas/wideo/filmy/FilmB.nfo"] = (
+            b'<?xml version="1.0" encoding="UTF-8"?>\n'
+            b"<movie>\n"
+            b"  <title>Film z istniejacym SudoSync</title>\n"
+            b'  <uniqueid type="imdb">tt7654321</uniqueid>\n'
+            b'  <uniqueid type="sudosync" default="true">DOM-000007</uniqueid>\n'
+            b"</movie>\n"
+        )
+        # Episode C: has TVDb without default="true"
+        self.vfs.files["smb://nas/wideo/seriale/EpisodeC.nfo"] = (
+            b'<?xml version="1.0" encoding="UTF-8"?>\n'
+            b"<episodedetails>\n"
+            b"  <title>Odcinek z TVDb</title>\n"
+            b'  <uniqueid type="tvdb">112233</uniqueid>\n'
+            b"</episodedetails>\n"
+        )
+
+        rpc_movies = [
+            {
+                "movieid": 101,
+                "title": "Film z IMDb",
+                "file": "smb://nas/wideo/filmy/FilmA.mkv",
+                "uniqueid": {"imdb": "tt1234567", "tmdb": "99999"},
+            },
+            {
+                "movieid": 102,
+                "title": "Film z istniejacym SudoSync",
+                "file": "smb://nas/wideo/filmy/FilmB.mkv",
+                "uniqueid": {"imdb": "tt7654321", "sudosync": "DOM-000007"},
+            },
+        ]
+        rpc_episodes = [
+            {
+                "episodeid": 201,
+                "title": "Odcinek z TVDb",
+                "file": "smb://nas/wideo/seriale/EpisodeC.mkv",
+                "uniqueid": {"tvdb": "112233"},
+            }
+        ]
+
+        def fake_rpc(method, params=None):
+            if method == "VideoLibrary.GetMovies":
+                return {"movies": rpc_movies}
+            if method == "VideoLibrary.GetEpisodes":
+                return {"episodes": rpc_episodes}
+            return {}
+
+        self.active_profile = "/profile_kodi1"
+        p = self._patch_env(addon_kodi)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
+                patch.object(sudosync_core, "rpc", side_effect=fake_rpc):
+            # Preview must list Film A and Episode C, but NOT Film B
+            preview = sudosync_core.preview_sudosync_ids()
+            self.assertEqual(len(preview), 2)
+            titles = [x["title"] for x in preview]
+            self.assertIn("Film z IMDb", titles)
+            self.assertIn("Odcinek z TVDb", titles)
+            self.assertNotIn("Film z istniejacym SudoSync", titles)
+
+            # Assign SudoSync IDs
+            res = sudosync_core.assign_sudosync_ids(show_notification=False)
+
+        self.assertEqual(res["movies"], 1)
+        self.assertEqual(res["episodes"], 1)
+        self.assertEqual(res["last_number"], 9)
+
+        # Verify Film A: IMDb and TMDb are preserved, sudosync ID DOM-000008 is added with default="false"
+        nfo_a = self.vfs.files["smb://nas/wideo/filmy/FilmA.nfo"].decode("utf-8")
+        self.assertIn('tt1234567', nfo_a)
+        self.assertIn('99999', nfo_a)
+        self.assertIn('<uniqueid type="sudosync" default="false">DOM-000008</uniqueid>', nfo_a)
+
+        # Verify Film B: unchanged DOM-000007
+        nfo_b = self.vfs.files["smb://nas/wideo/filmy/FilmB.nfo"].decode("utf-8")
+        self.assertIn('DOM-000007', nfo_b)
+        self.assertNotIn('DOM-000008', nfo_b)
+        self.assertNotIn('DOM-000009', nfo_b)
+
+        # Verify Episode C: TVDb preserved, sudosync ID DOM-000009 added with default="true"
+        nfo_c = self.vfs.files["smb://nas/wideo/seriale/EpisodeC.nfo"].decode("utf-8")
+        self.assertIn('112233', nfo_c)
+        self.assertIn('<uniqueid type="sudosync" default="true">DOM-000009</uniqueid>', nfo_c)
+
+    def test_06_default_assignids_shows_start_dialog_and_notification(self):
+        """Action 'assignids' displays a modal OK dialog and notification before running library scan."""
+        import default
+        addon_kodi = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi Salon",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+
+        calls = []
+        mock_dialog = MagicMock()
+        mock_dialog.ok.side_effect = lambda *args: calls.append(("ok", args))
+        mock_dialog.notification.side_effect = lambda *args: calls.append(("notification", args))
+        mock_dialog.yesno.return_value = False
+
+        self.active_profile = "/profile_kodi1"
+        p = self._patch_env(addon_kodi)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
+                patch.object(default.xbmcgui, "Dialog", return_value=mock_dialog), \
+                patch.object(sudosync_core, "collect_library", return_value=([], [])), \
+                patch.object(sys, "argv", ["default.py", "assignids"]):
+            default.main()
+
+        # Check that the first OK dialog and first notification were the start notice
+        self.assertTrue(len(calls) >= 2)
+        self.assertEqual(calls[0][0], "ok")
+        self.assertIn("analiza SudoSync ID", calls[0][1][0])
+        self.assertIn("kilkunastu minut", calls[0][1][1])
+
+        self.assertEqual(calls[1][0], "notification")
+        self.assertEqual(calls[1][1][0], "SudoSync")
+        self.assertIn("Skanowanie biblioteki", calls[1][1][1])
+
 
 if __name__ == "__main__":
     unittest.main()
+

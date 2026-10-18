@@ -1,3 +1,16 @@
+SudoSync 2.0.5
+==============
+
+- Bezwzględne nadawanie SudoSync ID:
+  - Identyfikator SudoSync ID jest nadawany wszystkim pozycjom wideo w bibliotece jako niezależny, równoległy identyfikator sieci lokalnej, niezależnie od obecności identyfikatorów zewnętrznych (IMDb, TMDb, TVDb, Trakt itp.).
+  - Jedynym wyjątkiem są pozycje posiadające już niepusty identyfikator typu `sudosync` (zarówno w bazie Kodi, jak i w plikach `.nfo`), które są pomijane w celu ochrony przed nadpisaniem.
+  - Podczas wstrzykiwania do istniejących plików `.nfo` zachowywane są wszystkie dotychczasowe tagi `<uniqueid>`, a nowy znacznik otrzymuje `default="false"` (jeżeli w pliku istnieje już jakikolwiek tag `default="true"`) lub `default="true"` (jeżeli w pliku nie było jeszcze znacznika domyślnego).
+- Naprawa błędu JSON-RPC `-32602: Invalid params` w `VideoLibrary.GetEpisodes`:
+  - W Kodi 21 usunięto przekazywanie parametru `"sort"` przy zapytaniu o całą kolekcję odcinków, eliminując błąd transportu JSON-RPC `-32602` i umożliwiając bezproblemowe pobieranie odcinków oraz budowanie podglądu synchronizacji. Deterministyczna kolejność zachowywana jest po stronie Pythona (sortowanie po `episodeid`).
+- Komunikat startowy i informacja w GUI przed długim skanowaniem biblioteki:
+  - W akcji przypisywania SudoSync ID (`assignids`), natychmiast przed rozpoczęciem skanowania biblioteki i plików NFO, wyświetlane jest modalne okno informacyjne oraz powiadomienie toast, ostrzegające o możliwym długim czasie trwania analizy (od kilku do kilkunastu minut przy dużej bibliotece na NAS) i zalecające nieprzerywanie pracy do momentu pojawienia się podsumowania.
+  - Dodano pełne tłumaczenia w `strings.po` (pl_PL oraz en_GB).
+
 SudoSync 2.0.4
 ==============
 

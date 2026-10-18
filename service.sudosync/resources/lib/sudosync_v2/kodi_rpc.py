@@ -305,7 +305,7 @@ class KodiJsonRpcAdapter(object):
             parts.append(value)
         return {"name": result.get("name", "Kodi"), "major": parts[0], "minor": parts[1], "patch": parts[2]}
 
-    def _get_library_items(self, method, collection_key, properties, abort_requested=None):
+    def _get_library_items(self, method, collection_key, properties, abort_requested=None, sort=None):
         all_items = []
         start = 0
         expected_total = None
@@ -313,11 +313,15 @@ class KodiJsonRpcAdapter(object):
             if self._is_aborted(abort_requested):
                 raise OperationAborted("{} aborted during pagination".format(method), partial_items=all_items)
             end = start + self._page_size
-            result = self.call(method, {
+            params = {
                 "properties": list(properties),
                 "limits": {"start": start, "end": end},
-                "sort": {"method": "title", "order": "ascending"},
-            }, abort_requested=abort_requested)
+            }
+            if sort is not None:
+                params["sort"] = sort
+            elif method != "VideoLibrary.GetEpisodes":
+                params["sort"] = {"method": "title", "order": "ascending"}
+            result = self.call(method, params, abort_requested=abort_requested)
             if not isinstance(result, dict) or not isinstance(result.get(collection_key), list):
                 raise KodiRpcError("{} returned an invalid {} collection".format(method, collection_key))
             items = result[collection_key]
@@ -352,11 +356,25 @@ class KodiJsonRpcAdapter(object):
         return all_items
 
     def get_movies(self, abort_requested=None):
-        items = self._get_library_items("VideoLibrary.GetMovies", "movies", MOVIE_PROPERTIES, abort_requested=abort_requested)
+        items = self._get_library_items(
+            "VideoLibrary.GetMovies",
+            "movies",
+            MOVIE_PROPERTIES,
+            abort_requested=abort_requested,
+            sort={"method": "title", "order": "ascending"},
+        )
+        items.sort(key=lambda x: (x.get("movieid") or 0))
         return self._enrich_with_nfo(items, "movie", abort_requested=abort_requested)
 
     def get_episodes(self, abort_requested=None):
-        items = self._get_library_items("VideoLibrary.GetEpisodes", "episodes", EPISODE_PROPERTIES, abort_requested=abort_requested)
+        items = self._get_library_items(
+            "VideoLibrary.GetEpisodes",
+            "episodes",
+            EPISODE_PROPERTIES,
+            abort_requested=abort_requested,
+            sort=None,
+        )
+        items.sort(key=lambda x: (x.get("episodeid") or 0))
         return self._enrich_with_nfo(items, "episode", abort_requested=abort_requested)
 
     def get_movie_details(self, movie_id):

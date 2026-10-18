@@ -193,8 +193,8 @@ msgid "Assign SudoSync IDs to all video items in the library"
 msgstr "Assign SudoSync IDs to all video items in the library"
 
 msgctxt "#32066"
-msgid "Injects SudoSync IDs to all items in Kodi library missing a standard ID."
-msgstr "Injects SudoSync IDs to all items in Kodi library missing a standard ID."
+msgid "Injects SudoSync IDs to all items in Kodi library as a parallel local-network identifier."
+msgstr "Injects SudoSync IDs to all items in Kodi library as a parallel local-network identifier."
 
 msgctxt "#32070"
 msgid "Select SudoSync folder / Configurator"
@@ -219,3 +219,16 @@ msgstr "Install update from local ZIP file..."
 msgctxt "#32075"
 msgid "Opens a file browser so you can select a SudoSync .zip update package from a local drive or network share."
 msgstr "Opens a file browser so you can select a SudoSync .zip update package from a local drive or network share."
+
+msgctxt "#32076"
+msgid "SudoSync — SudoSync ID analysis"
+msgstr "SudoSync — SudoSync ID analysis"
+
+msgctxt "#32077"
+msgid "After closing this dialog, SudoSync will scan your library and NFO files for SudoSync IDs.\n\nWith a large library on NAS, this scan may take from several to over a dozen minutes.\n\nPlease do not turn off Kodi or interrupt the process until the final summary appears."
+msgstr "After closing this dialog, SudoSync will scan your library and NFO files for SudoSync IDs.\n\nWith a large library on NAS, this scan may take from several to over a dozen minutes.\n\nPlease do not turn off Kodi or interrupt the process until the final summary appears."
+
+msgctxt "#32078"
+msgid "Scanning library and NFO files. Please wait..."
+msgstr "Scanning library and NFO files. Please wait..."
+

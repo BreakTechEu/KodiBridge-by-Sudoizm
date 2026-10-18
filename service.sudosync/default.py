@@ -34,6 +34,17 @@ from resources.lib.sudosync_core import (
 )
 
 
+def _get_localized_string(string_id, fallback=""):
+    try:
+        import xbmcaddon
+        val = xbmcaddon.Addon("service.sudosync").getLocalizedString(string_id)
+        if isinstance(val, str) and val.strip():
+            return val
+    except Exception:
+        pass
+    return fallback
+
+
 def show_status():
     status = read_local_status()
     settings = addon_settings()
@@ -518,7 +529,26 @@ def main():
                     "Funkcja jest wyłączona. Najpierw ją włącz i zatwierdź opcje przyciskiem OK."
                 )
                 return
-                
+
+            dialog_title = _get_localized_string(32076, "SudoSync — analiza SudoSync ID")
+            dialog_msg = _get_localized_string(
+                32077,
+                "Po zamknięciu tego komunikatu rozpocznie się analiza biblioteki i plików NFO pod kątem SudoSync ID.\n\n"
+                "Przy dużej bibliotece na NAS operacja może potrwać od kilku do kilkunastu minut.\n\n"
+                "Nie należy wyłączać Kodi ani przerywać pracy do czasu pojawienia się kolejnego okna z podsumowaniem.",
+            )
+            scan_notification = _get_localized_string(
+                32078,
+                "Skanowanie biblioteki i plików NFO. Proszę czekać...",
+            )
+            xbmcgui.Dialog().ok(dialog_title, dialog_msg)
+            xbmcgui.Dialog().notification(
+                "SudoSync",
+                scan_notification,
+                xbmcgui.NOTIFICATION_INFO,
+                10000,
+            )
+
             preview = preview_sudosync_ids()
             if not preview:
                 sync_res = assign_sudosync_ids(show_notification=False, auto_mode=True)
