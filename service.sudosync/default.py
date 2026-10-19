@@ -552,10 +552,11 @@ def main():
             preview = preview_sudosync_ids()
             if not preview:
                 sync_res = assign_sudosync_ids(show_notification=False, auto_mode=True)
+                last_num = sync_res.get("last_number", 0) if isinstance(sync_res, dict) else 0
                 xbmcgui.Dialog().ok(
                     "SudoSync",
                     "Nie znaleziono żadnych nowych plików wymagających przypisania ID.\n"
-                    "Ostatni użyty numer SudoSync ID w sieci: {}".format(sync_res.get("last_number", 0)),
+                    "Ostatni użyty numer SudoSync ID w sieci: {}".format(last_num),
                 )
                 return
                 
@@ -575,6 +576,8 @@ def main():
                 10000
             )
             result = assign_sudosync_ids()
+            if not isinstance(result, dict):
+                return
             xbmcgui.Dialog().ok(
                 "SudoSync",
                 "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}\nOstatni użyty numer SudoSync ID w sieci: {}".format(

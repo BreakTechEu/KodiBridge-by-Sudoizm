@@ -730,7 +730,158 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.assertEqual(calls[1][1][0], "SudoSync")
         self.assertIn("Skanowanie biblioteki", calls[1][1][1])
 
+    def test_07_assign_sudosync_ids_crash_mid_loop_preserves_counter_for_other_kodi(self):
+        """Failure or crash while writing 2nd film NFO still preserves pre-persisted counter >= 1 on NAS so 2nd Kodi avoids ID collisions."""
+        addon_kodi1 = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi 1",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+        addon_kodi2 = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi 2",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+
+        # Kodi 1 media
+        self.vfs.files["smb://nas/wideo1/Film1.nfo"] = b"<movie><title>Film 1</title></movie>\n"
+        self.vfs.files["smb://nas/wideo1/Film2.nfo"] = b"<movie><title>Film 2</title></movie>\n"
+        # Kodi 2 media (separate share)
+        self.vfs.files["smb://nas/wideo2/Film3.nfo"] = b"<movie><title>Film 3</title></movie>\n"
+
+        rpc_movies_kodi1 = [
+            {"movieid": 1, "title": "Film 1", "file": "smb://nas/wideo1/Film1.mkv", "uniqueid": {}},
+            {"movieid": 2, "title": "Film 2", "file": "smb://nas/wideo1/Film2.mkv", "uniqueid": {}},
+        ]
+        rpc_movies_kodi2 = [
+            {"movieid": 3, "title": "Film 3", "file": "smb://nas/wideo2/Film3.mkv", "uniqueid": {}},
+        ]
+
+        def fake_rpc_kodi1(method, params=None):
+            if method == "VideoLibrary.GetMovies":
+                return {"movies": rpc_movies_kodi1}
+            return {}
+
+        def fake_rpc_kodi2(method, params=None):
+            if method == "VideoLibrary.GetMovies":
+                return {"movies": rpc_movies_kodi2}
+            return {}
+
+        orig_write_bytes = sudosync_core._write_vfs_bytes
+
+        def failing_write_bytes(path, payload):
+            if "Film2" in path:
+                raise IOError("Simulated crash/disk error on Film 2 NFO write")
+            return orig_write_bytes(path, payload)
+
+        # 1. Run Kodi 1 with failure on Film 2
+        self.active_profile = "/profile_kodi1"
+        p1 = self._patch_env(addon_kodi1)
+        with p1[0], p1[1], p1[2], p1[3], p1[4], p1[5], p1[6], p1[7], p1[8], p1[9], p1[10], p1[11], p1[12], \
+                patch.object(sudosync_core, "rpc", side_effect=fake_rpc_kodi1), \
+                patch.object(sudosync_core, "_write_vfs_bytes", side_effect=failing_write_bytes):
+            res_kodi1 = sudosync_core.assign_sudosync_ids(show_notification=False)
+
+        # Film 1 was successfully modified, Film 2 failed during write
+        self.assertEqual(res_kodi1["movies"], 1)
+
+        # Verify counter was pre-persisted on NAS (SudoSync.cfg and system/config.json >= 1)
+        cfg_raw = json.loads(self.vfs.files[self.base_path + "SudoSync.cfg"].decode("utf-8"))
+        cfg_num = cfg_raw.get("network_settings", {}).get("sudosync_id_last_number", 0)
+        self.assertGreaterEqual(cfg_num, 1)
+
+        sys_raw = json.loads(self.vfs.files[self.base_path + "system/config.json"].decode("utf-8"))
+        sys_num = sys_raw.get("sudosync_id_last_number", 0)
+        self.assertGreaterEqual(sys_num, 1)
+
+        # Film 1 has DOM-000001
+        nfo_1 = self.vfs.files["smb://nas/wideo1/Film1.nfo"].decode("utf-8")
+        self.assertIn("DOM-000001", nfo_1)
+
+        # 2. Run Kodi 2 (does not see wideo1 share)
+        self.active_profile = "/profile_kodi2"
+        p2 = self._patch_env(addon_kodi2)
+        with p2[0], p2[1], p2[2], p2[3], p2[4], p2[5], p2[6], p2[7], p2[8], p2[9], p2[10], p2[11], p2[12], \
+                patch.object(sudosync_core, "rpc", side_effect=fake_rpc_kodi2):
+            res_kodi2 = sudosync_core.assign_sudosync_ids(show_notification=False)
+
+        self.assertEqual(res_kodi2["movies"], 1)
+
+        # Film 3 receives candidate number > cfg_num (no collision with DOM-000001 or reserved DOM-000002)
+        nfo_3 = self.vfs.files["smb://nas/wideo2/Film3.nfo"].decode("utf-8")
+        self.assertNotIn("DOM-000001", nfo_3)
+        self.assertTrue("DOM-000002" in nfo_3 or "DOM-000003" in nfo_3)
+        # End result on NAS reflects the newly assigned ID
+        cfg_final = json.loads(self.vfs.files[self.base_path + "SudoSync.cfg"].decode("utf-8"))
+        self.assertGreater(cfg_final.get("network_settings", {}).get("sudosync_id_last_number", 0), cfg_num)
+
+    def test_08_assign_sudosync_ids_concurrency_lock_blocks_parallel_run(self):
+        """When concurrency lock is held, parallel assign_sudosync_ids (auto and manual) safely returns 0, and finally block releases lock."""
+        addon_kodi = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi Salon",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+        self.vfs.files["smb://nas/wideo/FilmA.nfo"] = b"<movie><title>Film A</title></movie>\n"
+        rpc_movies = [{"movieid": 10, "title": "Film A", "file": "smb://nas/wideo/FilmA.mkv", "uniqueid": {}}]
+
+        def fake_rpc(method, params=None):
+            if method == "VideoLibrary.GetMovies":
+                return {"movies": rpc_movies}
+            return {}
+
+        mock_dialog = MagicMock()
+        mock_dialog_inst = MagicMock()
+        mock_dialog.return_value = mock_dialog_inst
+
+        self.active_profile = "/profile_kodi1"
+        p = self._patch_env(addon_kodi)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
+                patch.object(sudosync_core, "rpc", side_effect=fake_rpc), \
+                patch.object(sudosync_core.xbmcgui, "Dialog", mock_dialog):
+
+            # Explicitly acquire lock to simulate ongoing assignment in another process/service
+            acquired = sudosync_core._acquire_assign_ids_lock(self.base_path)
+            self.assertTrue(acquired)
+            self.assertFalse(sudosync_core._acquire_assign_ids_lock(self.base_path))
+
+            # auto_mode=True returns 0 without raising or modifying
+            auto_res = sudosync_core.assign_sudosync_ids(show_notification=False, auto_mode=True)
+            self.assertEqual(auto_res, 0)
+            self.assertNotIn("DOM-000001", self.vfs.files["smb://nas/wideo/FilmA.nfo"].decode("utf-8"))
+
+            # auto_mode=False returns 0 and triggers notification
+            manual_res = sudosync_core.assign_sudosync_ids(show_notification=True, auto_mode=False)
+            self.assertEqual(manual_res, 0)
+            mock_dialog_inst.notification.assert_called()
+
+            # Release lock
+            sudosync_core._release_assign_ids_lock(self.base_path)
+            self.assertFalse(sudosync_core._ASSIGN_IDS_LOCK_HELD)
+
+            # Now assign_sudosync_ids can run normally and releases its lock in finally
+            normal_res = sudosync_core.assign_sudosync_ids(show_notification=False, auto_mode=False)
+            self.assertIsInstance(normal_res, dict)
+            self.assertEqual(normal_res["movies"], 1)
+            self.assertFalse(sudosync_core._ASSIGN_IDS_LOCK_HELD)
+
+            # Test that an exception inside assign_sudosync_ids still releases the lock in finally
+            with patch.object(sudosync_core, "collect_library", side_effect=RuntimeError("RPC error")):
+                with self.assertRaises(RuntimeError):
+                    sudosync_core.assign_sudosync_ids(show_notification=False)
+            self.assertFalse(sudosync_core._ASSIGN_IDS_LOCK_HELD)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

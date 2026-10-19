@@ -275,6 +275,8 @@ def read_shared_config(base_path=None):
 
 
 def update_shared_config(mutator_func, base_path=None):
+    if callable(base_path) and not callable(mutator_func):
+        base_path, mutator_func = mutator_func, base_path
     settings = addon_settings()
     base = (base_path or settings["base_path"]).rstrip("/") + "/"
     ensure_remote_layout(base)
@@ -3032,11 +3034,24 @@ def get_network_sudosync_id_last_number(base_path=None, local_records=None):
     return max(0, max_num)
 
 
-def persist_network_sudosync_id_last_number(last_number, base_path=None):
-    """Persist the highest used sequential SudoSync ID number locally and on the shared NAS."""
+def persist_network_sudosync_id_last_number(last_number, base_path=None, s=None):
+    """Persist the highest used sequential SudoSync ID number locally and on the shared NAS.
+
+    Updates SudoSync.cfg (network_settings.sudosync_id_last_number) and system/config.json
+    atomically inside the shared config lock (update_shared_config), preserving monotonicity.
+    Returns the actually persisted number, or raises IOError on NAS write failure when base_path is set.
+    """
+    base = base_path if base_path is not None else s
+    if base is None:
+        try:
+            base = addon_settings().get("base_path") or ""
+        except Exception:
+            base = ""
+    base = str(base or "").strip()
+
     target_num = max(0, _safe_int(last_number, 0))
     try:
-        current_known = get_network_sudosync_id_last_number(base_path=base_path)
+        current_known = get_network_sudosync_id_last_number(base_path=base)
         if current_known > target_num:
             target_num = current_known
     except Exception:
@@ -3045,8 +3060,8 @@ def persist_network_sudosync_id_last_number(last_number, base_path=None):
     try:
         addon = xbmcaddon.Addon(ADDON_ID)
         cur_local = _safe_int(addon.getSetting("sudosync_id_last_number"), 0)
-        if target_num > cur_local:
-            addon.setSetting("sudosync_id_last_number", str(target_num))
+        if cur_local > target_num:
+            target_num = cur_local
     except Exception:
         pass
 
@@ -3054,59 +3069,84 @@ def persist_network_sudosync_id_last_number(last_number, base_path=None):
         status_path = os.path.join(_addon_profile_path(), "status.json")
         existing_status = _read_local_json(status_path)
         if isinstance(existing_status, dict):
-            if target_num > _safe_int(existing_status.get("sudosync_id_last_number"), 0):
-                existing_status["sudosync_id_last_number"] = target_num
-                _write_local_json(status_path, existing_status)
+            cur_status = _safe_int(existing_status.get("sudosync_id_last_number"), 0)
+            if cur_status > target_num:
+                target_num = cur_status
+    except Exception:
+        pass
+
+    actual_persisted = [target_num]
+
+    if base:
+        base_norm = base.rstrip("/") + "/"
+        cfg_path = base_norm + "SudoSync.cfg"
+
+        def _mutator(shared_data):
+            # 1. Inspect and update SudoSync.cfg inside the shared lock
+            cur_cfg_num = 0
+            cfg_obj = None
+            if xbmcvfs.exists(cfg_path):
+                try:
+                    cfg_obj = _read_vfs_json(cfg_path)
+                    if isinstance(cfg_obj, dict):
+                        net = cfg_obj.setdefault("network_settings", {})
+                        if isinstance(net, dict):
+                            cur_cfg_num = _safe_int(net.get("sudosync_id_last_number"), 0)
+                except Exception as exc:
+                    log("Błąd odczytu SudoSync.cfg podczas aktualizacji licznika: {}".format(exc), xbmc.LOGWARNING)
+
+            actual_persisted[0] = max(actual_persisted[0], cur_cfg_num)
+
+            # 2. Inspect and update system/config.json inside the shared lock
+            cur_sh = _safe_int(shared_data.get("sudosync_id_last_number"), 0)
+            net_sh = shared_data.setdefault("network_settings", {})
+            cur_net = _safe_int(net_sh.get("sudosync_id_last_number"), 0) if isinstance(net_sh, dict) else 0
+
+            actual_persisted[0] = max(actual_persisted[0], cur_sh, cur_net)
+            final_val = actual_persisted[0]
+
+            # Write to SudoSync.cfg if needed
+            if isinstance(cfg_obj, dict):
+                net = cfg_obj.setdefault("network_settings", {})
+                if isinstance(net, dict):
+                    if final_val > cur_cfg_num:
+                        net["sudosync_id_last_number"] = final_val
+                        _write_vfs_json(cfg_path, cfg_obj)
+
+            # Update system/config.json
+            shared_data["sudosync_id_last_number"] = final_val
+            if isinstance(net_sh, dict):
+                net_sh["sudosync_id_last_number"] = final_val
+
+            return True
+
+        try:
+            update_shared_config(_mutator, base_norm)
+        except Exception as exc:
+            log("Błąd atomowej synchronizacji licznika SudoSync ID na NAS: {}".format(exc), xbmc.LOGERROR)
+            raise IOError("Nie udało się zapisać licznika SudoSync ID na NAS: {}".format(exc))
+
+    final_saved = actual_persisted[0]
+
+    try:
+        addon = xbmcaddon.Addon(ADDON_ID)
+        cur_local = _safe_int(addon.getSetting("sudosync_id_last_number"), 0)
+        if final_saved > cur_local:
+            addon.setSetting("sudosync_id_last_number", str(final_saved))
     except Exception:
         pass
 
     try:
-        base = base_path
-        if base is None:
-            base = addon_settings().get("base_path") or ""
-        base = str(base or "").strip()
+        status_path = os.path.join(_addon_profile_path(), "status.json")
+        existing_status = _read_local_json(status_path)
+        if isinstance(existing_status, dict):
+            if final_saved > _safe_int(existing_status.get("sudosync_id_last_number"), 0):
+                existing_status["sudosync_id_last_number"] = final_saved
+                _write_local_json(status_path, existing_status)
     except Exception:
-        base = ""
+        pass
 
-    if base:
-        base_norm = base.rstrip("/") + "/"
-        try:
-            cfg_path = base_norm + "SudoSync.cfg"
-            if xbmcvfs.exists(cfg_path):
-                cfg = _read_vfs_json(cfg_path)
-                if isinstance(cfg, dict):
-                    net = cfg.setdefault("network_settings", {})
-                    if isinstance(net, dict):
-                        cur_cfg_num = _safe_int(net.get("sudosync_id_last_number"), 0)
-                        if target_num > cur_cfg_num:
-                            net["sudosync_id_last_number"] = target_num
-                            _write_vfs_json(cfg_path, cfg)
-        except Exception:
-            pass
-
-        try:
-            shared_path = _shared_config_path(base_norm)
-            if xbmcvfs.exists(shared_path):
-                def _mutator(cfg):
-                    cur_sh = _safe_int(cfg.get("sudosync_id_last_number"), 0)
-                    net = cfg.setdefault("network_settings", {})
-                    cur_net = _safe_int(net.get("sudosync_id_last_number"), 0) if isinstance(net, dict) else 0
-                    if target_num > cur_sh or target_num > cur_net:
-                        cfg["sudosync_id_last_number"] = max(cur_sh, target_num)
-                        if isinstance(net, dict):
-                            net["sudosync_id_last_number"] = max(cur_net, target_num)
-                        return True
-                    return False
-                try:
-                    update_shared_config(_mutator, base_norm)
-                except Exception:
-                    shared_data = _read_vfs_json(shared_path)
-                    if isinstance(shared_data, dict) and _mutator(shared_data):
-                        _write_vfs_json(shared_path, shared_data)
-        except Exception:
-            pass
-
-    return target_num
+    return final_saved
 
 
 def get_or_sync_network_id_and_alias(base_path=None):
@@ -3491,218 +3531,490 @@ def preview_sudosync_ids():
     return preview_list
 
 
-def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items=None):
+_ASSIGN_IDS_LOCK_HELD = False
+
+
+def _get_localized_string(string_id, fallback=""):
+    try:
+        addon = xbmcaddon.Addon(ADDON_ID)
+        val = addon.getLocalizedString(string_id)
+        if isinstance(val, str) and val.strip():
+            return val
+    except Exception:
+        pass
+    return fallback
+
+
+def _remove_assign_ids_lock_file(path):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+    try:
+        if xbmcvfs.exists(path):
+            xbmcvfs.delete(path)
+    except Exception:
+        pass
+
+
+def _acquire_assign_ids_lock(base_path=None, auto_mode=False, s=None):
+    """Acquire local and optional NAS concurrency lock for assign_sudosync_ids.
+
+    Uses os.O_CREAT | os.O_EXCL with orphan verification (1800s TTL).
+    Returns True if acquired, False otherwise.
+    """
+    global _ASSIGN_IDS_LOCK_HELD
+    if _ASSIGN_IDS_LOCK_HELD:
+        return False
+
+    base = base_path if base_path is not None else s
+    if base is None:
+        try:
+            base = addon_settings().get("base_path") or ""
+        except Exception:
+            base = ""
+    base = str(base or "").strip()
+
+    now = datetime.now(timezone.utc).timestamp()
+    local_path = os.path.join(_addon_profile_path(), "assign_ids.lock")
+
+    # Check local lock file for active or orphaned state
+    local_data = _read_local_json(local_path)
+    if isinstance(local_data, dict) and local_data.get("locked"):
+        lock_ts = float(local_data.get("timestamp") or 0.0)
+        if lock_ts > 0.0 and (now - lock_ts > 1800.0):
+            log("Znaleziono osieroconą blokadę assign_ids.lock (wiek > 1800s). Usuwanie...", xbmc.LOGWARNING)
+            _remove_assign_ids_lock_file(local_path)
+        elif lock_ts > 0.0:
+            return False
+
+    lock_payload = {
+        "locked": True,
+        "timestamp": now,
+        "pid": os.getpid(),
+        "client_id": get_or_create_client_id(),
+    }
+
+    # Attempt atomic creation via os.O_CREAT | os.O_EXCL if real filesystem directory
+    acquired_via_os = False
+    try:
+        dirname = os.path.dirname(local_path)
+        if dirname and os.path.exists(dirname):
+            fd = os.open(local_path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+            try:
+                payload_str = json.dumps(lock_payload, indent=2) + "\n"
+                os.write(fd, payload_str.encode("utf-8"))
+            finally:
+                os.close(fd)
+            acquired_via_os = True
+    except FileExistsError:
+        return False
+    except (OSError, IOError):
+        pass
+
+    if not acquired_via_os:
+        # Fallback to _write_local_json for virtual / mock environments
+        existing = _read_local_json(local_path)
+        if isinstance(existing, dict) and existing.get("locked"):
+            return False
+        _write_local_json(local_path, lock_payload)
+
+    # Optional NAS lock in system/ directory
+    if base:
+        base_norm = base.rstrip("/") + "/"
+        nas_lock = _join_vfs(base_norm, "system").rstrip("/") + "/assign_ids.lock"
+        try:
+            if xbmcvfs.exists(nas_lock):
+                nas_data = _read_vfs_json(nas_lock)
+                if isinstance(nas_data, dict) and nas_data.get("locked"):
+                    nas_ts = float(nas_data.get("timestamp") or 0.0)
+                    if nas_ts > 0.0 and (now - nas_ts > 1800.0):
+                        log("Znaleziono osieroconą blokadę NAS assign_ids.lock (wiek > 1800s). Usuwanie...", xbmc.LOGWARNING)
+                        try:
+                            xbmcvfs.delete(nas_lock)
+                        except Exception:
+                            pass
+                    elif nas_ts > 0.0:
+                        _release_assign_ids_lock(base_path=base)
+                        return False
+            _write_vfs_json(nas_lock, lock_payload)
+        except Exception as exc:
+            log("Ostrzeżenie przy zapisie blokady NAS assign_ids.lock: {}".format(exc), xbmc.LOGWARNING)
+
+    _ASSIGN_IDS_LOCK_HELD = True
+    return True
+
+
+def _release_assign_ids_lock(base_path=None, s=None):
+    """Release local and optional NAS concurrency lock for assign_sudosync_ids."""
+    global _ASSIGN_IDS_LOCK_HELD
+    _ASSIGN_IDS_LOCK_HELD = False
+
+    base = base_path if base_path is not None else s
+    if base is None:
+        try:
+            base = addon_settings().get("base_path") or ""
+        except Exception:
+            base = ""
+    base = str(base or "").strip()
+
+    local_path = os.path.join(_addon_profile_path(), "assign_ids.lock")
+    try:
+        _write_local_json(local_path, {"locked": False, "timestamp": 0.0})
+    except Exception:
+        pass
+    _remove_assign_ids_lock_file(local_path)
+
+    if base:
+        base_norm = base.rstrip("/") + "/"
+        nas_lock = _join_vfs(base_norm, "system").rstrip("/") + "/assign_ids.lock"
+        try:
+            if xbmcvfs.exists(nas_lock):
+                xbmcvfs.delete(nas_lock)
+        except Exception:
+            pass
+
+
+def _touch_assign_ids_lock(base_path=None, s=None):
+    """Refresh the timestamp of the assign_sudosync_ids lock to avoid 1800s timeout during long scans."""
+    now = datetime.now(timezone.utc).timestamp()
+    local_path = os.path.join(_addon_profile_path(), "assign_ids.lock")
+    try:
+        data = _read_local_json(local_path)
+        if isinstance(data, dict) and data.get("locked"):
+            data["timestamp"] = now
+            _write_local_json(local_path, data)
+    except Exception:
+        pass
+
+    base = base_path if base_path is not None else s
+    if base is None:
+        try:
+            base = addon_settings().get("base_path") or ""
+        except Exception:
+            base = ""
+    base = str(base or "").strip()
+    if base:
+        base_norm = base.rstrip("/") + "/"
+        nas_lock = _join_vfs(base_norm, "system").rstrip("/") + "/assign_ids.lock"
+        try:
+            if xbmcvfs.exists(nas_lock):
+                nas_data = _read_vfs_json(nas_lock)
+                if isinstance(nas_data, dict) and nas_data.get("locked"):
+                    nas_data["timestamp"] = now
+                    _write_vfs_json(nas_lock, nas_data)
+        except Exception:
+            pass
+
+
+def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items=None, base_path=None, s=None):
     settings = addon_settings()
     if not settings.get("sudosync_id_enabled"):
         raise RuntimeError("Generowanie SudoSync ID jest wylaczone w ustawieniach.")
 
-    _NFO_ID_CACHE.clear()
-    if collected_items is not None:
-        movies, episodes = collected_items
-    else:
-        movies, episodes = collect_library(first_import=False)
-    prefix = get_or_sync_network_id_and_alias(settings.get("base_path"))
+    base = base_path if base_path is not None else s
+    if base is None:
+        base = settings.get("base_path") or ""
 
-    modified_movies = 0
-    modified_episodes = 0
-    refreshed_existing = 0
+    if not _acquire_assign_ids_lock(base_path=base, auto_mode=auto_mode):
+        if auto_mode:
+            log("Przypisywanie SudoSync ID w tle pominięte: inna operacja przypisywania jest w toku.", xbmc.LOGINFO)
+            return 0
+        else:
+            log("Ręczne przypisywanie SudoSync ID zablokowane: inna operacja przypisywania jest w toku.", xbmc.LOGWARNING)
+            try:
+                msg = _get_localized_string(32079, "Przypisywanie SudoSync ID jest już wykonywane w tle. Poczekaj na zakończenie.")
+                xbmcgui.Dialog().notification("SudoSync", msg, xbmcgui.NOTIFICATION_WARNING, 5000)
+            except Exception:
+                pass
+            return 0
 
-    all_items = list(movies) + list(episodes)
-    last_number = get_network_sudosync_id_last_number(settings.get("base_path"), all_items)
+    try:
+        _NFO_ID_CACHE.clear()
+        if collected_items is not None:
+            movies, episodes = collected_items
+        else:
+            movies, episodes = collect_library(first_import=False)
+        prefix = get_or_sync_network_id_and_alias(settings.get("base_path"))
 
-    def _refresh_item(item, kind):
-        try:
-            if kind == "movie":
-                rpc("VideoLibrary.RefreshMovie", {"movieid": item.get("local", {}).get("movieid")})
-            else:
-                rpc("VideoLibrary.RefreshEpisode", {"episodeid": item.get("local", {}).get("episodeid")})
-        except Exception:
-            pass
+        modified_movies = 0
+        modified_episodes = 0
+        refreshed_existing = 0
 
-    # First pass: discover any sudosync IDs already written in .nfo files on NAS
-    # (e.g. by another Kodi) so we never overwrite them and always advance
-    # last_number past the highest existing sequential SudoSync ID.
-    for kind, collection in (("movie", movies), ("episode", episodes)):
-        for item in collection:
-            ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
-            if _has_sudosync_id(ids):
-                num = _extract_sudosync_id_number(ids.get("sudosync"))
-                if num > last_number:
-                    last_number = num
-                continue
-            file_path = item.get("file")
-            if not file_path:
-                continue
-            best_path, nfo_ids, _ = _find_best_nfo(file_path, kind)
-            found_ids = nfo_ids if isinstance(nfo_ids, dict) and _has_sudosync_id(nfo_ids) else {}
-            if not found_ids and best_path and xbmcvfs.exists(best_path):
+        all_items = list(movies) + list(episodes)
+        last_number = get_network_sudosync_id_last_number(settings.get("base_path"), all_items)
+
+        def _refresh_item(item, kind):
+            try:
+                if kind == "movie":
+                    rpc("VideoLibrary.RefreshMovie", {"movieid": item.get("local", {}).get("movieid")})
+                else:
+                    rpc("VideoLibrary.RefreshEpisode", {"episodeid": item.get("local", {}).get("episodeid")})
+            except Exception:
+                pass
+
+        # First pass: discover any sudosync IDs already written in .nfo files on NAS
+        # (e.g. by another Kodi) so we never overwrite them and always advance
+        # last_number past the highest existing sequential SudoSync ID.
+        for kind, collection in (("movie", movies), ("episode", episodes)):
+            for item in collection:
+                ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
+                if _has_sudosync_id(ids):
+                    num = _extract_sudosync_id_number(ids.get("sudosync"))
+                    if num > last_number:
+                        last_number = num
+                    continue
+                file_path = item.get("file")
+                if not file_path:
+                    continue
+                best_path, nfo_ids, _ = _find_best_nfo(file_path, kind)
+                found_ids = nfo_ids if isinstance(nfo_ids, dict) and _has_sudosync_id(nfo_ids) else {}
+                if not found_ids and best_path and xbmcvfs.exists(best_path):
+                    try:
+                        raw_existing = _read_vfs_all(best_path)
+                        has_sudosync, parsed_ids = _nfo_raw_has_sudosync_id(raw_existing, kind)
+                        if has_sudosync and parsed_ids:
+                            found_ids = parsed_ids
+                    except Exception:
+                        pass
+                if found_ids and _has_sudosync_id(found_ids):
+                    target_ids = item.setdefault("ids", {})
+                    for k, v in found_ids.items():
+                        if k not in target_ids and v:
+                            target_ids[k] = v
+                    num = _extract_sudosync_id_number(target_ids.get("sudosync"))
+                    if num > last_number:
+                        last_number = num
+                    _refresh_item(item, kind)
+                    refreshed_existing += 1
+
+        manifest = {
+            "generated_at": utc_now_precise(),
+            "modified": [],
+            "errors": [],
+            "last_number": last_number,
+        }
+
+        def _write_manifest():
+            manifest_path = os.path.join(_addon_profile_path(), "assign_ids_manifest.json")
+            sudosync_manifest_path = os.path.join(_addon_profile_path(), "sudosync_id_manifest.json")
+            if not auto_mode or manifest["modified"] or manifest["errors"]:
                 try:
-                    raw_existing = _read_vfs_all(best_path)
-                    has_sudosync, parsed_ids = _nfo_raw_has_sudosync_id(raw_existing, kind)
-                    if has_sudosync and parsed_ids:
-                        found_ids = parsed_ids
+                    _write_local_json(manifest_path, manifest)
                 except Exception:
                     pass
-            if found_ids and _has_sudosync_id(found_ids):
-                target_ids = item.setdefault("ids", {})
-                for k, v in found_ids.items():
-                    if k not in target_ids and v:
-                        target_ids[k] = v
-                num = _extract_sudosync_id_number(target_ids.get("sudosync"))
-                if num > last_number:
-                    last_number = num
-                _refresh_item(item, kind)
-                refreshed_existing += 1
+                try:
+                    _write_local_json(sudosync_manifest_path, manifest)
+                except Exception:
+                    pass
 
-    manifest = {"generated_at": utc_now_precise(), "modified": [], "errors": []}
+        _write_manifest()
 
-    def _process_item(item, kind):
-        nonlocal last_number
-        ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
-        if _has_sudosync_id(ids):
-            return False
-        file_path = item.get("file")
-        if not file_path:
-            return False
+        # Persist discovered highest number if higher than before
+        try:
+            persisted = persist_network_sudosync_id_last_number(last_number, settings.get("base_path"))
+            if persisted and persisted > last_number:
+                last_number = persisted
+            manifest["last_number"] = last_number
+            _write_manifest()
+        except Exception as exc:
+            log("Nie udało się zsynchronizować początkowego licznika z NAS: {}".format(exc), xbmc.LOGWARNING)
 
-        best_path, nfo_ids, _ = _find_best_nfo(file_path, kind)
-        if isinstance(nfo_ids, dict) and _has_sudosync_id(nfo_ids):
-            return False
-        if not best_path:
-            return False
+        def _process_item(item, kind):
+            nonlocal last_number
+            ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
+            if _has_sudosync_id(ids):
+                return False, False
+            file_path = item.get("file")
+            if not file_path:
+                return False, False
 
-        import xml.sax.saxutils
+            best_path, nfo_ids, _ = _find_best_nfo(file_path, kind)
+            if isinstance(nfo_ids, dict) and _has_sudosync_id(nfo_ids):
+                return False, False
+            if not best_path:
+                return False, False
 
-        if xbmcvfs.exists(best_path):
-            try:
-                raw = _read_vfs_all(best_path)
-                if not raw:
-                    return False
-                if isinstance(raw, str):
-                    raw = raw.encode("utf-8")
-                else:
-                    raw = bytearray(raw)
+            import xml.sax.saxutils
 
-                has_sudosync, _ = _nfo_raw_has_sudosync_id(raw, kind)
-                if has_sudosync:
-                    return False
+            _touch_assign_ids_lock(settings.get("base_path"))
 
-                closing_tags = [b"</movie>", b"</episodedetails>", b"</musicvideo>"]
-                if kind == "movie":
-                    preferred = b"</movie>"
-                elif kind == "episode":
-                    preferred = b"</episodedetails>"
-                elif kind == "musicvideo":
-                    preferred = b"</musicvideo>"
-                else:
-                    preferred = b"</" + kind.encode("utf-8") + b">"
+            if xbmcvfs.exists(best_path):
+                try:
+                    raw = _read_vfs_all(best_path)
+                    if not raw:
+                        return False, False
+                    if isinstance(raw, str):
+                        raw = raw.encode("utf-8")
+                    else:
+                        raw = bytearray(raw)
 
-                pos = raw.lower().rfind(preferred)
-                if pos < 0:
-                    for fallback in closing_tags:
-                        pos = raw.lower().rfind(fallback)
-                        if pos >= 0:
-                            break
-                if pos < 0:
-                    return False
+                    has_sudosync, _ = _nfo_raw_has_sudosync_id(raw, kind)
+                    if has_sudosync:
+                        return False, False
 
-                next_num = last_number + 1
-                full_id = "{}-{:06d}".format(prefix, next_num)
-                escaped_full_id = xml.sax.saxutils.escape(full_id)
+                    closing_tags = [b"</movie>", b"</episodedetails>", b"</musicvideo>"]
+                    if kind == "movie":
+                        preferred = b"</movie>"
+                    elif kind == "episode":
+                        preferred = b"</episodedetails>"
+                    elif kind == "musicvideo":
+                        preferred = b"</musicvideo>"
+                    else:
+                        preferred = b"</" + kind.encode("utf-8") + b">"
 
-                has_default_true = bool(re.search(rb'default\s*=\s*["\']true["\']', raw, re.IGNORECASE))
-                default_attr = 'default="false"' if has_default_true else 'default="true"'
+                    pos = raw.lower().rfind(preferred)
+                    if pos < 0:
+                        for fallback in closing_tags:
+                            pos = raw.lower().rfind(fallback)
+                            if pos >= 0:
+                                break
+                    if pos < 0:
+                        return False, False
 
-                insert = ('    <uniqueid type="sudosync" ' + default_attr + '>' + escaped_full_id + '</uniqueid>\n').encode("utf-8")
-                new_raw = raw[:pos] + insert + raw[pos:]
-                new_raw_bytes = bytes(new_raw)
+                    candidate_number = last_number + 1
 
-                bak_path = best_path + ".bak"
-                new_path = best_path + ".new"
+                    # Atomowa rezerwacja licznika na NAS PRZED modyfikacją pliku .nfo
+                    try:
+                        persisted_num = persist_network_sudosync_id_last_number(candidate_number, settings.get("base_path"))
+                        if not persisted_num or persisted_num < candidate_number:
+                            raise IOError("Rezerwacja licznika zwróciła nieprawidłową wartość: {}".format(persisted_num))
+                        candidate_number = persisted_num
+                    except Exception as exc:
+                        log("Błąd rezerwacji licznika SudoSync ID na NAS dla '{}': {}. Przerywanie operacji.".format(best_path, exc), xbmc.LOGERROR)
+                        manifest["errors"].append({"file": best_path, "error": "Rezerwacja licznika nie powiodła się: {}".format(exc)})
+                        manifest["last_number"] = last_number
+                        _write_manifest()
+                        return False, True
 
-                _write_vfs_bytes(new_path, new_raw)
-                if xbmcvfs.exists(bak_path):
-                    xbmcvfs.delete(bak_path)
+                    last_number = candidate_number
+                    manifest["last_number"] = last_number
+                    _write_manifest()
 
-                success_bak = xbmcvfs.rename(best_path, bak_path)
-                success_new = xbmcvfs.rename(new_path, best_path)
+                    full_id = "{}-{:06d}".format(prefix, candidate_number)
+                    escaped_full_id = xml.sax.saxutils.escape(full_id)
 
-                if not success_new:
-                    if success_bak:
-                        xbmcvfs.rename(bak_path, best_path)
+                    has_default_true = bool(re.search(rb'default\s*=\s*["\']true["\']', raw, re.IGNORECASE))
+                    default_attr = 'default="false"' if has_default_true else 'default="true"'
+
+                    insert = ('    <uniqueid type="sudosync" ' + default_attr + '>' + escaped_full_id + '</uniqueid>\n').encode("utf-8")
+                    new_raw = raw[:pos] + insert + raw[pos:]
+                    new_raw_bytes = bytes(new_raw)
+
+                    bak_path = best_path + ".bak"
+                    new_path = best_path + ".new"
+
+                    _write_vfs_bytes(new_path, new_raw)
+                    if xbmcvfs.exists(bak_path):
+                        xbmcvfs.delete(bak_path)
+
+                    success_bak = xbmcvfs.rename(best_path, bak_path)
+                    success_new = xbmcvfs.rename(new_path, best_path)
+
+                    if not success_new:
+                        if success_bak:
+                            xbmcvfs.rename(bak_path, best_path)
+                        if xbmcvfs.exists(new_path):
+                            xbmcvfs.delete(new_path)
+                        return False, False
+
                     if xbmcvfs.exists(new_path):
                         xbmcvfs.delete(new_path)
-                    return False
 
-                if xbmcvfs.exists(new_path):
-                    xbmcvfs.delete(new_path)
+                    item.setdefault("ids", {})["sudosync"] = full_id
+                    _refresh_item(item, kind)
+                    manifest["modified"].append({
+                        "file": best_path,
+                        "backup": bak_path,
+                        "action": "modified",
+                        "created": False,
+                        "type": kind,
+                        "sudosync_id": full_id,
+                        "content_sha256": hashlib.sha256(new_raw_bytes).hexdigest(),
+                        "title": item.get("title"),
+                    })
+                    _write_manifest()
+                    return True, False
+                except Exception as exc:
+                    manifest["errors"].append({"file": best_path, "error": str(exc)})
+                    _write_manifest()
+                    return False, False
+            else:
+                candidate_number = last_number + 1
 
-                last_number = next_num
-                item.setdefault("ids", {})["sudosync"] = full_id
-                _refresh_item(item, kind)
-                manifest["modified"].append({
-                    "file": best_path,
-                    "backup": bak_path,
-                    "action": "modified",
-                    "created": False,
-                    "type": kind,
-                    "sudosync_id": full_id,
-                    "content_sha256": hashlib.sha256(new_raw_bytes).hexdigest(),
-                    "title": item.get("title"),
-                })
-                return True
-            except Exception as exc:
-                manifest["errors"].append({"file": best_path, "error": str(exc)})
-                return False
-        else:
-            next_num = last_number + 1
-            full_id = "{}-{:06d}".format(prefix, next_num)
-            raw_title = item.get("title") or item.get("originaltitle") or "Nieznany"
-            xml_content = _build_created_nfo_xml(kind, raw_title, full_id)
-            xml_bytes = xml_content.encode("utf-8")
-            try:
-                _write_vfs_bytes(best_path, xml_content)
-                last_number = next_num
-                item.setdefault("ids", {})["sudosync"] = full_id
-                _refresh_item(item, kind)
-                manifest["modified"].append({
-                    "file": best_path,
-                    "backup": None,
-                    "action": "created",
-                    "created": True,
-                    "type": kind,
-                    "sudosync_id": full_id,
-                    "content_sha256": hashlib.sha256(xml_bytes).hexdigest(),
-                    "title": raw_title,
-                })
-                return True
-            except Exception as exc:
-                manifest["errors"].append({"file": best_path, "error": str(exc)})
-                return False
+                # Atomowa rezerwacja licznika na NAS PRZED utworzeniem pliku .nfo
+                try:
+                    persisted_num = persist_network_sudosync_id_last_number(candidate_number, settings.get("base_path"))
+                    if not persisted_num or persisted_num < candidate_number:
+                        raise IOError("Rezerwacja licznika zwróciła nieprawidłową wartość: {}".format(persisted_num))
+                    candidate_number = persisted_num
+                except Exception as exc:
+                    log("Błąd rezerwacji licznika SudoSync ID na NAS dla '{}': {}. Przerywanie operacji.".format(best_path, exc), xbmc.LOGERROR)
+                    manifest["errors"].append({"file": best_path, "error": "Rezerwacja licznika nie powiodła się: {}".format(exc)})
+                    manifest["last_number"] = last_number
+                    _write_manifest()
+                    return False, True
 
-    for m in movies:
-        if _process_item(m, "movie"):
-            modified_movies += 1
+                last_number = candidate_number
+                manifest["last_number"] = last_number
+                _write_manifest()
 
-    for e in episodes:
-        if _process_item(e, "episode"):
-            modified_episodes += 1
+                full_id = "{}-{:06d}".format(prefix, candidate_number)
+                raw_title = item.get("title") or item.get("originaltitle") or "Nieznany"
+                xml_content = _build_created_nfo_xml(kind, raw_title, full_id)
+                xml_bytes = xml_content.encode("utf-8")
+                try:
+                    _write_vfs_bytes(best_path, xml_content)
+                    item.setdefault("ids", {})["sudosync"] = full_id
+                    _refresh_item(item, kind)
+                    manifest["modified"].append({
+                        "file": best_path,
+                        "backup": None,
+                        "action": "created",
+                        "created": True,
+                        "type": kind,
+                        "sudosync_id": full_id,
+                        "content_sha256": hashlib.sha256(xml_bytes).hexdigest(),
+                        "title": raw_title,
+                    })
+                    _write_manifest()
+                    return True, False
+                except Exception as exc:
+                    manifest["errors"].append({"file": best_path, "error": str(exc)})
+                    _write_manifest()
+                    return False, False
 
-    _NFO_ID_CACHE.clear()
-    last_number = persist_network_sudosync_id_last_number(last_number, settings.get("base_path"))
-    manifest["last_number"] = last_number
+        aborted = False
+        for m in movies:
+            success, fatal = _process_item(m, "movie")
+            if success:
+                modified_movies += 1
+            if fatal:
+                aborted = True
+                break
 
-    manifest_path = os.path.join(_addon_profile_path(), "assign_ids_manifest.json")
-    if not auto_mode or manifest["modified"] or manifest["errors"]:
-        _write_local_json(manifest_path, manifest)
+        if not aborted:
+            for e in episodes:
+                success, fatal = _process_item(e, "episode")
+                if success:
+                    modified_episodes += 1
+                if fatal:
+                    break
 
-    return {
-        "movies": modified_movies,
-        "episodes": modified_episodes,
-        "refreshed_existing": refreshed_existing,
-        "last_number": last_number,
-        "manifest_path": manifest_path,
-    }
+        _NFO_ID_CACHE.clear()
+        manifest_path = os.path.join(_addon_profile_path(), "assign_ids_manifest.json")
+        _write_manifest()
+
+        return {
+            "movies": modified_movies,
+            "episodes": modified_episodes,
+            "refreshed_existing": refreshed_existing,
+            "last_number": last_number,
+            "manifest_path": manifest_path,
+        }
+    finally:
+        _release_assign_ids_lock(base_path=base)
 
 
 

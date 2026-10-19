@@ -1,6 +1,14 @@
 SudoSync 2.0.5
 ==============
 
+- Atomowa rezerwacja wspólnego licznika SudoSync ID przed zapisem NFO:
+  - Aktualizacja `SudoSync.cfg` (`network_settings.sudosync_id_last_number`) oraz `system/config.json` (`network_settings.sudosync_id_last_number` i `sudosync_id_last_number`) odbywa się atomowo wewnątrz tej samej blokady konfiguracyjnej (`update_shared_config`), z monotonicznym zachowaniem najwyższego numeru (`max(existing, target)`).
+  - Przed zapisaniem każdego nowego identyfikatora do pliku `.nfo` (zanim zmodyfikowany zostanie plik na dysku/NAS), kandydat numeru jest najpierw trwale rezerwowany we wspólnym liczniku sieciowym na NAS oraz zapisywany w manifeście (`assign_ids_manifest.json` oraz `sudosync_id_manifest.json`). W razie niepowodzenia rezerwacji proces natychmiast przerywa działanie bez modyfikowania pliku `.nfo` (tryb fail-closed).
+  - Gwarantuje to, że nawet przy nagłej awarii w trakcie indeksowania licznik na NAS jest zawsze `>=` najwyższemu numerowi w plikach `.nfo`, wykluczając duplikację ID na innych Kodi z częściowym dostępem do biblioteki.
+- Lokalna i sieciowa blokada współbieżności wokół `assign_sudosync_ids`:
+  - Wdrożono atomową blokadę procesu przypisywania identyfikatorów (`_acquire_assign_ids_lock` / `_release_assign_ids_lock`) w profilu lokalnym (`assign_ids.lock`) oraz w katalogu sieciowym NAS (`system/assign_ids.lock`) z mechanizmem automatycznego usuwania osieroconych blokad (TTL 1800 s) i odświeżaniem znacznika czasu w pętli.
+  - Wywołanie równoległe w tle (`auto_mode=True`) cicho pomija przebieg i zwraca `0`, a wywołanie ręczne z GUI (`auto_mode=False`) wyświetla powiadomienie ostrzegawcze, że operacja już trwa w tle, i zwraca `0`.
+  - Blok `try ... finally` zapewnia bezwzględne zwolnienie blokady po zakończeniu lub w razie wyjątku.
 - Bezwzględne nadawanie SudoSync ID:
   - Identyfikator SudoSync ID jest nadawany wszystkim pozycjom wideo w bibliotece jako niezależny, równoległy identyfikator sieci lokalnej, niezależnie od obecności identyfikatorów zewnętrznych (IMDb, TMDb, TVDb, Trakt itp.).
   - Jedynym wyjątkiem są pozycje posiadające już niepusty identyfikator typu `sudosync` (zarówno w bazie Kodi, jak i w plikach `.nfo`), które są pomijane w celu ochrony przed nadpisaniem.

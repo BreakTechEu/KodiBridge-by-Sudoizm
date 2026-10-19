@@ -232,3 +232,7 @@ msgctxt "#32078"
 msgid "Scanning library and NFO files. Please wait..."
 msgstr "Skanowanie biblioteki i plików NFO. Proszę czekać..."
 
+msgctxt "#32079"
+msgid "SudoSync ID assignment is already running in the background. Please wait for it to finish."
+msgstr "Przypisywanie SudoSync ID jest już wykonywane w tle. Poczekaj na zakończenie."
+
