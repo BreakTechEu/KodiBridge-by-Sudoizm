@@ -236,3 +236,19 @@ msgctxt "#32079"
 msgid "SudoSync ID assignment is already running in the background. Please wait for it to finish."
 msgstr "Przypisywanie SudoSync ID jest już wykonywane w tle. Poczekaj na zakończenie."
 
+msgctxt "#32080"
+msgid "Scanning library and checking SudoSync IDs..."
+msgstr "Skanowanie biblioteki i sprawdzanie SudoSync ID..."
+
+msgctxt "#32081"
+msgid "Assigning SudoSync IDs..."
+msgstr "Przypisywanie SudoSync ID..."
+
+msgctxt "#32082"
+msgid "This window will close automatically once the process completes."
+msgstr "To okno zamknie się automatycznie po zakończeniu operacji."
+
+msgctxt "#32083"
+msgid "Operation was cancelled by the user."
+msgstr "Operacja została anulowana przez użytkownika."
+

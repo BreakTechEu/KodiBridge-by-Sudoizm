@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 
 from .schema import validate_snapshot
 from .identity import identity_matches_kodi_item, is_valid_serialized_identity
+from .kodi_rpc import OperationAborted, is_aborted
 
 
 class TransactionError(RuntimeError):
@@ -146,8 +147,10 @@ class TransactionRunner(object):
                     "Kodi verification failed for {} {} field {}".format(item["type"], item["kodi_id"], field)
                 )
 
-    def run(self, plan, client_id, current_snapshot):
+    def run(self, plan, client_id, current_snapshot, abort_requested=None, progress_callback=None):
         """Apply and verify every change; unresolved failures retain the marker."""
+        if is_aborted(abort_requested):
+            raise OperationAborted("Transaction aborted before start")
         items = self._validate_plan(plan, client_id)
         if not items:
             return {"status": "no_changes", "items": [], "backup_ref": None}
@@ -211,10 +214,15 @@ class TransactionRunner(object):
             raise TransactionError("Could not persist applying state before any library write: {}".format(exc))
 
         mutation_started = False
+        total_items = len(journal["items"])
         try:
-            for item in journal["items"]:
+            for idx, item in enumerate(journal["items"]):
                 if self._kodi.is_video_playing():
                     raise TransactionError("video playback started during the transaction")
+                if is_aborted(abort_requested):
+                    raise OperationAborted("Transaction aborted by cancellation request")
+                if progress_callback:
+                    progress_callback(idx, total_items, item)
 
                 # Plans may become stale while they wait for the shared session.
                 # Re-read the target under the session marker and compare every
@@ -248,6 +256,8 @@ class TransactionRunner(object):
                 item["status"] = "verified"
                 item["verified_at"] = self._clock()
                 self._persist_journal(deepcopy(journal))
+                if progress_callback:
+                    progress_callback(idx + 1, total_items, item)
         except Exception as exc:
             journal["error"] = str(exc)
             journal["finished_at"] = self._clock()
@@ -266,9 +276,33 @@ class TransactionRunner(object):
                         "Transaction failed before any library write and the session marker remains: {}"
                         .format(release_exc)
                     )
-                if isinstance(exc, TransactionError):
+                if isinstance(exc, (TransactionError, OperationAborted)):
                     raise
                 raise TransactionError("Transaction aborted before any library write: {}".format(exc))
+
+            if isinstance(exc, OperationAborted):
+                rolled_back = True
+                for rev_item in reversed(journal["items"]):
+                    if rev_item.get("status") == "verified":
+                        try:
+                            self._set_details(rev_item, rev_item["before"])
+                            rev_item["status"] = "rolled_back"
+                        except Exception:
+                            rolled_back = False
+                            break
+                if rolled_back:
+                    journal["status"] = "aborted"
+                    try:
+                        self._persist_journal(deepcopy(journal))
+                    except Exception:
+                        pass
+                    try:
+                        self._coordinator.release(session_id)
+                    except Exception as release_exc:
+                        raise TransactionError(
+                            "Transaction rolled back on cancellation but session marker could not be released: {}".format(release_exc)
+                        )
+                    raise
 
             journal["status"] = "needs_recovery"
             try:
@@ -276,7 +310,7 @@ class TransactionRunner(object):
             except Exception:
                 # Preserve the lock marker even if the journal store is down.
                 pass
-            if isinstance(exc, TransactionError):
+            if isinstance(exc, (TransactionError, OperationAborted)):
                 raise
             raise TransactionError("Transaction stopped after a possible partial write: {}".format(exc))
 

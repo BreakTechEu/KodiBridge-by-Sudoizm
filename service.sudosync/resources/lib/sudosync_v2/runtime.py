@@ -190,7 +190,7 @@ class V2RuntimeComponents(object):
                 "applied_count": 0,
             }
 
-        tx_result = self.transaction_runner.run(plan, client_id, candidate)
+        tx_result = self.transaction_runner.run(plan, client_id, candidate, abort_requested=abort_requested)
         if tx_result.get("status") == "deferred":
             return {
                 "status": "deferred",
@@ -305,7 +305,7 @@ class V2RuntimeComponents(object):
                 "published_snapshot_path": published_path,
                 "applied_count": 0,
             }
-        tx_result = self.transaction_runner.run(plan, client_id, candidate)
+        tx_result = self.transaction_runner.run(plan, client_id, candidate, abort_requested=abort_requested)
         if tx_result.get("status") == "deferred":
             return {
                 "status": "deferred",

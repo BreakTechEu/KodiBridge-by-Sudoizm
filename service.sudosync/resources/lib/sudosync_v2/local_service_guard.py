@@ -131,6 +131,14 @@ class LocalServiceGuard(object):
                 _HELD_PATHS.discard(self._path)
                 self._held = False
 
+    def __enter__(self):
+        if not self.acquire():
+            raise ServiceGuardError("Cannot acquire local service guard: already held")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+
 
 def acquire_kodi_service_guard():
     """Resolve Kodi's local add-on profile and acquire its singleton guard.

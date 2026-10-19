@@ -15,6 +15,7 @@ import xbmcgui
 from resources.lib.sudosync_core import (
     apply_initial_sync,
     arm_initial_write_guard,
+    assign_sudosync_ids,
     disarm_initial_write_guard,
     initial_write_guard_status,
     clear_initial_base_selection,
@@ -23,7 +24,9 @@ from resources.lib.sudosync_core import (
     get_or_create_client_id,
     install_github_update,
     install_update_from_zip_path,
+    log,
     mask_vfs_credentials,
+    preview_sudosync_ids,
     read_local_status,
     read_shared_config,
     run_dry_run,
@@ -522,7 +525,6 @@ def main():
             ):
                 install_github_update(update_info=result, show_dialogs=True)
         elif action in ("assignids", "assign_ids"):
-            from resources.lib.sudosync_core import assign_sudosync_ids, preview_sudosync_ids
             if not addon_settings().get("sudosync_id_enabled"):
                 xbmcgui.Dialog().ok(
                     "SudoSync",
@@ -530,63 +532,110 @@ def main():
                 )
                 return
 
-            dialog_title = _get_localized_string(32076, "SudoSync — analiza SudoSync ID")
-            dialog_msg = _get_localized_string(
-                32077,
-                "Po zamknięciu tego komunikatu rozpocznie się analiza biblioteki i plików NFO pod kątem SudoSync ID.\n\n"
-                "Przy dużej bibliotece na NAS operacja może potrwać od kilku do kilkunastu minut.\n\n"
-                "Nie należy wyłączać Kodi ani przerywać pracy do czasu pojawienia się kolejnego okna z podsumowaniem.",
-            )
-            scan_notification = _get_localized_string(
-                32078,
-                "Skanowanie biblioteki i plików NFO. Proszę czekać...",
-            )
-            xbmcgui.Dialog().ok(dialog_title, dialog_msg)
-            xbmcgui.Dialog().notification(
-                "SudoSync",
-                scan_notification,
-                xbmcgui.NOTIFICATION_INFO,
-                10000,
-            )
+            import xbmc
+            monitor = xbmc.Monitor()
+            dialog = xbmcgui.DialogProgress()
+            dialog_title = _get_localized_string(32076, "SudoSync — SudoSync ID")
+            stage1_desc = _get_localized_string(32080, "Skanowanie biblioteki i sprawdzanie SudoSync ID...")
+            stage2_desc = _get_localized_string(32081, "Przypisywanie SudoSync ID...")
+            auto_close_notice = _get_localized_string(32082, "To okno zamknie się automatycznie po zakończeniu operacji.")
+            cancel_msg = _get_localized_string(32083, "Operacja została anulowana przez użytkownika.")
 
-            preview = preview_sudosync_ids()
-            if not preview:
-                sync_res = assign_sudosync_ids(show_notification=False, auto_mode=True)
-                last_num = sync_res.get("last_number", 0) if isinstance(sync_res, dict) else 0
+            def is_canceled():
+                try:
+                    if dialog.iscanceled():
+                        return True
+                except Exception:
+                    pass
+                try:
+                    if monitor.abortRequested() is True:
+                        return True
+                except Exception:
+                    pass
+                return False
+
+            init_msg = "{}\n\n{}".format(stage1_desc, auto_close_notice)
+            dialog.create(dialog_title, init_msg)
+
+            try:
+                def phase1_progress(current, total, item_name=""):
+                    if is_canceled():
+                        return
+                    pct = int(min(100, max(0, (current / max(1, total)) * 100)))
+                    name_str = " ({})".format(item_name) if item_name else ""
+                    msg = "{stage} ({current}/{total}){name}\n\n{notice}".format(
+                        stage=stage1_desc, current=current, total=total,
+                        name=name_str, notice=auto_close_notice
+                    )
+                    dialog.update(pct, msg)
+
+                preview = preview_sudosync_ids(progress_callback=phase1_progress, is_canceled=is_canceled)
+
+                if is_canceled():
+                    log("SudoSync ID assignment cancelled by user during Phase 1.", xbmc.LOGINFO)
+                    return
+
+                if not preview:
+                    sync_res = assign_sudosync_ids(show_notification=False, auto_mode=True, is_canceled=is_canceled)
+                    last_num = sync_res.get("last_number", 0) if isinstance(sync_res, dict) else 0
+                    dialog.close()
+                    xbmcgui.Dialog().ok(
+                        "SudoSync",
+                        "Nie znaleziono żadnych nowych plików wymagających przypisania ID.\n"
+                        "Ostatni użyty numer SudoSync ID w sieci: {}".format(last_num),
+                    )
+                    return
+
+                total_preview = len(preview)
+                dialog.update(
+                    0,
+                    "{stage} (0/{total})\n\n{notice}".format(
+                        stage=stage2_desc, total=total_preview, notice=auto_close_notice
+                    )
+                )
+
+                def phase2_progress(current, total, item_name=""):
+                    if is_canceled():
+                        return
+                    pct = int(min(100, max(0, (current / max(1, total)) * 100)))
+                    name_str = " ({})".format(item_name) if item_name else ""
+                    msg = "{stage} ({current}/{total}){name}\n\n{notice}".format(
+                        stage=stage2_desc, current=current, total=total,
+                        name=name_str, notice=auto_close_notice
+                    )
+                    dialog.update(pct, msg)
+
+                collected_items = getattr(preview, "collected_items", None)
+                result = assign_sudosync_ids(
+                    show_notification=False,
+                    auto_mode=False,
+                    collected_items=collected_items,
+                    progress_callback=phase2_progress,
+                    is_canceled=is_canceled,
+                )
+
+                if is_canceled() or (isinstance(result, dict) and result.get("cancelled")):
+                    log("SudoSync ID assignment cancelled by user during Phase 2.", xbmc.LOGINFO)
+                    return
+
+                dialog.close()
+                if not isinstance(result, dict):
+                    return
+
                 xbmcgui.Dialog().ok(
                     "SudoSync",
-                    "Nie znaleziono żadnych nowych plików wymagających przypisania ID.\n"
-                    "Ostatni użyty numer SudoSync ID w sieci: {}".format(last_num),
+                    "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}\nOstatni użyty numer SudoSync ID w sieci: {}".format(
+                        mask_vfs_credentials(result.get("manifest_path")),
+                        result.get("movies", 0),
+                        result.get("episodes", 0),
+                        result.get("last_number", 0),
+                    )
                 )
-                return
-                
-            if not xbmcgui.Dialog().yesno(
-                "SudoSync - własne identyfikatory",
-                "Znaleziono {} plików do zmiany (w tym np. {}).\n\nCzy na pewno chcesz nadpisać pliki .nfo?".format(
-                    len(preview), preview[0].get("title")
-                ),
-                yeslabel="Tak, dopisz ID",
-                nolabel="Anuluj"
-            ):
-                return
-            xbmcgui.Dialog().notification(
-                "SudoSync",
-                "Przypisuję identyfikatory. Może to potrwać dłuższą chwilę...",
-                xbmcgui.NOTIFICATION_INFO,
-                10000
-            )
-            result = assign_sudosync_ids()
-            if not isinstance(result, dict):
-                return
-            xbmcgui.Dialog().ok(
-                "SudoSync",
-                "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}\nOstatni użyty numer SudoSync ID w sieci: {}".format(
-                    mask_vfs_credentials(result.get("manifest_path")),
-                    result.get("movies", 0),
-                    result.get("episodes", 0),
-                    result.get("last_number", 0),
-                )
-            )
+            finally:
+                try:
+                    dialog.close()
+                except Exception:
+                    pass
         elif action == "rollbackids":
             from resources.lib.sudosync_core import rollback_sudosync_ids
             if not xbmcgui.Dialog().yesno(

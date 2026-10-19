@@ -1127,8 +1127,10 @@ def _record(kind, item, first_import=True):
     return rec
 
 
-def collect_library(first_import=True):
+def collect_library(first_import=True, progress_callback=None, is_canceled=None):
     _NFO_ID_CACHE.clear()
+    if is_canceled and is_canceled():
+        return [], []
     movie_props = [
         "title", "originaltitle", "year", "imdbnumber", "uniqueid", "file",
         "playcount", "lastplayed", "resume", "userrating"
@@ -1138,9 +1140,35 @@ def collect_library(first_import=True):
         "playcount", "lastplayed", "resume", "userrating"
     ]
     movies_result = rpc("VideoLibrary.GetMovies", {"properties": movie_props})
+    if is_canceled and is_canceled():
+        return [], []
     episodes_result = rpc("VideoLibrary.GetEpisodes", {"properties": episode_props})
-    movies = [_record("movie", x, first_import=first_import) for x in movies_result.get("movies", [])]
-    episodes = [_record("episode", x, first_import=first_import) for x in episodes_result.get("episodes", [])]
+    if is_canceled and is_canceled():
+        return [], []
+
+    raw_movies = movies_result.get("movies", []) if isinstance(movies_result, dict) else []
+    raw_episodes = episodes_result.get("episodes", []) if isinstance(episodes_result, dict) else []
+    total_raw = len(raw_movies) + len(raw_episodes)
+    processed = 0
+
+    movies = []
+    for x in raw_movies:
+        if is_canceled and is_canceled():
+            return movies, []
+        movies.append(_record("movie", x, first_import=first_import))
+        processed += 1
+        if progress_callback:
+            progress_callback(processed, total_raw, x.get("title") or x.get("originaltitle") or "")
+
+    episodes = []
+    for x in raw_episodes:
+        if is_canceled and is_canceled():
+            return movies, episodes
+        episodes.append(_record("episode", x, first_import=first_import))
+        processed += 1
+        if progress_callback:
+            progress_callback(processed, total_raw, x.get("title") or x.get("originaltitle") or "")
+
     return movies, episodes
 
 
@@ -3478,14 +3506,31 @@ def rollback_sudosync_ids(manifest_path=None):
     }
 
 
-def preview_sudosync_ids():
+class _PreviewResult(list):
+    def __init__(self, *args, **kwargs):
+        super(_PreviewResult, self).__init__(*args, **kwargs)
+        self.collected_items = None
+
+
+def preview_sudosync_ids(progress_callback=None, is_canceled=None):
     settings = addon_settings()
     if not settings.get("sudosync_id_enabled"):
         raise RuntimeError("Generowanie SudoSync ID jest wylaczone w ustawieniach.")
     _NFO_ID_CACHE.clear()
-    movies, episodes = collect_library(first_import=False)
+    if is_canceled and is_canceled():
+        res = _PreviewResult([])
+        res.collected_items = ([], [])
+        return res
+
+    movies, episodes = collect_library(first_import=False, is_canceled=is_canceled)
+    if is_canceled and is_canceled():
+        res = _PreviewResult([])
+        res.collected_items = (movies, episodes)
+        return res
 
     preview_list = []
+    total_items = len(movies) + len(episodes)
+    inspected = 0
 
     def _check_item(item, kind):
         ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
@@ -3519,16 +3564,29 @@ def preview_sudosync_ids():
             return best_path
 
     for m in movies:
+        if is_canceled and is_canceled():
+            break
         path = _check_item(m, "movie")
         if path:
             preview_list.append({"title": m.get("title") or m.get("originaltitle"), "path": path, "type": "movie"})
+        inspected += 1
+        if progress_callback:
+            progress_callback(inspected, total_items, m.get("title") or m.get("originaltitle") or "")
 
-    for e in episodes:
-        path = _check_item(e, "episode")
-        if path:
-            preview_list.append({"title": e.get("title") or e.get("originaltitle"), "path": path, "type": "episode"})
+    if not (is_canceled and is_canceled()):
+        for e in episodes:
+            if is_canceled and is_canceled():
+                break
+            path = _check_item(e, "episode")
+            if path:
+                preview_list.append({"title": e.get("title") or e.get("originaltitle"), "path": path, "type": "episode"})
+            inspected += 1
+            if progress_callback:
+                progress_callback(inspected, total_items, e.get("title") or e.get("originaltitle") or "")
 
-    return preview_list
+    result = _PreviewResult(preview_list)
+    result.collected_items = (movies, episodes)
+    return result
 
 
 _ASSIGN_IDS_LOCK_HELD = False
@@ -3708,7 +3766,7 @@ def _touch_assign_ids_lock(base_path=None, s=None):
             pass
 
 
-def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items=None, base_path=None, s=None):
+def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items=None, base_path=None, s=None, progress_callback=None, is_canceled=None):
     settings = addon_settings()
     if not settings.get("sudosync_id_enabled"):
         raise RuntimeError("Generowanie SudoSync ID jest wylaczone w ustawieniach.")
@@ -3732,10 +3790,31 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
 
     try:
         _NFO_ID_CACHE.clear()
+        if is_canceled and is_canceled():
+            return {
+                "movies": 0,
+                "episodes": 0,
+                "refreshed_existing": 0,
+                "last_number": 0,
+                "manifest_path": "",
+                "cancelled": True,
+            }
+
         if collected_items is not None:
             movies, episodes = collected_items
         else:
-            movies, episodes = collect_library(first_import=False)
+            movies, episodes = collect_library(first_import=False, is_canceled=is_canceled)
+
+        if is_canceled and is_canceled():
+            return {
+                "movies": 0,
+                "episodes": 0,
+                "refreshed_existing": 0,
+                "last_number": 0,
+                "manifest_path": "",
+                "cancelled": True,
+            }
+
         prefix = get_or_sync_network_id_and_alias(settings.get("base_path"))
 
         modified_movies = 0
@@ -3758,7 +3837,11 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
         # (e.g. by another Kodi) so we never overwrite them and always advance
         # last_number past the highest existing sequential SudoSync ID.
         for kind, collection in (("movie", movies), ("episode", episodes)):
+            if is_canceled and is_canceled():
+                break
             for item in collection:
+                if is_canceled and is_canceled():
+                    break
                 ids = item.get("ids") if isinstance(item.get("ids"), dict) else {}
                 if _has_sudosync_id(ids):
                     num = _extract_sudosync_id_number(ids.get("sudosync"))
@@ -3986,24 +4069,44 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                     return False, False
 
         aborted = False
+        total_items = len(movies) + len(episodes)
+        processed = 0
+
         for m in movies:
+            if is_canceled and is_canceled():
+                log("Przypisywanie SudoSync ID przerwane na żądanie użytkownika.", xbmc.LOGINFO)
+                aborted = True
+                break
             success, fatal = _process_item(m, "movie")
             if success:
                 modified_movies += 1
+            processed += 1
+            if progress_callback:
+                progress_callback(processed, total_items, m.get("title") or m.get("originaltitle") or "")
             if fatal:
                 aborted = True
                 break
 
         if not aborted:
             for e in episodes:
+                if is_canceled and is_canceled():
+                    log("Przypisywanie SudoSync ID przerwane na żądanie użytkownika.", xbmc.LOGINFO)
+                    aborted = True
+                    break
                 success, fatal = _process_item(e, "episode")
                 if success:
                     modified_episodes += 1
+                processed += 1
+                if progress_callback:
+                    progress_callback(processed, total_items, e.get("title") or e.get("originaltitle") or "")
                 if fatal:
+                    aborted = True
                     break
 
         _NFO_ID_CACHE.clear()
         manifest_path = os.path.join(_addon_profile_path(), "assign_ids_manifest.json")
+        if aborted:
+            manifest["cancelled"] = True
         _write_manifest()
 
         return {
@@ -4012,6 +4115,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
             "refreshed_existing": refreshed_existing,
             "last_number": last_number,
             "manifest_path": manifest_path,
+            "cancelled": aborted,
         }
     finally:
         _release_assign_ids_lock(base_path=base)

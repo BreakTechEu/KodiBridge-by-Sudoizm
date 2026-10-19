@@ -87,6 +87,32 @@ class TestLocalServiceGuard(unittest.TestCase):
         self.assertTrue(second.acquire())
         second.release()
 
+    def test_context_manager_acquires_and_releases(self):
+        guard = LocalServiceGuard(self.path, self.backend)
+        with guard as acquired:
+            self.assertIs(acquired, guard)
+            self.assertTrue(guard._held)
+            # Another guard cannot acquire
+            other = LocalServiceGuard(self.path, self.backend)
+            self.assertFalse(other.acquire())
+        # Outside with block, guard is released
+        self.assertFalse(guard._held)
+        other = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(other.acquire())
+        other.release()
+
+    def test_context_manager_releases_on_exception(self):
+        guard = LocalServiceGuard(self.path, self.backend)
+        with self.assertRaises(ZeroDivisionError):
+            with guard:
+                self.assertTrue(guard._held)
+                1 / 0
+        # After exception, guard is released
+        self.assertFalse(guard._held)
+        reacquired = LocalServiceGuard(self.path, self.backend)
+        self.assertTrue(reacquired.acquire())
+        reacquired.release()
+
 
 class TestGuardedServiceExecution(unittest.TestCase):
     def setUp(self):

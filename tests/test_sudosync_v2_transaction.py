@@ -14,6 +14,7 @@ from copy import deepcopy
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
 
 from resources.lib.sudosync_v2.transaction import TransactionRunner, TransactionError
+from resources.lib.sudosync_v2.kodi_rpc import OperationAborted
 from resources.lib.sudosync_v2.snapshot import build_snapshot
 
 CLIENT = "12345678-1234-4234-8234-123456789012"
@@ -205,9 +206,65 @@ class TestTransactionRunner(unittest.TestCase):
         with self.assertRaisesRegex(TransactionError, "playback started"):
             self.runner.run(multi, CLIENT, current_snapshot())
         self.assertTrue(self.coordinator.marker_retained)
-        self.assertEqual(self.kodi.write_count, 1)
-        self.assertEqual(self.journals[-1]["status"], "needs_recovery")
+    def test_cancellation_before_writes_releases_marker_and_aborts(self):
+        with self.assertRaises(OperationAborted):
+            self.runner.run(plan(), CLIENT, current_snapshot(), abort_requested=lambda: True)
+        self.assertEqual(self.kodi.write_count, 0)
+        self.assertEqual(len(self.coordinator.acquired), 0)
+        self.assertEqual(len(self.coordinator.released), 0)
+        self.assertFalse(self.coordinator.marker_retained)
+
+    def test_cancellation_mid_transaction_rolls_back_applied_items_and_releases_marker(self):
+        multi = {
+            "local_client_id": CLIENT,
+            "changes": [
+                plan({"playcount": 2})["changes"][0],
+                {**plan({"playcount": 3}, kodi_id=6)["changes"][0], "kodi_id": 6},
+            ],
+        }
+        self.kodi.items[("movie", 6)] = state()
+
+        abort_calls = {"count": 0}
+
+        def abort_after_first_item():
+            abort_calls["count"] += 1
+            # Call 1: before session acquire (line 152) -> False
+            # Call 2: before item 0 write (line 222) -> False
+            # Call 3: before item 1 write (line 222) -> True (cancels mid-transaction)
+            return abort_calls["count"] >= 3
+
+        with self.assertRaises(OperationAborted):
+            self.runner.run(multi, CLIENT, current_snapshot(), abort_requested=abort_after_first_item)
+        # Item 5 was written once, then rolled back via set_movie_details (write_count = 2)
+        self.assertEqual(self.kodi.write_count, 2)
+        # Item 5 was safely rolled back to 0
+        self.assertEqual(self.kodi.items[("movie", 5)]["playcount"], 0)
+        # Item 6 was never written
+        self.assertEqual(self.kodi.items[("movie", 6)]["playcount"], 0)
+        # Marker released, not retained
+        self.assertFalse(self.coordinator.marker_retained)
+        self.assertEqual(len(self.coordinator.released), 1)
+        self.assertEqual(self.journals[-1]["status"], "aborted")
+
+    def test_progress_callback_invoked_during_transaction(self):
+        multi = {
+            "local_client_id": CLIENT,
+            "changes": [
+                plan({"playcount": 2})["changes"][0],
+                {**plan({"playcount": 3}, kodi_id=6)["changes"][0], "kodi_id": 6},
+            ],
+        }
+        self.kodi.items[("movie", 6)] = state()
+        progress = []
+
+        def on_progress(cur, tot, itm):
+            progress.append((cur, tot, itm["kodi_id"]))
+
+        result = self.runner.run(multi, CLIENT, current_snapshot(), progress_callback=on_progress)
+        self.assertEqual(result["status"], "committed")
+        self.assertEqual(progress, [(0, 2, 5), (1, 2, 5), (1, 2, 6), (2, 2, 6)])
 
 
 if __name__ == "__main__":
     unittest.main()
+

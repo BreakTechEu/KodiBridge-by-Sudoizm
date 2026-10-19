@@ -1,3 +1,19 @@
+SudoSync 2.0.6
+==============
+
+- Pojedyncze modalne okno dialogowe postępu (`DialogProgress`) z aktywnym przyciskiem „Anuluj”:
+  - Zastąpiono znikające powiadomienia narożne i okna w tle jednym modalnym oknem `xbmcgui.DialogProgress` na pierwszym planie, płynnie współdzielonym i aktualizowanym pomiędzy obiema czasochłonnymi fazami (Faza 1: odczyt i skanowanie biblioteki, Faza 2: nadawanie identyfikatorów SudoSync ID).
+  - Wyświetlanie opisu bieżącego etapu, licznika pozycji `(X / Y)`, aktualnie przetwarzanego tytułu oraz wyraźnej informacji o automatycznym zamknięciu okna po zakończeniu operacji (`#32080`–`#32083` w `strings.po`).
+  - Gwarantowane automatyczne zamykanie okna w bloku `finally`.
+- Optymalizacja wydajności fazy 2 (`_PreviewResult`):
+  - Wynik fazy 1 zachowuje pobrane elementy biblioteki (`.collected_items`), dzięki czemu faza 2 unika powtórnego czasochłonnego skanowania biblioteki przez JSON-RPC.
+- Bezpieczna procedura anulowania i wycofywania transakcji (Graceful Abort & Rollback):
+  - Regularne sprawdzanie stanu anulowania (`dialog.iscanceled()` oraz `xbmc.Monitor().abortRequested()`) w pętlach skanowania, odczytu NFO i zapisu identyfikatorów.
+  - Anulowanie w fazie 1: natychmiastowe przerwanie generowania planu i bezpieczne pominięcie fazy 2.
+  - Anulowanie w fazie 2: dokończenie bieżącej operacji atomowej, przerwanie pętli, oznaczenie manifestu `"cancelled": True`, bezwzględne zwolnienie blokady `assign_ids.lock` w `finally`.
+  - Mechanizm transakcyjny v2 (`TransactionRunner`): bezpieczne wycofanie zmodyfikowanych pozycji do stanu `before`, oznaczenie statusu dziennika `"aborted"` i zwolnienie znacznika sesji.
+  - Menedżer kontekstu (`__enter__` / `__exit__`) w `LocalServiceGuard`.
+
 SudoSync 2.0.5
 ==============
 

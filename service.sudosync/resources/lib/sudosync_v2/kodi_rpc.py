@@ -32,6 +32,9 @@ def is_aborted(abort_requested):
     checker = getattr(abort_requested, "abortRequested", None)
     if callable(checker):
         return bool(checker())
+    checker_dialog = getattr(abort_requested, "iscanceled", None)
+    if callable(checker_dialog):
+        return bool(checker_dialog())
     return False
 
 
@@ -220,13 +223,16 @@ class KodiJsonRpcAdapter(object):
                 continue
         return {}
 
-    def _enrich_with_nfo(self, items, media_type, abort_requested=None):
+    def _enrich_with_nfo(self, items, media_type, abort_requested=None, progress_callback=None):
         if self._nfo_reader is None:
             return items
         enriched = []
-        for item in items:
+        total = len(items)
+        for idx, item in enumerate(items):
             if self._is_aborted(abort_requested):
                 raise OperationAborted("Item enrichment aborted", partial_items=enriched)
+            if progress_callback:
+                progress_callback(idx, total, media_type, item)
             if not isinstance(item, dict):
                 raise KodiRpcError("Kodi returned an invalid {} library record".format(media_type))
             record = dict(item)
@@ -250,6 +256,8 @@ class KodiJsonRpcAdapter(object):
                 kodi_ids[kind] = value
             record["uniqueid"] = kodi_ids
             enriched.append(record)
+            if progress_callback:
+                progress_callback(idx + 1, total, media_type, record)
         return enriched
 
     def call(self, method, params=None, abort_requested=None):
@@ -305,7 +313,7 @@ class KodiJsonRpcAdapter(object):
             parts.append(value)
         return {"name": result.get("name", "Kodi"), "major": parts[0], "minor": parts[1], "patch": parts[2]}
 
-    def _get_library_items(self, method, collection_key, properties, abort_requested=None, sort=None):
+    def _get_library_items(self, method, collection_key, properties, abort_requested=None, sort=None, progress_callback=None):
         all_items = []
         start = 0
         expected_total = None
@@ -342,6 +350,8 @@ class KodiJsonRpcAdapter(object):
                 if self._is_aborted(abort_requested):
                     raise OperationAborted("{} aborted while processing items".format(method), partial_items=all_items)
                 all_items.append(item)
+                if progress_callback:
+                    progress_callback(len(all_items), expected_total or len(all_items), collection_key, item)
             if expected_total is not None and len(all_items) > expected_total:
                 raise KodiRpcError("{} returned more records than its reported total".format(method))
             if expected_total is not None and len(all_items) == expected_total:
@@ -355,27 +365,29 @@ class KodiJsonRpcAdapter(object):
             start += len(items)
         return all_items
 
-    def get_movies(self, abort_requested=None):
+    def get_movies(self, abort_requested=None, progress_callback=None):
         items = self._get_library_items(
             "VideoLibrary.GetMovies",
             "movies",
             MOVIE_PROPERTIES,
             abort_requested=abort_requested,
             sort={"method": "title", "order": "ascending"},
+            progress_callback=progress_callback,
         )
         items.sort(key=lambda x: (x.get("movieid") or 0))
-        return self._enrich_with_nfo(items, "movie", abort_requested=abort_requested)
+        return self._enrich_with_nfo(items, "movie", abort_requested=abort_requested, progress_callback=progress_callback)
 
-    def get_episodes(self, abort_requested=None):
+    def get_episodes(self, abort_requested=None, progress_callback=None):
         items = self._get_library_items(
             "VideoLibrary.GetEpisodes",
             "episodes",
             EPISODE_PROPERTIES,
             abort_requested=abort_requested,
             sort=None,
+            progress_callback=progress_callback,
         )
         items.sort(key=lambda x: (x.get("episodeid") or 0))
-        return self._enrich_with_nfo(items, "episode", abort_requested=abort_requested)
+        return self._enrich_with_nfo(items, "episode", abort_requested=abort_requested, progress_callback=progress_callback)
 
     def get_movie_details(self, movie_id):
         if type(movie_id) is not int or movie_id < 1:

@@ -94,7 +94,7 @@ class SnapshotCatalog(object):
             raise SnapshotCatalogError("Snapshot client ID does not match its filename")
         return snapshot
 
-    def load_peers(self, exclude_client_id=None, abort_requested=None):
+    def load_peers(self, exclude_client_id=None, abort_requested=None, progress_callback=None):
         if is_aborted(abort_requested):
             raise OperationAborted("Catalog load_peers aborted")
         exclude = _canonical_client_id(exclude_client_id) if exclude_client_id else None
@@ -106,7 +106,9 @@ class SnapshotCatalog(object):
             raise SnapshotCatalogError("Cannot enumerate shared client snapshots: {}".format(exc))
         peers = []
         seen = set()
-        for filename in sorted(files):
+        sorted_files = sorted(files)
+        total_files = len(sorted_files)
+        for idx, filename in enumerate(sorted_files):
             if is_aborted(abort_requested):
                 raise OperationAborted("Catalog load_peers aborted during enumeration", partial_items=peers)
             if not filename.startswith("client-") or not filename.endswith(".json"):
@@ -124,4 +126,6 @@ class SnapshotCatalog(object):
             if snapshot is None:
                 raise SnapshotCatalogError("Listed client snapshot disappeared: " + filename)
             peers.append(snapshot)
+            if progress_callback:
+                progress_callback(len(peers), total_files, client_id)
         return peers

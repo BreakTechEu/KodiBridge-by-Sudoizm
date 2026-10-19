@@ -31,8 +31,8 @@ if SERVICE_DIR not in sys.path:
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
-import sudosync_bootstrap
-import sudosync_core
+import resources.lib.sudosync_bootstrap as sudosync_bootstrap
+import resources.lib.sudosync_core as sudosync_core
 from resources.lib.sudosync_merge import build_live_plan
 from resources.lib.sudosync_v2.kodi_rpc import KodiJsonRpcAdapter
 from resources.lib.sudosync_v2.merge import plan_field_merge
@@ -100,7 +100,7 @@ class FakeAddon(object):
 
     def getAddonInfo(self, key):
         if key == "version":
-            return "2.0.5"
+            return "2.0.6"
         return ""
 
 
@@ -694,8 +694,8 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.assertIn('112233', nfo_c)
         self.assertIn('<uniqueid type="sudosync" default="true">DOM-000009</uniqueid>', nfo_c)
 
-    def test_06_default_assignids_shows_start_dialog_and_notification(self):
-        """Action 'assignids' displays a modal OK dialog and notification before running library scan."""
+    def test_06_default_assignids_uses_foreground_progress_dialog_with_auto_close_notice(self):
+        """Action 'assignids' displays a foreground DialogProgress with auto-close note and progresses."""
         import default
         addon_kodi = FakeAddon({
             "base_path": self.base_path,
@@ -706,29 +706,198 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
             "sudosync_id_last_number": "0",
         })
 
-        calls = []
         mock_dialog = MagicMock()
-        mock_dialog.ok.side_effect = lambda *args: calls.append(("ok", args))
-        mock_dialog.notification.side_effect = lambda *args: calls.append(("notification", args))
-        mock_dialog.yesno.return_value = False
+        mock_progress = MagicMock()
+        mock_progress.iscanceled.return_value = False
 
         self.active_profile = "/profile_kodi1"
         p = self._patch_env(addon_kodi)
         with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
                 patch.object(default.xbmcgui, "Dialog", return_value=mock_dialog), \
+                patch.object(default.xbmcgui, "DialogProgress", return_value=mock_progress), \
                 patch.object(sudosync_core, "collect_library", return_value=([], [])), \
                 patch.object(sys, "argv", ["default.py", "assignids"]):
             default.main()
 
-        # Check that the first OK dialog and first notification were the start notice
-        self.assertTrue(len(calls) >= 2)
-        self.assertEqual(calls[0][0], "ok")
-        self.assertIn("analiza SudoSync ID", calls[0][1][0])
-        self.assertIn("kilkunastu minut", calls[0][1][1])
+        # DialogProgress created with title and message containing auto-close note
+        mock_progress.create.assert_called_once()
+        create_args = mock_progress.create.call_args[0]
+        self.assertIn("SudoSync", create_args[0])
+        self.assertTrue("zamknie się automatycznie" in create_args[1] or "close automatically" in create_args[1])
 
-        self.assertEqual(calls[1][0], "notification")
-        self.assertEqual(calls[1][1][0], "SudoSync")
-        self.assertIn("Skanowanie biblioteki", calls[1][1][1])
+        # DialogProgress is closed cleanly
+        mock_progress.close.assert_called()
+
+        # Final OK dialog informs user no new files need assignment
+        mock_dialog.ok.assert_called_once()
+        self.assertIn("Nie znaleziono żadnych nowych plików", mock_dialog.ok.call_args[0][1])
+
+    def test_06b_default_assignids_full_execution_two_phases_single_dialog(self):
+        """Action 'assignids' reuses a single DialogProgress across both Phase 1 and Phase 2 and auto-closes."""
+        import default
+        addon_kodi = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi Salon",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+
+        mock_dialog = MagicMock()
+        mock_progress = MagicMock()
+        mock_progress.iscanceled.return_value = False
+        updates = []
+        mock_progress.update.side_effect = lambda pct, msg="": updates.append((pct, msg))
+
+        # Prepare fake library items needing IDs
+        movie_item = {
+            "movieid": 1,
+            "title": "Test Movie",
+            "file": "smb://nas/wideo/filmy/TestMovie.mkv",
+            "year": 2024,
+            "uniqueid": {},
+        }
+        self.vfs.files["smb://nas/wideo/filmy/TestMovie.nfo"] = b"<movie><title>Test Movie</title></movie>"
+
+        self.active_profile = "/profile_kodi1"
+        p = self._patch_env(addon_kodi)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
+                patch.object(default.xbmcgui, "Dialog", return_value=mock_dialog), \
+                patch.object(default.xbmcgui, "DialogProgress", return_value=mock_progress), \
+                patch.object(sudosync_core, "collect_library", return_value=([movie_item], [])), \
+                patch.object(sudosync_core, "rpc", side_effect=lambda method, params=None: {}), \
+                patch.object(sys, "argv", ["default.py", "assignids"]):
+            default.main()
+
+        # DialogProgress created exactly once
+        mock_progress.create.assert_called_once()
+
+        # Updates occurred for both Phase 1 and Phase 2 on the same dialog instance
+        self.assertTrue(len(updates) >= 2)
+        phase1_updates = [u for u in updates if "Odczyt" in u[1] or "Skanowanie" in u[1] or "Scanning" in u[1]]
+        phase2_updates = [u for u in updates if "Przypisywanie" in u[1] or "Nadawanie" in u[1] or "Assigning" in u[1]]
+        self.assertTrue(len(phase1_updates) >= 1)
+        self.assertTrue(len(phase2_updates) >= 1)
+
+        # In all updates, the auto-close notice is present
+        for _, msg in updates:
+            self.assertTrue("zamknie się automatycznie" in msg or "close automatically" in msg)
+
+        # Dialog closed cleanly
+        mock_progress.close.assert_called()
+
+        # Final OK report dialog is displayed
+        mock_dialog.ok.assert_called_once()
+        self.assertIn("Raport z operacji", mock_dialog.ok.call_args[0][1])
+
+    def test_06c_default_assignids_user_cancellation_phase_1(self):
+        """User cancels during Phase 1: Phase 2 is skipped, dialog closes, no files written."""
+        import default
+        addon_kodi = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi Salon",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+
+        mock_dialog = MagicMock()
+        mock_progress = MagicMock()
+        # User clicks Cancel during Phase 1
+        mock_progress.iscanceled.return_value = True
+
+        movie_item = {
+            "movieid": 1,
+            "title": "Movie 1",
+            "file": "smb://nas/wideo/filmy/Movie1.mkv",
+            "year": 2024,
+            "uniqueid": {},
+        }
+        self.vfs.files["smb://nas/wideo/filmy/Movie1.nfo"] = b"<movie><title>Movie 1</title></movie>"
+
+        assign_mock = MagicMock()
+
+        self.active_profile = "/profile_kodi1"
+        p = self._patch_env(addon_kodi)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
+                patch.object(default.xbmcgui, "Dialog", return_value=mock_dialog), \
+                patch.object(default.xbmcgui, "DialogProgress", return_value=mock_progress), \
+                patch.object(sudosync_core, "collect_library", return_value=([movie_item], [])), \
+                patch.object(sudosync_core, "assign_sudosync_ids", assign_mock), \
+                patch.object(sys, "argv", ["default.py", "assignids"]):
+            default.main()
+
+        # Phase 2 (assign_sudosync_ids) was NOT called
+        assign_mock.assert_not_called()
+        # Dialog closed in finally
+        mock_progress.close.assert_called()
+        # No completion OK dialog shown
+        mock_dialog.ok.assert_not_called()
+
+    def test_06d_default_assignids_user_cancellation_phase_2(self):
+        """User cancels during Phase 2: loop finishes current atomic write, safely breaks, releases locks, marks cancelled."""
+        import default
+        addon_kodi = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi Salon",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+
+        # Provide 2 movie items
+        movie1 = {
+            "movieid": 1,
+            "title": "Movie 1",
+            "file": "smb://nas/wideo/filmy/Movie1.mkv",
+            "year": 2024,
+            "uniqueid": {},
+        }
+        movie2 = {
+            "movieid": 2,
+            "title": "Movie 2",
+            "file": "smb://nas/wideo/filmy/Movie2.mkv",
+            "year": 2024,
+            "uniqueid": {},
+        }
+        self.vfs.files["smb://nas/wideo/filmy/Movie1.nfo"] = b"<movie><title>Movie 1</title></movie>"
+        self.vfs.files["smb://nas/wideo/filmy/Movie2.nfo"] = b"<movie><title>Movie 2</title></movie>"
+
+        mock_dialog = MagicMock()
+        mock_progress = MagicMock()
+
+        calls = {"count": 0}
+        def fake_iscanceled():
+            calls["count"] += 1
+            # Return False for Phase 1 and beginning of Phase 2, but True after Movie 1 is processed
+            return calls["count"] > 3
+
+        mock_progress.iscanceled.side_effect = fake_iscanceled
+
+        self.active_profile = "/profile_kodi1"
+        p = self._patch_env(addon_kodi)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
+                patch.object(default.xbmcgui, "Dialog", return_value=mock_dialog), \
+                patch.object(default.xbmcgui, "DialogProgress", return_value=mock_progress), \
+                patch.object(sudosync_core, "collect_library", return_value=([movie1, movie2], [])), \
+                patch.object(sudosync_core, "rpc", side_effect=lambda method, params=None: {}), \
+                patch.object(sys, "argv", ["default.py", "assignids"]):
+            default.main()
+
+        # Lock is released
+        self.assertFalse(sudosync_core._ASSIGN_IDS_LOCK_HELD)
+        # Dialog closed in finally
+        mock_progress.close.assert_called()
+        # Normal completion OK dialog NOT shown when cancelled
+        mock_dialog.ok.assert_not_called()
+
+        # Movie 2 was NOT assigned because cancellation safely aborted before it
+        nfo_2 = self.vfs.files["smb://nas/wideo/filmy/Movie2.nfo"].decode("utf-8")
+        self.assertNotIn("sudosync", nfo_2)
+
 
     def test_07_assign_sudosync_ids_crash_mid_loop_preserves_counter_for_other_kodi(self):
         """Failure or crash while writing 2nd film NFO still preserves pre-persisted counter >= 1 on NAS so 2nd Kodi avoids ID collisions."""
