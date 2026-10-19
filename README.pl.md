@@ -71,7 +71,7 @@ Szczegółowa instrukcja bezpiecznego ręcznego testu wersji 2.x (Beta) krok po 
 
 ## Kompatybilność
 
-> **Ważne:** Wtyczka wspiera wyłącznie dwie najnowsze główne wersje Kodi (obecnie v20 Nexus oraz v21 Omega). Starsze wersje przestają być wspierane.
+> **Ważne:** Wtyczka oficjalnie wspiera wyłącznie dwie najnowsze **stabilne** główne wersje Kodi (obecnie v20 Nexus oraz v21 Omega). Wersje przedpremierowe / testowe nadchodzących wydań (np. Kodi v22 Piers RC) nie są jeszcze oficjalnie zweryfikowane. Starsze wersje przestają być wspierane.
 
 - Kodi v20 Nexus oraz v21 Omega.
 - Wieloplatformowość: Windows, Android / Google TV, Linux, CoreELEC / LibreELEC.

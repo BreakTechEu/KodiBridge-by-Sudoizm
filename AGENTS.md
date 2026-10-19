@@ -7,10 +7,10 @@ of the user's requirements. Do not ask the user to repeat requirements already
 recorded there; update the documents when the user changes or clarifies them.
 
 At the start of work, inspect the current branch, working tree, recent commits,
-and remote state. Develop on `v2/rewrite-2026-10-10` unless the user explicitly
-directs otherwise. `master` is the intended v2 mainline/destination;
-`v1-stable` is the stable SudoSync 1.0.0 line and must remain read-only. Integrate v2 into
-`master` through the agreed review path. Treat `sources/` as read-only
+and remote state. The repository contains only two branches: `master` (the active
+mainline branch where the SudoSync 2.x line is developed and maintained) and
+`v1-stable` (the frozen, read-only branch for the stable SudoSync 1.0.0 release).
+Develop and maintain SudoSync 2.x directly on `master`. Treat `sources/` as read-only
 reference material.
 
 The implementation status in project documents can become stale. Verify it

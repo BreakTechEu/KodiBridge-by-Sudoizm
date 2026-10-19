@@ -71,7 +71,7 @@ For a step-by-step safe manual testing guide for version 2.x (Beta) on Kodi (in 
 
 ## Compatibility
 
-> **Notice:** This plugin exclusively supports the two most recent major versions of Kodi (currently v20 Nexus and v21 Omega). Older versions are no longer supported.
+> **Notice:** This plugin officially supports the two most recent **stable** major versions of Kodi (currently v20 Nexus and v21 Omega). Pre-release / RC builds of upcoming major versions (such as Kodi v22 Piers RC) are not yet officially verified. Older versions are no longer supported.
 
 - Kodi v20 Nexus and v21 Omega.
 - Multi-platform: Windows, Android / Google TV, Linux, CoreELEC / LibreELEC.
