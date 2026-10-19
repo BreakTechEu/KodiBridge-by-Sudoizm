@@ -3,8 +3,8 @@
 ---
 
 > [!WARNING]
-> **Beta Release Notice (SudoSync 2.0.6):**
-> SudoSync 2.0.6 is a **public beta / testing release** featuring the rebuilt v2 architecture and SudoSync ID system for private videos and local networks. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
+> **Beta Release Notice (SudoSync 2.0.7):**
+> SudoSync 2.0.7 is a **public beta / testing release** featuring the rebuilt v2 architecture and SudoSync ID system for private videos and local networks. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
 > Both releases are available in the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section.
 
 # SudoSync for Kodi
@@ -43,7 +43,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **SudoSync 2.0.6 (Beta):** Download `service.sudosync-2.0.6.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for testing new v2 features and SudoSync ID).
+   - **SudoSync 2.0.7 (Beta):** Download `service.sudosync-2.0.7.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for testing new v2 features and SudoSync ID).
    - **SudoSync 1.0.0 (Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for production environments requiring maximum stability).
 
 2. **Install in Kodi:**

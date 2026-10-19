@@ -5,6 +5,7 @@
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 # -------------------------------------------------------------------------
+import hashlib
 import json
 import os
 import re
@@ -576,6 +577,46 @@ def _copy_vfs_to_local(src, dst):
         raise IOError("Skopiowany pakiet aktualizacji jest pusty lub niepełny.")
 
 
+MAX_ZIP_FILES = 500
+MAX_ZIP_TOTAL_BYTES = 50 * 1024 * 1024
+MAX_ZIP_FILE_BYTES = 20 * 1024 * 1024
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _normalize_sha256(value):
+    """Return a lowercase 64-hex digest from 'sha256:<hex>' / '<hex>' or None."""
+    text = str(value or "").strip().lower()
+    if text.startswith("sha256:"):
+        text = text[len("sha256:"):].strip()
+    return text if _SHA256_RE.match(text) else None
+
+
+def _sha256_of_file(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha256_from_text(text, filename):
+    """Find the digest for ``filename`` in a '<hex>  <name>' list or a lone '<hex>' file."""
+    base = os.path.basename(str(filename or ""))
+    lone = []
+    for line in str(text or "").splitlines():
+        parts = line.strip().split()
+        if not parts:
+            continue
+        digest = _normalize_sha256(parts[0])
+        if not digest:
+            continue
+        if len(parts) == 1:
+            lone.append(digest)
+        elif parts[-1].lstrip("*") == base:
+            return digest
+    return lone[0] if len(lone) == 1 else None
+
+
 def _safe_zip_member(name):
     normalized = str(name or "").replace("\\", "/")
     if normalized.startswith("/") or normalized.startswith("../") or "/../" in normalized:
@@ -586,12 +627,31 @@ def _safe_zip_member(name):
     return all(part not in (".", "..") for part in parts)
 
 
-def _validate_addon_zip_package(zip_path, expected_version=None):
-    """Validate structure and addon.xml of a SudoSync ZIP package."""
+def _validate_addon_zip_package(zip_path, expected_version=None, expected_sha256=None):
+    """Validate integrity (SHA-256), size limits, structure and addon.xml of a SudoSync ZIP package."""
     if not os.path.isfile(zip_path) or os.path.getsize(zip_path) < 100:
         raise ValueError("Pakiet aktualizacji ZIP nie istnieje lub jest pusty.")
+    if expected_sha256 is not None:
+        expected = _normalize_sha256(expected_sha256)
+        if not expected:
+            raise ValueError("Nieprawidłowy format oczekiwanej sumy SHA-256.")
+        actual = _sha256_of_file(zip_path)
+        if actual != expected:
+            raise ValueError(
+                "Suma SHA-256 pakietu nie zgadza się (oczekiwano {}, obliczono {}).".format(expected, actual)
+            )
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
+            file_infos = [i for i in zf.infolist() if not i.filename.replace("\\", "/").endswith("/")]
+            if len(file_infos) > MAX_ZIP_FILES:
+                raise ValueError("Pakiet ZIP zawiera zbyt wiele plików ({} > {}).".format(len(file_infos), MAX_ZIP_FILES))
+            if any(i.file_size > MAX_ZIP_FILE_BYTES for i in file_infos):
+                raise ValueError("Plik w pakiecie ZIP przekracza limit {} MB.".format(MAX_ZIP_FILE_BYTES // (1024 * 1024)))
+            if sum(i.file_size for i in file_infos) > MAX_ZIP_TOTAL_BYTES:
+                raise ValueError(
+                    "Rozmiar danych po rozpakowaniu przekracza limit {} MB.".format(MAX_ZIP_TOTAL_BYTES // (1024 * 1024))
+                )
+
             names = zf.namelist()
             normalized_map = {str(name or "").replace("\\", "/"): name for name in names}
             if not names or not all(
@@ -634,6 +694,9 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
     try:
         with zipfile.ZipFile(local_zip, "r") as zf:
             prefix = ADDON_ID + "/"
+            extracted_total = 0
+            if len(zf.infolist()) > MAX_ZIP_FILES * 2:
+                raise ValueError("Pakiet ZIP zawiera zbyt wiele wpisów.")
             for info in zf.infolist():
                 name = info.filename.replace("\\", "/")
                 if name.endswith("/"):
@@ -650,7 +713,16 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
                 if not os.path.isdir(parent):
                     os.makedirs(parent)
                 with zf.open(info, "r") as src, open(target, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
+                    file_bytes = 0
+                    while True:
+                        chunk = src.read(64 * 1024)
+                        if not chunk:
+                            break
+                        file_bytes += len(chunk)
+                        extracted_total += len(chunk)
+                        if file_bytes > MAX_ZIP_FILE_BYTES or extracted_total > MAX_ZIP_TOTAL_BYTES:
+                            raise ValueError("Przekroczono limit rozmiaru danych podczas rozpakowywania pakietu ZIP.")
+                        dst.write(chunk)
 
         staged_manifest = os.path.join(staging, "addon.xml")
         root = ET.parse(staged_manifest).getroot()
@@ -775,6 +847,22 @@ def find_github_update(timeout=10, api_url=None):
             "source": "github",
         }
 
+    expected_sha256 = None
+    sha256_url = ""
+    for asset in assets:
+        if isinstance(asset, dict) and str(asset.get("name") or "").strip() == chosen_asset[0]:
+            expected_sha256 = _normalize_sha256(asset.get("digest"))
+            break
+    if not expected_sha256:
+        expected_sha256 = _sha256_from_text(data.get("body"), chosen_asset[0])
+    if not expected_sha256:
+        for asset in assets:
+            if not isinstance(asset, dict):
+                continue
+            if str(asset.get("name") or "").strip().lower() == chosen_asset[0].lower() + ".sha256":
+                sha256_url = str(asset.get("browser_download_url") or "").strip()
+                break
+
     remote_tuple = _numeric_version(chosen_version_text)
     return {
         "available": remote_tuple > current,
@@ -782,9 +870,40 @@ def find_github_update(timeout=10, api_url=None):
         "version": chosen_version_text,
         "filename": chosen_asset[0],
         "download_url": chosen_asset[1],
+        "sha256": expected_sha256 or "",
+        "sha256_url": sha256_url,
         "html_url": str(data.get("html_url") or ""),
         "source": "github",
     }
+
+
+def _fetch_expected_sha256(info, filename, timeout):
+    """Return the expected SHA-256 for the update ZIP or raise (fail closed)."""
+    import urllib.request
+    expected = _normalize_sha256(info.get("sha256"))
+    if expected:
+        return expected
+    sha_url = str(info.get("sha256_url") or "").strip()
+    if sha_url:
+        if not sha_url.lower().startswith("https://"):
+            raise ValueError("Niedozwolony adres pliku sumy kontrolnej (wymagany HTTPS): {}".format(sha_url))
+        req = urllib.request.Request(
+            sha_url,
+            headers={"User-Agent": "SudoSync-Kodi-Addon/{}".format(info.get("current_version") or "2.0.0")},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read(64 * 1024)
+        except Exception as exc:
+            raise IOError("Nie udało się pobrać pliku sumy SHA-256: {}".format(exc))
+        if isinstance(raw, (bytes, bytearray)):
+            raw = raw.decode("utf-8", errors="replace")
+        expected = _sha256_from_text(raw, filename)
+        if expected:
+            return expected
+    raise ValueError(
+        "Brak sumy kontrolnej SHA-256 dla pakietu aktualizacji w wydaniu GitHub - instalacja odrzucona."
+    )
 
 
 def install_github_update(update_info=None, show_dialogs=True, timeout=30):
@@ -804,6 +923,8 @@ def install_github_update(update_info=None, show_dialogs=True, timeout=30):
     filename = os.path.basename(str(info.get("filename") or "service.sudosync-update.zip"))
     if not download_url.lower().startswith("https://"):
         raise ValueError("Niedozwolony adres pobierania aktualizacji (wymagany HTTPS): {}".format(download_url))
+
+    expected_sha256 = _fetch_expected_sha256(info, filename, timeout)
 
     package_dir = xbmcvfs.translatePath("special://home/addons/packages/")
     if not os.path.isdir(package_dir):
@@ -827,8 +948,17 @@ def install_github_update(update_info=None, show_dialogs=True, timeout=30):
                 pass
         raise IOError("Nie udało się pobrać pakietu z GitHub Releases: {}".format(exc))
 
-    package_version = _validate_addon_zip_package(local_zip, info.get("version"))
+    try:
+        package_version = _validate_addon_zip_package(local_zip, info.get("version"), expected_sha256=expected_sha256)
+    except Exception:
+        # Reject the update and remove the downloaded file.
+        try:
+            os.remove(local_zip)
+        except OSError:
+            pass
+        raise
     return _extract_and_swap_addon(local_zip, package_version, download_url, show_dialogs=show_dialogs)
+
 
 
 def install_update_from_zip_path(zip_path, allow_same_or_older=False, show_dialogs=True):

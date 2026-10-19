@@ -100,7 +100,7 @@ class FakeAddon(object):
 
     def getAddonInfo(self, key):
         if key == "version":
-            return "2.0.6"
+            return "2.0.7"
         return ""
 
 

@@ -1,25 +1,28 @@
-# SudoSync 2.0.6 — instrukcja bezpiecznego testu na urządzeniu Kodi
+# SudoSync 2.0.7 — instrukcja bezpiecznego testu na urządzeniu Kodi
 
-Dokument prowadzi krok po kroku przez ręczny test wersji 2.0.6 (Beta) na pojedynczym urządzeniu Kodi (oraz sekwencyjnie między urządzeniami), z pełnym zabezpieczeniem danych przed rozpoczęciem pracy.
+Dokument prowadzi krok po kroku przez ręczny test wersji 2.0.7 (Beta) na pojedynczym urządzeniu Kodi (oraz sekwencyjnie między urządzeniami), z pełnym zabezpieczeniem danych przed rozpoczęciem pracy.
 
 ---
 
 ## Krok 1. Stan testu i identyfikacja paczki
 
-- **Wersja wtyczki:** `2.0.6` (Beta), identyfikator dodatku w `service.sudosync/addon.xml`: `service.sudosync`.
-- **Commit bazowy i paczka na GitHubie:** paczka `service.sudosync-2.0.6.zip` jest budowana bezpośrednio z wierzchołka gałęzi `master` i publikowana jako załącznik wydania `v2.0.6` w GitHub Releases (dzięki czemu wszystkie narzędzia i audytorzy widzą ten sam artefakt). Aktualny hash commitu sprawdzisz poleceniem:
+- **Wersja wtyczki:** `2.0.7` (Beta), identyfikator dodatku w `service.sudosync/addon.xml`: `service.sudosync`.
+- **Commit bazowy i paczka na GitHubie:** paczka `service.sudosync-2.0.7.zip` jest budowana bezpośrednio z wierzchołka gałęzi `master` i publikowana jako załącznik wydania `v2.0.7` w GitHub Releases (dzięki czemu wszystkie narzędzia i audytorzy widzą ten sam artefakt). Aktualny hash commitu sprawdzisz poleceniem:
   ```powershell
   git log -1 --oneline
   git rev-parse HEAD
   ```
 - **Parametry paczki:**
-  - **Nazwa pliku:** `service.sudosync-2.0.6.zip`
-  - **Rozmiar:** `691 036 bajtów`
-  - **Suma kontrolna SHA-256:** `77145200d51e1f49c3b66bdb0647e8b453aac07557a9c2bc270784dad964c72b`
-- **Model aktualizacji:** wtyczka sprawdza aktualizacje w GitHub Releases (`find_github_update` / `maybe_check_github_update_daily`) oraz obsługuje ręczną instalację ze wskazanego pliku ZIP (`install_update_from_zip_path`), walidując strukturę archiwum i `addon.xml` w `_validate_addon_zip_package()`.
-- **Podstawowy scenariusz testowy (99,9% użytkowników):** świeża instalacja po usunięciu poprzedniej wersji wtyczki (wraz z jej danymi profilu) ze wszystkich urządzeń Kodi oraz zmianie nazwy dotychczasowego folderu `.SudoSync` na NAS (np. na `.SudoSync.bak`), tak aby wtyczka utworzyła strukturę `.SudoSync` od zera.
-- **Skutek:** potwierdzono pochodzenie i przeznaczenie pliku `service.sudosync-2.0.6.zip`.
-- **Kryterium „zrobione”:** znasz dokładny hash commitu z `git rev-parse HEAD` i masz przygotowany plik `service.sudosync-2.0.6.zip` o zweryfikowanej sumie SHA-256.
+  - **Nazwa pliku:** `service.sudosync-2.0.7.zip`
+  - **Rozmiar:** `696 675 bajtów`
+  - **Suma kontrolna SHA-256:** `bee52cad5b011d7a35d11bf287c8e35b46309ab0b4dca53bd1ea9760196dc331`
+- **Model aktualizacji:** wtyczka sprawdza aktualizacje w GitHub Releases (`find_github_update` / `maybe_check_github_update_daily`) oraz obsługuje ręczną instalację ze wskazanego pliku ZIP (`install_update_from_zip_path`). Pakiet pobrany z GitHub jest przed rozpakowaniem weryfikowany: HTTPS, suma SHA-256 (z pola `digest` assetu, treści wydania lub pliku `.sha256`; brak skrótu lub niezgodność odrzuca aktualizację), limity ZIP (500 plików, 50 MB łącznie, 20 MB na plik) oraz struktura archiwum i `addon.xml` w `_validate_addon_zip_package()`.
+- **Wybór wariantu testu (obowiązuje w całym dokumencie):**
+  - **Wariant A — bezpieczny test na istniejącej bibliotece / aktualizacja (ZALECANY, domyślny):** wykonujesz kopie zapasowe (kopiowanie, nie przenoszenie), **nie usuwasz i nie zmieniasz nazwy produkcyjnego katalogu `.SudoSync`** ani profilu `userdata/addon_data/service.sudosync/`, a test zaczynasz od trybu podglądu (dry-run) — bez zapisu do biblioteki. Zapis uzbrajasz dopiero po sprawdzeniu raportu podglądu.
+  - **Wariant B — izolowany test czystej instalacji od zera (WYŁĄCZNIE środowisko laboratoryjne):** zmiana nazwy `.SudoSync` i czyszczenie profilu wtyczki dotyczą tylko osobnego, testowego udziału NAS i testowych urządzeń Kodi.
+  - > **OSTRZEŻENIE:** nie wykonuj czynności z oznaczeniem „tylko Wariant B” na produkcyjnym NAS ani na urządzeniach z prawdziwą biblioteką. Zmiana nazwy `.SudoSync` odcina urządzenia od wspólnej konfiguracji, liczników SudoSync ID i snapshotów.
+- **Skutek:** potwierdzono pochodzenie i przeznaczenie pliku `service.sudosync-2.0.7.zip`.
+- **Kryterium „zrobione”:** znasz dokładny hash commitu z `git rev-parse HEAD` i masz przygotowany plik `service.sudosync-2.0.7.zip` o zweryfikowanej sumie SHA-256.
 
 ---
 
@@ -34,14 +37,18 @@ Rzeczywiste zachowanie kodu strażnika wersji i dzierżawy sesji (`sudosync_boot
 
 ---
 
-## Krok 3. Kopie zapasowe i oczyszczenie przed instalacją (przy wyłączonym Kodi)
+## Krok 3. Kopie zapasowe (oba warianty) i oczyszczenie (tylko Wariant B), przy wyłączonym Kodi
 
 Zamknij całkowicie program Kodi na wszystkich urządzeniach (zgodnie z zasadą z `docs/V2_USER_FLOW.md` w sieci nie może w tym czasie działać żadne inne Kodi) i zabezpiecz następujące elementy:
 
-1. **Dotychczasowy folder `.SudoSync` na udziale NAS** — zmień jego nazwę (np. na `.SudoSync_kopia_przed_v2`) lub przenieś go poza udział sieciowy. Dzięki temu zachowasz pełną kopię dotychczasowych plików (`SudoSync.cfg`, `format.json`, `clients/`, `system/`, `live/`, `reports/`, `backups/`, `transactions/`), a nowa instalacja utworzy na NAS zupełnie czysty katalog `.SudoSync` (`sudosync_core.py:ensure_remote_layout`, `sudosync_bootstrap.py:read_sudosync_cfg`).
+1. **Dotychczasowy folder `.SudoSync` na udziale NAS** (zawiera `SudoSync.cfg`, `format.json`, `clients/`, `system/`, `live/`, `reports/`, `backups/`, `transactions/`):
+   - **Wariant A:** wykonaj jego **kopię** (np. do `.SudoSync_kopia_przed_2.0.7` poza udziałem lub obok). **Nie zmieniaj nazwy i nie usuwaj** oryginału — wtyczka ma dalej używać produkcyjnego `.SudoSync` (`sudosync_core.py:ensure_remote_layout`, `sudosync_bootstrap.py:read_sudosync_cfg`).
+   - **Wariant B (tylko laboratorium):** możesz zmienić jego nazwę (np. na `.SudoSync_kopia_przed_v2`) lub przenieść poza udział, aby wtyczka utworzyła czysty katalog `.SudoSync`.
 2. **Pliki bazy biblioteki wideo `MyVideos*.db`** z podkatalogu `userdata/Database/`. SudoSync komunikuje się z biblioteką wyłącznie przez JSON-RPC (`VideoLibrary.SetMovieDetails`, `VideoLibrary.SetEpisodeDetails`), ale kopia plików `MyVideos*.db` gwarantuje pełną odwracalność stanu biblioteki.
-3. **Folder danych profilu wtyczki `userdata/addon_data/service.sudosync/`** — w kodzie odwoływany jako `special://profile/addon_data/service.sudosync/` (`sudosync_core.py:_addon_profile_path`, `local_service_guard.py:acquire_kodi_service_guard`). Zawiera m.in. `settings.xml`, `client.json`, `status.json`, `live_registry.json`, `live_peer_pulses.json`, `live_cycle_lock.json`, `sudosync-service.lock`, `initial_write_guard.json`, `initial_sync.journal`, `assign_ids_manifest.json`. Przy teście „na świeżo” skopiuj ten folder do kopii zapasowej, a następnie **usuń go z wszystkich instalacji Kodi** (lub usuń razem z odinstalowaniem poprzedniej wersji wtyczki w Kodi), aby wtyczka nie pamiętała starej ścieżki `base_path` i przeprowadziła pełny proces pierwszego uruchomienia.
-4. **Folder kodu wtyczki `addons/service.sudosync/`** (jeśli istniał) — w kodzie odwoływany przez `xbmcaddon.Addon("service.sudosync").getAddonInfo("path")` oraz `special://home/addons/` (`sudosync_core.py:_extract_and_swap_addon`). Przy teście na świeżo upewnij się po odinstalowaniu poprzedniej wersji, że katalog `addons/service.sudosync/` nie istnieje na żadnym urządzeniu Kodi.
+3. **Folder danych profilu wtyczki `userdata/addon_data/service.sudosync/`** — w kodzie odwoływany jako `special://profile/addon_data/service.sudosync/` (`sudosync_core.py:_addon_profile_path`, `local_service_guard.py:acquire_kodi_service_guard`). Zawiera m.in. `settings.xml`, `client.json`, `status.json`, `live_registry.json`, `live_peer_pulses.json`, `live_cycle_lock.json`, `sudosync-service.lock`, `initial_write_guard.json`, `initial_sync.journal`, `assign_ids_manifest.json`.
+   - **Wariant A:** tylko skopiuj ten folder do kopii zapasowej. **Nie usuwaj go** — zachowuje `client_id`, ścieżkę `base_path` i stan rejestracji.
+   - **Wariant B (tylko laboratorium):** po wykonaniu kopii **usuń go ze wszystkich testowych instalacji Kodi** (lub razem z odinstalowaniem poprzedniej wersji wtyczki), aby wtyczka nie pamiętała starej ścieżki `base_path` i przeprowadziła pełny proces pierwszego uruchomienia.
+4. **Folder kodu wtyczki `addons/service.sudosync/`** (jeśli istniał) — w kodzie odwoływany przez `xbmcaddon.Addon("service.sudosync").getAddonInfo("path")` oraz `special://home/addons/` (`sudosync_core.py:_extract_and_swap_addon`). **Wariant A:** zrób kopię i zainstaluj nową paczkę jako aktualizację. **Wariant B:** po odinstalowaniu poprzedniej wersji upewnij się, że katalog `addons/service.sudosync/` nie istnieje na testowym urządzeniu.
 5. **Pliki `.nfo` filmów i seriali w folderach biblioteki mediów** — w kodzie (`sudosync_core.py:_nfo_candidates`) SudoSync odczytuje `<nazwa_pliku_wideo>.nfo` oraz dla filmów `movie.nfo`. Zwykły cykl v2 tylko czyta pliki `.nfo` (`KodiVFSMetadataReader`), natomiast ręczna akcja przypisywania identyfikatorów (`assign_sudosync_ids` w `sudosync_core.py`) modyfikuje istniejące pliki `.nfo` (tworząc kopie `.nfo.bak` i manifest `assign_ids_manifest.json` z sumą SHA-256) lub tworzy nowe pliki `.nfo`. Procedura wycofywania `rollback_sudosync_ids` została przetestowana wyłącznie w testach jednostkowych na atrapach (`tests/test_v2_service_and_nfo_rollback.py`), dlatego przed testem na rzeczywistej bibliotece należy wykonać niezależną kopię plików `.nfo`.
 
 Ścieżki katalogu profilu Kodi (`special://home/` oraz `special://profile/`):
@@ -51,25 +58,25 @@ Zamknij całkowicie program Kodi na wszystkich urządzeniach (zgodnie z zasadą 
   - **Android / Google TV** (**niezweryfikowane** w kodzie): `/storage/emulated/0/Android/data/org.xbmc.kodi/files/.kodi/userdata/Database/MyVideos*.db`, `/storage/emulated/0/Android/data/org.xbmc.kodi/files/.kodi/userdata/addon_data/service.sudosync/`, `/storage/emulated/0/Android/data/org.xbmc.kodi/files/.kodi/addons/service.sudosync/`.
   - **CoreELEC / LibreELEC** (**niezweryfikowane** w kodzie): `/storage/.kodi/userdata/Database/MyVideos*.db`, `/storage/.kodi/userdata/addon_data/service.sudosync/`, `/storage/.kodi/addons/service.sudosync/`.
 
-- **Skutek:** pełna kopia stanu NAS, bazy Kodi, danych profilu dodatku, kodu dodatku i plików `.nfo` znajduje się w bezpiecznym miejscu, a w udziale NAS i na urządzeniach Kodi nie ma pozostałości po poprzedniej instalacji.
-- **Kryterium „zrobione”:** kopia zapasowa `MyVideos*.db` i `.nfo` jest gotowa, stary folder `.SudoSync` na NAS ma zmienioną nazwę, a ze wszystkich urządzeń Kodi usunięto poprzednią wtyczkę wraz z folderem `userdata/addon_data/service.sudosync/`.
+- **Skutek:** pełna kopia stanu NAS, bazy Kodi, danych profilu dodatku, kodu dodatku i plików `.nfo` znajduje się w bezpiecznym miejscu. W Wariancie A produkcyjny `.SudoSync` i profil wtyczki pozostają nietknięte; w Wariancie B (laboratorium) na NAS i urządzeniach testowych nie ma pozostałości po poprzedniej instalacji.
+- **Kryterium „zrobione”:** kopia zapasowa `.SudoSync`, `MyVideos*.db`, profilu wtyczki i `.nfo` jest gotowa. Wariant A: oryginały nie zostały usunięte ani przemianowane. Wariant B: stary folder `.SudoSync` na testowym NAS ma zmienioną nazwę, a z testowych urządzeń Kodi usunięto poprzednią wtyczkę wraz z `userdata/addon_data/service.sudosync/`.
 
 ---
 
 ## Krok 4. Sprawdzenie sumy SHA-256 paczki przed instalacją
 
-Przed przeniesieniem paczki na urządzenie Kodi lub jej wyborem w instalatorze sprawdź sumę kontrolną SHA-256 pliku `service.sudosync-2.0.6.zip` i porównaj ją z wartością wygenerowaną podczas budowy paczki.
+Przed przeniesieniem paczki na urządzenie Kodi lub jej wyborem w instalatorze sprawdź sumę kontrolną SHA-256 pliku `service.sudosync-2.0.7.zip` i porównaj ją z wartością wygenerowaną podczas budowy paczki.
 
 - **Parametry pliku:**
-  - **Rozmiar:** `691 036 bajtów`
-  - **SHA-256:** `77145200d51e1f49c3b66bdb0647e8b453aac07557a9c2bc270784dad964c72b`
+  - **Rozmiar:** `696 675 bajtów`
+  - **SHA-256:** `bee52cad5b011d7a35d11bf287c8e35b46309ab0b4dca53bd1ea9760196dc331`
 - **Windows (PowerShell):**
   ```powershell
-  Get-FileHash -Path .\service.sudosync-2.0.6.zip -Algorithm SHA256
+  Get-FileHash -Path .\service.sudosync-2.0.7.zip -Algorithm SHA256
   ```
 - **Linux / CoreELEC / LibreELEC:**
   ```sh
-  sha256sum service.sudosync-2.0.6.zip
+  sha256sum service.sudosync-2.0.7.zip
   ```
 
 - **Skutek:** potwierdzono integralność archiwum instalacyjnego przed wgraniem do Kodi.
@@ -77,39 +84,39 @@ Przed przeniesieniem paczki na urządzenie Kodi lub jej wyborem w instalatorze s
 
 ---
 
-## Krok 5. Instalacja zależna od stanu wyjściowego (główny przebieg: Wariant a — świeża instalacja)
+## Krok 5. Instalacja zależna od wariantu testu i stanu wyjściowego
 
-Wybierz właściwy wariant zależnie od stanu wyjściowego:
+Scenariusz 5.1 należy do **Wariantu B** (tylko laboratorium). Scenariusze 5.2 i 5.3 należą do **Wariantu A** (produkcyjne dane zostają na miejscu). W Wariancie A po instalacji pracuj najpierw wyłącznie w trybie podglądu (dry-run: podgląd inicjalizacji i podgląd identyfikatorów SudoSync ID bez zapisu) i dopiero po sprawdzeniu raportu uzbrój zapis do biblioteki.
 
-### Wariant (a) [GŁÓWNY SCENARIUSZ TESTU]: Czysta instalacja (brak `.SudoSync` na NAS po zmianie nazwy, poprzednia wtyczka odinstalowana z Kodi)
+### 5.1 [Wariant B, tylko laboratorium]: Czysta instalacja (brak `.SudoSync` na testowym NAS po zmianie nazwy, poprzednia wtyczka odinstalowana z testowego Kodi)
 1. Co zrobić:
    - Upewnij się, że na NAS nie ma folderu `.SudoSync` (stary folder ma zmienioną nazwę), a na urządzeniu Kodi nie ma `addons/service.sudosync/` ani `userdata/addon_data/service.sudosync/` (jeśli podczas odinstalowywania w Kodi wybrano zachowanie ustawień albo ręcznie zostawiono `userdata/addon_data/service.sudosync/client.json`, zachowany zostanie tylko dotychczasowy `client_id`, ale aby wymusić pełny kreator wyboru ścieżki, plik `settings.xml` nie może mieć ustawionego `base_path`).
-   - Uruchom Kodi, wybierz *Ustawienia -> Dodatki -> Zainstaluj z pliku zip* i wskaż plik `service.sudosync-2.0.6.zip`.
+   - Uruchom Kodi, wybierz *Ustawienia -> Dodatki -> Zainstaluj z pliku zip* i wskaż plik `service.sudosync-2.0.7.zip`.
 2. Czego nie robić: nie uruchamiaj w tym samym czasie drugiego urządzenia Kodi.
 3. Zachowanie kodu (`sudosync_bootstrap.py:run_bootstrap`): po instalacji i starcie usługi `get_base_path()` zwróci pusty ciąg, więc wtyczka wyświetli komunikat o konieczności wskazania folderu, otworzy przeglądarkę `dialog.browse(3, ...)`, utworzy podkatalog `.SudoSync/` we wskazanym udziale, wykona test zapisu pliku `rw_test.tmp` (`test_vfs_rw`) i — przy braku `SudoSync.cfg` oraz braku starego `system/config.json` — uruchomi kreator `run_new_config_wizard()`, zapisując nowy plik `.SudoSync/SudoSync.cfg`, po czym automatycznie zarejestruje urządzenie (`_ensure_client_enrolled_and_initialized`) i utworzy lokalny snapshot pierwszego urządzenia.
 
-### Wariant (b): Zainstalowany SudoSync 1.0.0 z pozostawionymi danymi v1 w `.SudoSync` (scenariusz migracji)
+### 5.2 [Wariant A]: Zainstalowany SudoSync 1.0.0 z pozostawionymi danymi v1 w `.SudoSync` (scenariusz migracji)
 1. Co zrobić:
    - Przy wyłączonym Kodi upewnij się, że kopia zapasowa z kroku 3 jest gotowa.
    - Pozostaw bez zmian katalog `userdata/addon_data/service.sudosync/` oraz dotychczasowy `.SudoSync` na NAS.
    - Przy wyłączonym Kodi usuń stary katalog kodu `addons/service.sudosync/`.
-   - Uruchom Kodi, zainstaluj `service.sudosync-2.0.6.zip` przez *Ustawienia -> Dodatki -> Zainstaluj z pliku zip*, a bezpośrednio po instalacji zamknij i uruchom Kodi ponownie.
+   - Uruchom Kodi, zainstaluj `service.sudosync-2.0.7.zip` przez *Ustawienia -> Dodatki -> Zainstaluj z pliku zip*, a bezpośrednio po instalacji zamknij i uruchom Kodi ponownie.
 2. Czego nie robić: nie usuwaj katalogu `userdata/addon_data/service.sudosync/` ani zawartości `.SudoSync/clients/` i `.SudoSync/system/config.json`.
 3. Zachowanie kodu (`sudosync_bootstrap.py:is_legacy_installation`, `run_migration_wizard`): przy starcie `run_bootstrap()` odczyta istniejący `base_path`, stwierdzi brak `SudoSync.cfg`, ale wykryje obecność `.SudoSync/system/config.json` oraz `.SudoSync/clients/`. Zamiast kreatora nowej instalacji uruchomi `run_migration_wizard()`: wyświetli okno `SudoSync - Migracja`, przeniesie ustawienia sieciowe do nowego pliku `.SudoSync/SudoSync.cfg` (`schema_version: 1`, `configuration.completed: True`) i zachowa wszystkie dotychczasowe snapshoty oraz identyfikatory klientów.
 
-### Wariant (c): Aktualizacja wcześniejszej wersji 2.0.x bez kasowania `.SudoSync`
+### 5.3 [Wariant A, zalecany]: Aktualizacja wcześniejszej wersji 2.0.x bez kasowania `.SudoSync`
 1. Co zrobić:
-   - Możesz zaktualizować wtyczkę bezpośrednio w ustawieniach SudoSync (*Sprawdź aktualizacje w GitHub Releases* lub *Zainstaluj aktualizację ze wskazanego pliku ZIP*) i zatwierdzić ponowne uruchomienie Kodi, albo przy wyłączonym Kodi zainstalować nową paczkę `service.sudosync-2.0.6.zip`.
-2. Zachowanie kodu (`sudosync_bootstrap.py:run_bootstrap`): jeżeli w `.SudoSync` znajduje się już poprawny plik `SudoSync.cfg`, bootstrap nie wyświetli okien kreatora, podbije `min_addon_version` do `2.0.6`, wymusi spójność lokalnych ustawień przez `apply_network_settings(cfg)`, odnowi dzierżawę `active_kodi_lock.json` i od razu przekaże sterowanie do usługi.
+   - Możesz zaktualizować wtyczkę bezpośrednio w ustawieniach SudoSync (*Sprawdź aktualizacje w GitHub Releases* lub *Zainstaluj aktualizację ze wskazanego pliku ZIP*) i zatwierdzić ponowne uruchomienie Kodi, albo przy wyłączonym Kodi zainstalować nową paczkę `service.sudosync-2.0.7.zip`.
+2. Zachowanie kodu (`sudosync_bootstrap.py:run_bootstrap`): jeżeli w `.SudoSync` znajduje się już poprawny plik `SudoSync.cfg`, bootstrap nie wyświetli okien kreatora, podbije `min_addon_version` do `2.0.7`, wymusi spójność lokalnych ustawień przez `apply_network_settings(cfg)`, odnowi dzierżawę `active_kodi_lock.json` i od razu przekaże sterowanie do usługi.
 
 - **Skutek:** w katalogu `addons/service.sudosync/` znajduje się wyłącznie czysty kod z testowanego commitu, a usługa startuje w procesie Kodi.
-- **Kryterium „zrobione”:** dodatek SudoSync w wersji `2.0.6` jest widoczny jako aktywny w Kodi.
+- **Kryterium „zrobione”:** dodatek SudoSync w wersji `2.0.7` jest widoczny jako aktywny w Kodi.
 
 ---
 
-## Krok 6. Wyczyszczenie starych śladów snapshotu v2 (pomijane przy czystej instalacji po zmianie nazwy `.SudoSync`)
+## Krok 6. Wyczyszczenie starych śladów snapshotu v2 (pomijane w Wariancie B po zmianie nazwy `.SudoSync`)
 
-> **Uwaga dla świeżej instalacji (Wariant a):** Jeżeli przed testem zmieniłeś nazwę całego folderu `.SudoSync` na NAS (krok 3), katalog `.SudoSync/clients/` jeszcze nie istnieje i nie ma w nim żadnych starych snapshotów — **ten krok jest automatycznie spełniony i możesz od razu przejść do Kroku 7**.
+> **Uwaga dla Wariantu B (czysta instalacja w laboratorium):** Jeżeli przed testem zmieniłeś nazwę całego folderu `.SudoSync` na testowym NAS (krok 3), katalog `.SudoSync/clients/` jeszcze nie istnieje i nie ma w nim żadnych starych snapshotów — **ten krok jest automatycznie spełniony i możesz od razu przejść do Kroku 7**. W Wariancie A ten krok wykonuj tylko wtedy, gdy w `.SudoSync/clients/` są snapshoty ze starszych kompilacji v2, i zawsze po wykonaniu kopii z kroku 3.
 
 Jeżeli jednak testujesz na istniejącym folderze `.SudoSync`, w którym działała wcześniej kompilacja v2 sprzed commitu `6c9f110` (np. `029edab`, `15e7011`), jej pierwszy opublikowany snapshot v2 mógł otrzymać niezerowe wersje logiczne `lc` (dziedziczone z zegara logicznego zamiast `lc: 0, seq: 0`). Poprawka z commitu `6c9f110` w `sudosync_v2/snapshot.py:_record_versions` nadaje wersje zerowe wyłącznie wtedy, gdy klient nie ma jeszcze poprzedniego snapshotu v2 (`has_previous_snapshot=False`). Jeśli stary plik v2 zostanie na NAS, `build_snapshot()` odczyta z niego zawyżone `old_version` i zachowa je w kolejnych cyklach.
 
@@ -256,8 +263,10 @@ Zgodnie z kodem (`sudosync_core.py:1966` wymaga co najmniej dwóch snapshotów w
 Jeżeli chcesz całkowicie wycofać test i przywrócić stan sprzed kroku 3, wykonaj poniższe czynności dokładnie w tej kolejności:
 
 1. **Zamknij całkowicie Kodi** na wszystkich urządzeniach (upewnij się, że proces Kodi nie działa w tle i nie trzyma blokad `sudosync-service.lock` ani `live_cycle_lock.json`).
-2. **Usuń testową wersję wtyczki:** usuń katalog `addons/service.sudosync/` (oraz ewentualną paczkę `addons/packages/service.sudosync-2.0.6.zip`). Jeżeli przed testem była zainstalowana inna wersja wtyczki, przywróć jej katalog `addons/service.sudosync/` z kopii zapasowej z kroku 3.
-3. **Przywróć folder `.SudoSync` na NAS:** usuń nowo utworzony podczas testu katalog `.SudoSync` i zmień nazwę zabezpieczonego w kroku 3 oryginalnego folderu (np. `.SudoSync_kopia_przed_v2`) z powrotem na `.SudoSync` (lub zastąp go pełną kopią wykonaną w kroku 3). Przywraca to poprzednie `SudoSync.cfg`, `system/config.json`, `clients/`, `live/`, `backups/` i `reports/`.
+2. **Usuń testową wersję wtyczki:** usuń katalog `addons/service.sudosync/` (oraz ewentualną paczkę `addons/packages/service.sudosync-2.0.7.zip`). Jeżeli przed testem była zainstalowana inna wersja wtyczki, przywróć jej katalog `addons/service.sudosync/` z kopii zapasowej z kroku 3.
+3. **Przywróć folder `.SudoSync` na NAS:**
+   - **Wariant A:** oryginał nie był przemianowywany ani usuwany, więc przywracasz tylko pliki zmienione podczas testu (`SudoSync.cfg`, `system/config.json`, `clients/`, `live/`, `backups/`, `reports/`) z kopii wykonanej w kroku 3 — nie usuwaj całego katalogu.
+   - **Wariant B (laboratorium):** usuń nowo utworzony podczas testu katalog `.SudoSync` i zmień nazwę zabezpieczonego w kroku 3 oryginalnego folderu (np. `.SudoSync_kopia_przed_v2`) z powrotem na `.SudoSync` (lub zastąp go pełną kopią).
 4. **Przywróć lokalne dane profilu `userdata/addon_data/service.sudosync/`:** zastąp ten katalog kopią zapasową z kroku 3 (lub usuń go, jeżeli przed testem SudoSync nie był zainstalowany na tym urządzeniu).
 5. **Przywróć pliki `.nfo` filmów i seriali:** jeżeli podczas testu uruchamiałeś przypisywanie identyfikatorów `SudoSync ID` (`assignids`), przywróć pliki `.nfo` z kopii zapasowej wykonanej w kroku 3 (oraz usuń ewentualne pliki `.nfo.bak` i nowo utworzone pliki `.nfo`).
 6. **Przywróć bazę biblioteki Kodi `MyVideos*.db`:** skopiuj pliki `MyVideos*.db` z kopii zapasowej z kroku 3 z powrotem do `userdata/Database/`, nadpisując pliki zmodyfikowane podczas testu.

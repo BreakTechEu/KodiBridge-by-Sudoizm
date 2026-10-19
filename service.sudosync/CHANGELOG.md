@@ -1,3 +1,16 @@
+SudoSync 2.0.7
+==============
+
+- Bezpieczny, atomowy zapis JSON w `sudosync_bootstrap.py` (`_write_json_file`), np. dla `SudoSync.cfg`:
+  - najpierw zapis i weryfikacja pliku `.tmp` (istnieje i ma rozmiar większy od zera),
+  - kopia zapasowa `.bak` z bezwzględnym sprawdzeniem wyniku `xbmcvfs.copy` - przy niepowodzeniu zapis jest przerywany, `.tmp` usuwany, a oryginał pozostaje nietknięty,
+  - oryginał jest usuwany dopiero po potwierdzonej kopii `.bak`, a przy niepowodzeniu `rename` automatycznie przywracany z `.bak`.
+- Weryfikacja integralności aktualizacji z GitHub Releases (`sudosync_core.py`): pobrany ZIP jest sprawdzany sumą SHA-256 przed rozpakowaniem. Oczekiwany skrót pochodzi z pola `digest` assetu, z treści wydania lub z towarzyszącego pliku `.sha256`. Niezgodność (lub brak skrótu) odrzuca aktualizację, a pobrany plik jest usuwany.
+- Ochrona przed ZIP-bomb: limit 500 plików, 50 MB łącznie i 20 MB na plik, sprawdzany na podstawie nagłówków ZIP przed ekstrakcją oraz strumieniowo w trakcie wypakowywania.
+- Poprawiony opis w CHANGELOG: wpis o weryfikacji RSA-2048 (wersja 2.0.0) nie odpowiadał kodowi - rzeczywisty mechanizm to HTTPS + SHA-256 + walidacja manifestu i struktury archiwum.
+- CI (GitHub Actions): macierz Pythona 3.8, 3.10, 3.11, 3.12 w `ci.yml` i `v2-ci.yml`.
+- Dokumentacja testu na Kodi (`docs/TEST_NA_KODI.md`): rozdzielono Wariant A (bezpieczny test na istniejącej bibliotece, bez ruszania `.SudoSync`) i Wariant B (izolowana czysta instalacja, wyłącznie środowisko laboratoryjne).
+
 SudoSync 2.0.6
 ==============
 
@@ -59,7 +72,7 @@ Przebudowa architektury SudoSync (architektura v2) oraz kluczowe usprawnienia be
 - Opcjonalna blokada współdzielona na poziomie systemu operacyjnego (`native_shared_lock.py`) zabezpieczona przed ucieczką przez dowiązania symboliczne — pozostaje niepodłączona w uzgodnionym sekwencyjnym modelu pracy (jedno urządzenie Kodi naraz).
 - Nowy katalog snapshotów współdzielonych (`catalog.py`) z weryfikacją historii i wersji pól.
 - Konfigurator pierwszego uruchomienia (bootstrap) oparty na `SudoSync.cfg`, weryfikacji dostępu do zasobu sieciowego i obsłudze unikalnych identyfikatorów SudoSync ID z rozdzieleniem identyfikatora sieciowego od aliasu UI.
-- Weryfikacja kryptograficzna pakietów aktualizacji z podpisem RSA-2048 i natychmiastowym blokowaniem startu w razie odrzucenia paczki.
+- Weryfikacja integralności pakietów aktualizacji: HTTPS, walidacja manifestu `addon.xml` i struktury archiwum oraz natychmiastowe blokowanie startu w razie odrzucenia paczki (weryfikacja sumy SHA-256 dodana w 2.0.7; wcześniej błędnie opisywana jako podpis RSA-2048).
 - Ujednolicenie licencji do GPL-3.0-or-later oraz usunięcie zapisów o ograniczeniu użytku.
 - Poprawki z 14.10.2026:
   - Naprawa podwójnie zakodowanych polskich znaków w komunikatach dialogowych oraz dodanie automatycznego testu kodowania UTF-8.

@@ -83,37 +83,85 @@ def _read_json_file(filepath):
         log("Cannot parse JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
         return "INVALID", None
 
+def _remove_quietly(path):
+    try:
+        if xbmcvfs.exists(path):
+            xbmcvfs.delete(path)
+    except Exception as exc:
+        log("Cannot remove {}: {}".format(path, exc), xbmc.LOGWARNING)
+
+
+def _read_back_size(path):
+    """Return the number of bytes readable from ``path`` (0 when empty/unreadable)."""
+    handle = None
+    try:
+        handle = xbmcvfs.File(path, 'r')
+        data = handle.read()
+        if isinstance(data, str):
+            data = data.encode("utf-8")
+        return len(data or b"")
+    except Exception as exc:
+        log("Cannot read back {}: {}".format(path, exc), xbmc.LOGERROR)
+        return 0
+    finally:
+        if handle is not None:
+            try:
+                handle.close()
+            except Exception:
+                pass
+
+
 def _write_json_file(filepath, obj):
+    """Write JSON atomically: verified .tmp -> confirmed .bak -> swap (with restore on failure).
+
+    The original file is deleted only after the .bak copy has been confirmed,
+    and it is restored from .bak if the final rename fails.
+    """
+    tmp_file = filepath + ".tmp"
+    bak_file = filepath + ".bak"
     try:
         import json
         data = json.dumps(obj, indent=2, sort_keys=True)
-        # Bezpieczny zapis przez plik tymczasowy i kopię zapasową
-        tmp_file = filepath + ".tmp"
-        bak_file = filepath + ".bak"
-        
-        f = xbmcvfs.File(tmp_file, 'w')
-        result = f.write(data)
-        f.close()
-        
-        if not result:
-            log("Nie udało się zapisać pełnych danych do .tmp dla {}".format(filepath), xbmc.LOGERROR)
+
+        # 1. Write and verify the temporary file (must exist and be non-empty).
+        handle = xbmcvfs.File(tmp_file, 'w')
+        try:
+            written = handle.write(data)
+        finally:
+            handle.close()
+        if not written or not xbmcvfs.exists(tmp_file) or _read_back_size(tmp_file) <= 0:
+            log("Nie udało się zapisać poprawnego pliku .tmp dla {}".format(filepath), xbmc.LOGERROR)
+            _remove_quietly(tmp_file)
             return False
 
-        if xbmcvfs.exists(filepath):
-            if xbmcvfs.exists(bak_file):
-                xbmcvfs.delete(bak_file)
-            xbmcvfs.copy(filepath, bak_file)
-            xbmcvfs.delete(filepath)
-            
+        # 2. Back up the original and check the result of the copy.
+        had_original = bool(xbmcvfs.exists(filepath))
+        if had_original:
+            _remove_quietly(bak_file)
+            if not xbmcvfs.copy(filepath, bak_file):
+                log("Nie udało się utworzyć kopii .bak dla {} - oryginał zachowany, zapis przerwany".format(filepath),
+                    xbmc.LOGERROR)
+                _remove_quietly(tmp_file)
+                return False
+
+            # 3. Only now is it safe to remove the original.
+            if not xbmcvfs.delete(filepath):
+                log("Nie udało się usunąć oryginału {} przed podmianą - zapis przerwany".format(filepath),
+                    xbmc.LOGERROR)
+                _remove_quietly(tmp_file)
+                return False
+
         if xbmcvfs.rename(tmp_file, filepath):
-            if xbmcvfs.exists(tmp_file):
-                xbmcvfs.delete(tmp_file)
+            _remove_quietly(tmp_file)
             return True
-        else:
-            if xbmcvfs.exists(bak_file):
+
+        log("Nie udało się podmienić {} - przywracam z .bak".format(filepath), xbmc.LOGERROR)
+        if had_original:
+            if not xbmcvfs.copy(bak_file, filepath):
                 xbmcvfs.rename(bak_file, filepath)
-            return False
-            
+        _remove_quietly(tmp_file)
+        return False
+
     except Exception as exc:
         log("Cannot write JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
         return False

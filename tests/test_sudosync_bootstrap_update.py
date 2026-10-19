@@ -373,5 +373,236 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             self.assertEqual(local_reg["client_id"], "client-1")
 
 
+class FakeVfs(object):
+    """In-memory xbmcvfs stand-in with switchable failures."""
+
+    def __init__(self, files=None, copy_ok=True, rename_ok=True):
+        self.files = dict(files or {})
+        self.copy_ok = copy_ok
+        self.rename_ok = rename_ok
+        self.deleted = []
+
+    def exists(self, path):
+        return path in self.files
+
+    def delete(self, path):
+        self.deleted.append(path)
+        return self.files.pop(path, None) is not None
+
+    def copy(self, src, dst):
+        if not self.copy_ok or src not in self.files:
+            return False
+        self.files[dst] = self.files[src]
+        return True
+
+    def rename(self, src, dst):
+        if not self.rename_ok or src not in self.files:
+            return False
+        self.files[dst] = self.files.pop(src)
+        return True
+
+    def File(self, path, mode="r"):
+        vfs = self
+        handle = MagicMock()
+        if "w" in mode:
+            def _write(data):
+                vfs.files[path] = data
+                return True
+            handle.write.side_effect = _write
+        else:
+            handle.read.side_effect = lambda *_a: vfs.files.get(path, "")
+        return handle
+
+
+class TestAtomicJsonWrite(unittest.TestCase):
+    PATH = "smb://nas/video/.SudoSync/SudoSync.cfg"
+
+    def _run(self, vfs, obj=None):
+        patches = [
+            patch.object(bootstrap.xbmcvfs, name, side_effect=getattr(vfs, name))
+            for name in ("exists", "delete", "copy", "rename", "File")
+        ]
+        for p in patches:
+            p.start()
+            self.addCleanup(p.stop)
+        return bootstrap._write_json_file(self.PATH, obj if obj is not None else {"v": 2})
+
+    def test_success_replaces_original_and_keeps_backup(self):
+        vfs = FakeVfs({self.PATH: '{"v": 1}'})
+        self.assertTrue(self._run(vfs))
+        self.assertIn('"v": 2', vfs.files[self.PATH])
+        self.assertEqual(vfs.files[self.PATH + ".bak"], '{"v": 1}')
+        self.assertNotIn(self.PATH + ".tmp", vfs.files)
+
+    def test_first_write_without_original_succeeds(self):
+        vfs = FakeVfs()
+        self.assertTrue(self._run(vfs))
+        self.assertIn('"v": 2', vfs.files[self.PATH])
+
+    def test_failed_backup_copy_preserves_original_and_removes_tmp(self):
+        vfs = FakeVfs({self.PATH: '{"v": 1}'}, copy_ok=False)
+        self.assertFalse(self._run(vfs))
+        self.assertEqual(vfs.files[self.PATH], '{"v": 1}')
+        self.assertNotIn(self.PATH, vfs.deleted)
+        self.assertNotIn(self.PATH + ".tmp", vfs.files)
+
+    def test_failed_rename_restores_original_from_bak(self):
+        vfs = FakeVfs({self.PATH: '{"v": 1}'}, rename_ok=False)
+        self.assertFalse(self._run(vfs))
+        self.assertEqual(vfs.files[self.PATH], '{"v": 1}')
+        self.assertNotIn(self.PATH + ".tmp", vfs.files)
+
+    def test_empty_tmp_file_is_rejected_before_touching_original(self):
+        vfs = FakeVfs({self.PATH: '{"v": 1}'})
+        with patch.object(bootstrap, "_read_back_size", return_value=0):
+            self.assertFalse(self._run(vfs))
+        self.assertEqual(vfs.files[self.PATH], '{"v": 1}')
+        self.assertNotIn(self.PATH, vfs.deleted)
+        self.assertNotIn(self.PATH + ".bak", vfs.files)
+
+
+def _make_zip(path, entries):
+    import zipfile
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, payload in entries.items():
+            zf.writestr(name, payload)
+    return path
+
+
+ADDON_XML = b'<addon id="service.sudosync" version="2.1.0"></addon>'
+
+
+class TestUpdateIntegrityAndZipLimits(unittest.TestCase):
+    def setUp(self):
+        import shutil
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _zip(self, extra=None, name="pkg.zip"):
+        entries = {"service.sudosync/addon.xml": ADDON_XML}
+        entries.update(extra or {})
+        return _make_zip(os.path.join(self.tmp, name), entries)
+
+    @staticmethod
+    def _sha(path):
+        import hashlib
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+
+    def test_matching_sha256_is_accepted(self):
+        path = self._zip()
+        self.assertEqual(core._validate_addon_zip_package(path, "2.1.0", expected_sha256=self._sha(path)), "2.1.0")
+
+    def test_mismatching_sha256_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
+            core._validate_addon_zip_package(self._zip(), "2.1.0", expected_sha256="0" * 64)
+
+    def test_malformed_expected_sha256_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
+            core._validate_addon_zip_package(self._zip(), "2.1.0", expected_sha256="not-a-hash")
+
+    def test_too_many_files_is_rejected(self):
+        extra = {"service.sudosync/f{}.txt".format(i): b"x" for i in range(core.MAX_ZIP_FILES + 1)}
+        with self.assertRaisesRegex(ValueError, "zbyt wiele"):
+            core._validate_addon_zip_package(self._zip(extra), "2.1.0")
+
+    def test_oversized_single_file_is_rejected(self):
+        extra = {"service.sudosync/big.bin": b"\0" * (core.MAX_ZIP_FILE_BYTES + 1)}
+        with self.assertRaisesRegex(ValueError, "limit"):
+            core._validate_addon_zip_package(self._zip(extra), "2.1.0")
+
+    def test_oversized_total_is_rejected(self):
+        chunk = b"\0" * (core.MAX_ZIP_FILE_BYTES - 1024)
+        extra = {"service.sudosync/b{}.bin".format(i): chunk for i in range(3)}
+        with self.assertRaisesRegex(ValueError, "limit"):
+            core._validate_addon_zip_package(self._zip(extra), "2.1.0")
+
+    def test_streaming_extraction_enforces_limit_even_if_header_would_pass(self):
+        path = self._zip({"service.sudosync/data.bin": b"A" * 5000})
+        addon_dir = os.path.join(self.tmp, "service.sudosync")
+        os.makedirs(addon_dir)
+        addon = MagicMock()
+        addon.getAddonInfo.return_value = addon_dir
+        with patch.object(core, "MAX_ZIP_FILE_BYTES", 1000), \
+                patch.object(core.xbmcaddon, "Addon", return_value=addon), \
+                patch.object(core.xbmcvfs, "translatePath", side_effect=lambda p: p):
+            with self.assertRaisesRegex(ValueError, "limit rozmiaru"):
+                core._extract_and_swap_addon(path, "2.1.0", "test", show_dialogs=False)
+        self.assertTrue(os.path.isdir(addon_dir))
+        self.assertFalse(os.path.exists(addon_dir + ".__sudosync_update__"))
+
+    def _install(self, info, data):
+        import io
+        info = dict(info, available=True, version="2.1.0", filename="service.sudosync-2.1.0.zip",
+                    download_url="https://github.com/x/y/releases/download/v2.1.0/service.sudosync-2.1.0.zip")
+        with patch("urllib.request.urlopen", side_effect=lambda *_a, **_k: io.BytesIO(data)), \
+                patch.object(core.xbmcvfs, "translatePath", return_value=self.tmp), \
+                patch.object(core, "_extract_and_swap_addon", return_value={"installed": True}) as mock_extract:
+            try:
+                return core.install_github_update(update_info=info, show_dialogs=False), mock_extract
+            except Exception as exc:
+                return exc, mock_extract
+
+    def test_install_rejects_sha_mismatch_and_deletes_downloaded_zip(self):
+        path = self._zip()
+        with open(path, "rb") as handle:
+            data = handle.read()
+        result, mock_extract = self._install({"sha256": "f" * 64}, data)
+        self.assertIsInstance(result, ValueError)
+        mock_extract.assert_not_called()
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "service.sudosync-2.1.0.zip")))
+
+    def test_install_fails_closed_when_no_checksum_available(self):
+        path = self._zip()
+        with open(path, "rb") as handle:
+            data = handle.read()
+        result, mock_extract = self._install({}, data)
+        self.assertIsInstance(result, ValueError)
+        self.assertIn("SHA-256", str(result))
+        mock_extract.assert_not_called()
+
+    def test_install_accepts_matching_sha_and_extracts(self):
+        path = self._zip()
+        with open(path, "rb") as handle:
+            data = handle.read()
+        result, mock_extract = self._install({"sha256": self._sha(path)}, data)
+        self.assertEqual(result, {"installed": True})
+        mock_extract.assert_called_once()
+
+    def test_sha256_text_parsing_variants(self):
+        digest = "ab" * 32
+        self.assertEqual(core._sha256_from_text(digest + "  service.sudosync-2.1.0.zip\n", "service.sudosync-2.1.0.zip"), digest)
+        self.assertEqual(core._sha256_from_text(digest + " *service.sudosync-2.1.0.zip", "service.sudosync-2.1.0.zip"), digest)
+        self.assertEqual(core._sha256_from_text(digest + "\n", "anything.zip"), digest)
+        self.assertIsNone(core._sha256_from_text(digest + "  other.zip\n", "service.sudosync-2.1.0.zip"))
+        self.assertEqual(core._normalize_sha256("SHA256:" + digest.upper()), digest)
+
+    def test_find_github_update_reads_digest_body_and_sidecar(self):
+        import json
+        digest = "cd" * 32
+        name = "service.sudosync-2.1.0.zip"
+        url = "https://github.com/x/y/releases/download/v2.1.0/" + name
+
+        def run(release):
+            resp = MagicMock()
+            resp.read.return_value = json.dumps(release).encode("utf-8")
+            resp.__enter__.return_value = resp
+            resp.__exit__.return_value = False
+            addon = MagicMock()
+            addon.getAddonInfo.return_value = "2.0.0"
+            with patch.object(core.xbmcaddon, "Addon", return_value=addon), \
+                    patch("urllib.request.urlopen", return_value=resp):
+                return core.find_github_update()
+
+        asset = {"name": name, "browser_download_url": url}
+        self.assertEqual(run({"tag_name": "v2.1.0", "assets": [dict(asset, digest="sha256:" + digest)]})["sha256"], digest)
+        self.assertEqual(run({"tag_name": "v2.1.0", "body": "SHA-256\n{}  {}".format(digest, name), "assets": [asset]})["sha256"], digest)
+        sidecar = {"name": name + ".sha256", "browser_download_url": url + ".sha256"}
+        res = run({"tag_name": "v2.1.0", "assets": [asset, sidecar]})
+        self.assertEqual(res["sha256"], "")
+        self.assertEqual(res["sha256_url"], url + ".sha256")
+
+
 if __name__ == "__main__":
     unittest.main()
