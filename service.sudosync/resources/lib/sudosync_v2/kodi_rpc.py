@@ -87,7 +87,7 @@ MOVIE_PROPERTIES = (
     "resume", "rating", "userrating", "file",
 )
 EPISODE_PROPERTIES = (
-    "title", "season", "episode", "showtitle", "uniqueid", "imdbnumber",
+    "title", "season", "episode", "showtitle", "uniqueid",
     "playcount", "lastplayed", "resume", "rating", "userrating", "file",
     "tvshowid",
 )

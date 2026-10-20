@@ -293,8 +293,14 @@ def update_shared_config(mutator_func, base_path=None):
     locked = False
     start = datetime.now(timezone.utc).timestamp()
     while True:
-        if xbmcvfs.mkdirs(lock_dir):
-            _write_vfs_json(lock_info_path, {"client_id": my_client_id, "timestamp": datetime.now(timezone.utc).timestamp()})
+        if not xbmcvfs.exists(lock_dir) and xbmcvfs.mkdirs(lock_dir):
+            # Direct (non-rotating) write: rename on SMB can fail and the lock file is disposable.
+            try:
+                if xbmcvfs.exists(lock_info_path):
+                    xbmcvfs.delete(lock_info_path)
+                _write_vfs_bytes(lock_info_path, json.dumps({"client_id": my_client_id, "timestamp": datetime.now(timezone.utc).timestamp()}))
+            except Exception as exc:
+                log("Nie udalo sie zapisac lock_info.json (kontynuacja z blokada katalogowa): {}".format(exc), xbmc.LOGWARNING)
             locked = True
             break
             
@@ -305,7 +311,8 @@ def update_shared_config(mutator_func, base_path=None):
             info = {}
             
         lock_ts = float(info.get("timestamp") or 0.0)
-        if lock_ts > 0.0 and (now_ts - lock_ts > 60.0):
+        no_info_stale = lock_ts <= 0.0 and (now_ts - start > 10.0)
+        if no_info_stale or (lock_ts > 0.0 and (now_ts - lock_ts > 60.0)):
             log("Znaleziono osierocona blokade. Usuwanie...")
             try:
                 xbmcvfs.delete(lock_info_path)
@@ -2702,7 +2709,7 @@ def _get_secure_local_identity_map():
     except Exception as exc:
         log("Secure identity map: failed to read movies: {}".format(exc), xbmc.LOGWARNING)
     try:
-        episodes = rpc("VideoLibrary.GetEpisodes", {"properties": ["file", "uniqueid", "imdbnumber"]}).get("episodes", [])
+        episodes = rpc("VideoLibrary.GetEpisodes", {"properties": ["file", "uniqueid"]}).get("episodes", [])
         for e in episodes:
             ids = _normalize_ids(e.get("uniqueid"), e.get("imdbnumber"))
             for k, v in _ids_from_nfo(e.get("file"), "episode").items():
@@ -3950,6 +3957,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
         modified_movies = 0
         modified_episodes = 0
         refreshed_existing = 0
+        fatal_errors = []
 
         all_items = list(movies) + list(episodes)
         last_number = get_network_sudosync_id_last_number(settings.get("base_path"), all_items)
@@ -4097,6 +4105,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                     except Exception as exc:
                         log("Błąd rezerwacji licznika SudoSync ID na NAS dla '{}': {}. Przerywanie operacji.".format(best_path, exc), xbmc.LOGERROR)
                         manifest["errors"].append({"file": best_path, "error": "Rezerwacja licznika nie powiodła się: {}".format(exc)})
+                        fatal_errors.append(str(exc))
                         manifest["last_number"] = last_number
                         _write_manifest()
                         return False, True
@@ -4246,6 +4255,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
             "last_number": last_number,
             "manifest_path": manifest_path,
             "cancelled": aborted,
+            "fatal_error": fatal_errors[0] if fatal_errors else "",
         }
     finally:
         _release_assign_ids_lock(base_path=base)

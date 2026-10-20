@@ -614,6 +614,21 @@ def main():
                     is_canceled=is_canceled,
                 )
 
+                if isinstance(result, dict) and result.get("fatal_error") and not is_canceled():
+                    log("SudoSync ID assignment aborted by error: {}".format(mask_vfs_credentials(result.get("fatal_error"))), xbmc.LOGERROR)
+                    dialog.close()
+                    xbmcgui.Dialog().ok(
+                        "SudoSync — błąd",
+                        "Operacja przerwana z powodu błędu zapisu na udziale sieciowym:\n{}\n\n"
+                        "Zmodyfikowano: filmy {}, odcinki {}. Szczegóły w kodi.log i raporcie:\n{}".format(
+                            mask_vfs_credentials(result.get("fatal_error")),
+                            result.get("movies", 0),
+                            result.get("episodes", 0),
+                            mask_vfs_credentials(result.get("manifest_path")),
+                        ),
+                    )
+                    return
+
                 if is_canceled() or (isinstance(result, dict) and result.get("cancelled")):
                     log("SudoSync ID assignment cancelled by user during Phase 2.", xbmc.LOGINFO)
                     return
