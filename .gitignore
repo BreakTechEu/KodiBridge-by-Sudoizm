@@ -9,6 +9,7 @@ GEMINI.md
 STATUS_PROJEKTU.md
 WIEDZA.md
 *.zip
+*.sha256
 
 *.pem
 privkey.pem

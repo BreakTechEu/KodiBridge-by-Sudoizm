@@ -1,3 +1,11 @@
+SudoSync 2.0.8
+==============
+
+- Poprawka zapisu pliku blokady `lock_info.json` na udziałach SMB/NAS: bezpośredni zapis VFS bez wywoływania operacji `rename`, która na niektórych serwerach SMB kończyła się błędem 'Cannot rotate existing file'.
+- Bezpieczniejsze zakładanie blokady konfiguracyjnej: sprawdzenie braku istnienia `.lockdir` przed `mkdirs` oraz wygaszanie osieroconych blokad bez poprawnego znacznika czasu po 10 sekundach.
+- Usunięcie nieobsługiwanego w Kodi 21 pola `imdbnumber` z parametrów zapytania JSON-RPC `VideoLibrary.GetEpisodes` (eliminacja błędu -32602 'Invalid params' w pętli synchronizacji bieżącej LIVE).
+- Obsługa błędów w GUI: w razie niepowodzenia rezerwacji licznika SudoSync ID wyświetlane jest wyraźne okno dialogowe z treścią błędu (z zamaskowanymi poświadczeniami) zamiast cichego zakończenia i błędnego raportu o anulowaniu przez użytkownika.
+
 SudoSync 2.0.7
 ==============
 
