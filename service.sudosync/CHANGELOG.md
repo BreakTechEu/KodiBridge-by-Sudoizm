@@ -1,3 +1,8 @@
+SudoSync 2.0.9
+==============
+
+- Odporniejszy zapis plików JSON na udziałach SMB/NAS (`_write_vfs_json`): kopia zapasowa `.bak` wykonywana przez kopiowanie zamiast zmiany nazwy żywego pliku oraz ponawianie podmiany (5 prób z narastającą pauzą). Eliminuje błąd `Cannot rotate existing file: .../config.json`, który przerywał nadawanie SudoSync ID po kilkudziesięciu pozycjach.
+
 SudoSync 2.0.8
 ==============
 

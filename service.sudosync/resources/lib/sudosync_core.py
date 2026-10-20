@@ -1345,13 +1345,26 @@ def _write_vfs_json(path, data):
     if xbmcvfs.exists(bak):
         xbmcvfs.delete(bak)
     had_old = xbmcvfs.exists(path)
+    backed_up = False
     if had_old:
-        if not xbmcvfs.rename(path, bak):
+        # Back up by COPY: renaming the live file is frequently refused by SMB
+        # servers that have not yet released the handle of a just-written file.
+        backed_up = bool(xbmcvfs.copy(path, bak))
+        if not backed_up:
+            log("Nie udalo sie utworzyc kopii .bak dla {} - kontynuacja bez kopii".format(path), xbmc.LOGWARNING)
+    installed = False
+    for attempt in range(5):
+        if xbmcvfs.exists(path):
+            xbmcvfs.delete(path)
+        if xbmcvfs.rename(tmp, path):
+            installed = True
+            break
+        xbmc.sleep(150 * (attempt + 1))
+    if not installed:
+        if had_old and backed_up and not xbmcvfs.exists(path):
+            xbmcvfs.copy(bak, path)
+        if xbmcvfs.exists(tmp):
             xbmcvfs.delete(tmp)
-            raise IOError("Cannot rotate existing file: {}".format(path))
-    if not xbmcvfs.rename(tmp, path):
-        if had_old and xbmcvfs.exists(bak):
-            xbmcvfs.rename(bak, path)
         raise IOError("Cannot install new file: {}".format(path))
     if xbmcvfs.exists(bak):
         xbmcvfs.delete(bak)
