@@ -13,12 +13,16 @@ Callers persist the returned snapshot as the client's last-observed snapshot.
 from __future__ import absolute_import
 
 from datetime import datetime, timezone
+import logging
 import math
 import uuid
 
 from . import FORMAT_NAME, SCHEMA_VERSION, SYNC_FIELDS
 from .identity import identifiers_from_kodi_item, normalize_identifier
 from .schema import validate_snapshot
+
+
+logger = logging.getLogger(__name__)
 
 
 class SnapshotBuildError(ValueError):
@@ -169,18 +173,37 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
             if not isinstance(item, dict):
                 raise SnapshotBuildError("{}[{}] must be an object".format(media_type, index))
             ids = _identifiers(item)
+            has_sudosync = bool(ids.get("sudosync") and str(ids.get("sudosync")).strip())
             identities = _identity_keys(media_type, ids)
             for identity in identities:
                 if identity in seen[media_type]:
-                    raise SnapshotBuildError("duplicate/overlapping strong identity in {} library: {}".format(media_type, identity))
+                    prev_index, prev_has_sudosync = seen[media_type][identity]
+                    if identity[1] == "sudosync" or not (has_sudosync and prev_has_sudosync):
+                        raise SnapshotBuildError("duplicate/overlapping strong identity in {} library: {}".format(media_type, identity))
+                    logger.warning(
+                        "duplicate/overlapping external identity in %s library: %s "
+                        "(differentiated by unique SudoSync IDs: %s vs %s; treating SudoSync ID as authoritative)",
+                        media_type, identity,
+                        source[prev_index].get("uniqueid", {}).get("sudosync") if isinstance(source[prev_index], dict) else "",
+                        ids.get("sudosync"),
+                    )
             for identity in identities:
-                seen[media_type][identity] = index
+                seen[media_type][identity] = (index, has_sudosync)
+
             prior_candidates = {}
             for identity in identities:
                 for prior_record in previous_by_identity[media_type].get(identity, []):
                     prior_candidates[id(prior_record)] = prior_record
             if len(prior_candidates) > 1:
-                raise SnapshotBuildError("current {} item matches multiple records in its previous snapshot".format(media_type))
+                if has_sudosync:
+                    matching_sudosync = [
+                        rec for rec in prior_candidates.values()
+                        if rec.get("ids", {}).get("sudosync") == ids.get("sudosync")
+                    ]
+                    if len(matching_sudosync) == 1:
+                        prior_candidates = {id(matching_sudosync[0]): matching_sudosync[0]}
+                if len(prior_candidates) > 1:
+                    raise SnapshotBuildError("current {} item matches multiple records in its previous snapshot".format(media_type))
             prior = next(iter(prior_candidates.values())) if prior_candidates else None
             if prior is not None:
                 conflicting_kinds = sorted(

@@ -86,4 +86,8 @@ def match_by_strong_identity(left_type, left_ids, right_type, right_ids):
     right_type = str(right_type or "").strip().lower()
     if left_type != right_type or left_type not in ("movie", "episode"):
         return False
+    left_sudo = normalize_identifier("sudosync", left_ids.get("sudosync")) if isinstance(left_ids, dict) else None
+    right_sudo = normalize_identifier("sudosync", right_ids.get("sudosync")) if isinstance(right_ids, dict) else None
+    if left_sudo and right_sudo:
+        return left_sudo == right_sudo
     return bool(strong_aliases(left_type, left_ids).intersection(strong_aliases(right_type, right_ids)))

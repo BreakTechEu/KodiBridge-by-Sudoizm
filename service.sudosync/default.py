@@ -8,6 +8,7 @@ from __future__ import absolute_import, division, print_function
 # (at your option) any later version.
 # -------------------------------------------------------------------------
 
+import os
 import sys
 
 import xbmcgui
@@ -617,14 +618,16 @@ def main():
                 if isinstance(result, dict) and result.get("fatal_error") and not is_canceled():
                     log("SudoSync ID assignment aborted by error: {}".format(mask_vfs_credentials(result.get("fatal_error"))), xbmc.LOGERROR)
                     dialog.close()
+                    manifest_name = os.path.basename(result.get("manifest_path", "")) or "assign_ids_manifest.json"
                     xbmcgui.Dialog().ok(
                         "SudoSync — błąd",
-                        "Operacja przerwana z powodu błędu zapisu na udziale sieciowym:\n{}\n\n"
-                        "Zmodyfikowano: filmy {}, odcinki {}. Szczegóły w kodi.log i raporcie:\n{}".format(
+                        "Błąd zapisu na udziale sieciowym: {}\n"
+                        "Zmodyfikowano do błędu: filmy {}, odcinki {}.\n"
+                        "Szczegóły w kodi.log oraz w raporcie ({})".format(
                             mask_vfs_credentials(result.get("fatal_error")),
                             result.get("movies", 0),
                             result.get("episodes", 0),
-                            mask_vfs_credentials(result.get("manifest_path")),
+                            manifest_name,
                         ),
                     )
                     return
@@ -637,14 +640,17 @@ def main():
                 if not isinstance(result, dict):
                     return
 
+                manifest_name = os.path.basename(result.get("manifest_path", "")) or "assign_ids_manifest.json"
                 xbmcgui.Dialog().ok(
                     "SudoSync",
-                    "Raport z operacji został zapisany:\n{}\n\nZmodyfikowano lub utworzono:\nFilmy: {}\nOdcinki: {}\nOstatni użyty numer SudoSync ID w sieci: {}".format(
-                        mask_vfs_credentials(result.get("manifest_path")),
+                    "Zmodyfikowano lub utworzono: filmy: {}, odcinki: {}.\n"
+                    "Ostatni numer SudoSync ID w sieci: {}.\n"
+                    "Raport z operacji zapisano w profilu ({})".format(
                         result.get("movies", 0),
                         result.get("episodes", 0),
                         result.get("last_number", 0),
-                    )
+                        manifest_name,
+                    ),
                 )
             finally:
                 try:

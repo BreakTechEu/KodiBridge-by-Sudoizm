@@ -1,3 +1,10 @@
+SudoSync 2.0.10
+===============
+
+- Nadrzędność unikalnego `sudosync` ID w walidacji tożsamości snapshotów (`sudosync_v2/snapshot.py`, `identity.py`): duplikaty kluczy zewnętrznych (`tmdb`, `imdb`, `tvdb`, `trakt`) przy różnych plikach w bibliotece posiadających odrębne SudoSync ID nie blokują już tworzenia snapshotów ani synchronizacji LIVE (rejestrowane jest jedynie ostrzeżenie w logu).
+- Odporne parsowanie plików `.nfo` typu multi-episode (`sudosync_core.py`, `sudosync_v2/kodi_rpc.py`): obsługa plików z wieloma blokami `<episodedetails>` obok siebie bez błędu XML `junk after document element`.
+- Poprawka układu okna podsumowania operacji przypisywania ID w `default.py`: statystyki zmodyfikowanych pozycji i ostatniego numeru ID wyświetlane są w pierwszych wierszach, a nazwa pliku manifestu na końcu w formie skróconej, zapobiegając ucinaniu liczb przez skórki Kodi.
+
 SudoSync 2.0.9
 ==============
 

@@ -17,6 +17,7 @@ import json
 import logging
 import math
 import posixpath
+import re
 import xml.etree.ElementTree as ET
 
 from .identity import normalize_identifier
@@ -166,13 +167,23 @@ class KodiJsonRpcAdapter(object):
                 raise NfoSizeLimitError("Metadata file exceeds configured size limit: " + path)
         else:
             raise ValueError("Metadata reader returned an invalid value for " + path)
-        root = ET.fromstring(raw)
+        try:
+            root = ET.fromstring(raw)
+        except ET.ParseError:
+            try:
+                stripped_raw = re.sub(r'^\s*<\?xml[^>]*\?>', '', raw, flags=re.IGNORECASE).strip()
+                root = ET.fromstring("<root>\n" + stripped_raw + "\n</root>")
+            except Exception:
+                raise
         identifiers = {}
-        for node in root.findall("uniqueid"):
+        find_target = ".//uniqueid" if root.tag == "root" else "uniqueid"
+        for node in root.findall(find_target):
             kind = (node.attrib.get("type") or "").strip().lower()
             value = normalize_identifier(kind, node.text)
             if value is not None:
                 if kind in identifiers and identifiers[kind] != value:
+                    if root.tag == "root":
+                        continue
                     raise NfoConflictError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
                 identifiers[kind] = value
         return root, identifiers
@@ -189,8 +200,10 @@ class KodiJsonRpcAdapter(object):
                     continue
                 root, identifiers = res
                 if media_type == "movie":
-                    tmdb = normalize_identifier("tmdb", root.findtext("tmdbid"))
-                    legacy_imdb = normalize_identifier("imdb", root.findtext("id"))
+                    tmdb_elem = root.findtext(".//tmdbid") if root.tag == "root" else root.findtext("tmdbid")
+                    imdb_elem = root.findtext(".//id") if root.tag == "root" else root.findtext("id")
+                    tmdb = normalize_identifier("tmdb", tmdb_elem)
+                    legacy_imdb = normalize_identifier("imdb", imdb_elem)
                     for kind, value in (("tmdb", tmdb), ("imdb", legacy_imdb)):
                         if value is not None:
                             if kind in identifiers and identifiers[kind] != value:

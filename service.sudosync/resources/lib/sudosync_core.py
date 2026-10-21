@@ -15,6 +15,24 @@ import zipfile
 from datetime import datetime, timezone
 from xml.etree import ElementTree as ET
 
+def _safe_parse_nfo_xml(raw_or_text):
+    """Safely parse NFO XML, handling multi-episode NFOs with multiple root elements."""
+    if not raw_or_text:
+        return None
+    if isinstance(raw_or_text, (bytes, bytearray)):
+        text = bytes(raw_or_text).decode("utf-8-sig", errors="replace")
+    else:
+        text = str(raw_or_text)
+    try:
+        return ET.fromstring(text)
+    except Exception:
+        try:
+            clean = re.sub(r'^\s*<\?xml[^>]*\?>', '', text, flags=re.IGNORECASE).strip()
+            return ET.fromstring("<root>\n" + clean + "\n</root>")
+        except Exception:
+            return None
+
+
 from resources.lib.sudosync_merge import build_dry_run, build_live_plan
 
 import xbmc
@@ -1193,22 +1211,22 @@ def _find_best_nfo(media_file, kind):
         text = _read_vfs_text(path)
         if not text:
             continue
-        try:
-            root = ET.fromstring(text)
-        except Exception:
+        root = _safe_parse_nfo_xml(text)
+        if root is None:
             continue
             
         ids = {}
-        for node in root.findall("uniqueid"):
+        find_target = ".//uniqueid" if root.tag == "root" else "uniqueid"
+        for node in root.findall(find_target):
             typ = (node.attrib.get("type") or "").strip().lower()
             val = (node.text or "").strip()
-            if typ and val:
+            if typ and val and typ not in ids:
                 ids[typ] = val
         if kind == "movie":
-            tmdbid = root.findtext("tmdbid")
+            tmdbid = root.findtext(".//tmdbid") if root.tag == "root" else root.findtext("tmdbid")
             if tmdbid and "tmdb" not in ids:
                 ids["tmdb"] = tmdbid.strip()
-            legacy = root.findtext("id")
+            legacy = root.findtext(".//id") if root.tag == "root" else root.findtext("id")
             if legacy and legacy.strip().startswith("tt") and "imdb" not in ids:
                 ids["imdb"] = legacy.strip()
                 
@@ -3068,23 +3086,23 @@ def _nfo_raw_has_strong_id(raw_bytes, kind):
     else:
         text = str(raw_bytes)
         raw_lower = text.encode("utf-8", errors="replace").lower()
-    try:
-        root = ET.fromstring(text)
-    except Exception:
+    root = _safe_parse_nfo_xml(text)
+    if root is None:
         # Conservative fallback if XML is malformed but contains a uniqueid tag
         return (b"<uniqueid" in raw_lower), {}
 
     ids = {}
-    for node in root.findall("uniqueid"):
+    find_target = ".//uniqueid" if root.tag == "root" else "uniqueid"
+    for node in root.findall(find_target):
         typ = (node.attrib.get("type") or "").strip().lower()
         val = (node.text or "").strip()
-        if typ and val:
+        if typ and val and typ not in ids:
             ids[typ] = val
     if kind == "movie":
-        tmdbid = root.findtext("tmdbid")
+        tmdbid = root.findtext(".//tmdbid") if root.tag == "root" else root.findtext("tmdbid")
         if tmdbid and tmdbid.strip() and "tmdb" not in ids:
             ids["tmdb"] = tmdbid.strip()
-        legacy = root.findtext("id")
+        legacy = root.findtext(".//id") if root.tag == "root" else root.findtext("id")
         if legacy and legacy.strip().startswith("tt") and "imdb" not in ids:
             ids["imdb"] = legacy.strip()
     return _has_strong_id(ids), ids
@@ -3100,22 +3118,22 @@ def _nfo_raw_has_sudosync_id(raw_bytes, kind=None):
     else:
         text = str(raw_bytes)
         raw_lower = text.encode("utf-8", errors="replace").lower()
-    try:
-        root = ET.fromstring(text)
-    except Exception:
+    root = _safe_parse_nfo_xml(text)
+    if root is None:
         return (b'type="sudosync"' in raw_lower or b"type='sudosync'" in raw_lower), {}
 
     ids = {}
-    for node in root.findall("uniqueid"):
+    find_target = ".//uniqueid" if root.tag == "root" else "uniqueid"
+    for node in root.findall(find_target):
         typ = (node.attrib.get("type") or "").strip().lower()
         val = (node.text or "").strip()
-        if typ and val:
+        if typ and val and typ not in ids:
             ids[typ] = val
     if kind == "movie":
-        tmdbid = root.findtext("tmdbid")
+        tmdbid = root.findtext(".//tmdbid") if root.tag == "root" else root.findtext("tmdbid")
         if tmdbid and tmdbid.strip() and "tmdb" not in ids:
             ids["tmdb"] = tmdbid.strip()
-        legacy = root.findtext("id")
+        legacy = root.findtext(".//id") if root.tag == "root" else root.findtext("id")
         if legacy and legacy.strip().startswith("tt") and "imdb" not in ids:
             ids["imdb"] = legacy.strip()
     has_sudosync = bool(ids.get("sudosync") and str(ids["sudosync"]).strip())
