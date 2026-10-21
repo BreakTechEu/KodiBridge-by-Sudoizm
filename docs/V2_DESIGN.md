@@ -1,16 +1,15 @@
-# SudoSync v2 — projekt docelowej architektury
+# SudoSync 2.x — rozwój architektury dodatku
 
-Status: projekt techniczny; nie jest jeszcze implementacją ani obietnicą zgodności z wydaniem produkcyjnym.
+SudoSync 2.x jest kolejną, rozszerzoną wersją tego samego dodatku SudoSync, rozwijaną na bazie wersji 1.x. Nie jest odrębnym programem ani przebudową od zera. Dokument opisuje docelowe usprawnienia architektury i dodatkowe możliwości; nie oznacza to, że istniejące, sprawdzone elementy v1 należy odrzucić.
 
 Uzgodniony przepływ widoczny dla użytkownika, w tym wybór folderu i kreator
 pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
 
 ## Nienaruszalne granice
 
-- `master` jest docelową główną gałęzią dla v2. Rozwój odbywa się na osobnej
-  gałęzi v2 i trafia do `master` uzgodnioną ścieżką przeglądu.
+- `master` jest aktywną gałęzią główną, na której bezpośrednio rozwija się SudoSync 2.x jako kontynuację dodatku v1. `v1-stable` pozostaje zamrożoną gałęzią wydania 1.0.0.
 - Gałąź `v1-stable` i wydanie SudoSync 1.0.0 są zamrożone. Nie cherry-pickować do niej zmian, nie zmieniać tagów ani opublikowanych plików.
-- Prace v2 prowadzić na osobnej gałęzi i przez Pull Request. Nie scalać i nie publikować bez osobnej zgody właściciela projektu.
+- Zachowuj sprawdzone funkcje i zachowania wersji 1.x oraz rozwijaj je wraz z nowymi opcjami v2. Zmiany architektury mają wspierać rozwój tego samego dodatku, a nie zakładać zastąpienia wszystkiego nowym programem.
 - SudoSync pozostaje darmowym oprogramowaniem open source.
 - **Model pracy:** użytkownik korzysta tylko z jednego Kodi naraz. Jest to podstawowa zasada operacyjna v2; blokady i odzyskiwanie są dodatkowymi zabezpieczeniami. Nie wymagaj fizycznego testu konkurencji dwóch aktywnych urządzeń jako warunku pracy w tym modelu. Ponieważ SudoSync działa jako usługa w tle, nie uruchamiaj usługi na pozostałych urządzeniach w tym samym czasie.
 - Bez MySQL/MariaDB, bez serwera centralnego i bez chmury. Wspólnym transportem danych jest katalog dostępny dla wszystkich urządzeń Kodi: SMB, NFS lub lokalny udział.
