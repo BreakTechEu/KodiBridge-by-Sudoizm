@@ -152,7 +152,7 @@ class KodiJsonRpcAdapter(object):
                 candidates.append(movie_nfo)
         return tuple(candidates)
 
-    def _read_single_nfo(self, path):
+    def _read_single_nfo(self, path, season=None, episode=None):
         raw = self._nfo_reader(path, self._max_nfo_bytes)
         if raw is None:
             return None
@@ -175,9 +175,26 @@ class KodiJsonRpcAdapter(object):
                 root = ET.fromstring("<root>\n" + stripped_raw + "\n</root>")
             except Exception:
                 raise
+
+        target_scope = root
+        if season is not None and episode is not None:
+            ep_blocks = root.findall(".//episodedetails") if root.tag == "root" else ([root] if root.tag == "episodedetails" else root.findall("episodedetails"))
+            for block in ep_blocks:
+                s_text = block.findtext("season")
+                e_text = block.findtext("episode")
+                if s_text is not None and e_text is not None:
+                    try:
+                        if int(s_text) == int(season) and int(e_text) == int(episode):
+                            target_scope = block
+                            break
+                    except (ValueError, TypeError):
+                        if str(s_text).strip() == str(season).strip() and str(e_text).strip() == str(episode).strip():
+                            target_scope = block
+                            break
+
         identifiers = {}
-        find_target = ".//uniqueid" if root.tag == "root" else "uniqueid"
-        for node in root.findall(find_target):
+        find_target = "uniqueid" if target_scope != root else (".//uniqueid" if root.tag == "root" else "uniqueid")
+        for node in target_scope.findall(find_target):
             kind = (node.attrib.get("type") or "").strip().lower()
             value = normalize_identifier(kind, node.text)
             if value is not None:
@@ -186,16 +203,37 @@ class KodiJsonRpcAdapter(object):
                         continue
                     raise NfoConflictError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
                 identifiers[kind] = value
+
+        if target_scope != root:
+            t_elem = target_scope.findtext("tmdbid")
+            if t_elem:
+                val = normalize_identifier("tmdb", t_elem)
+                if val:
+                    identifiers["tmdb"] = val
+            i_elem = target_scope.findtext("id")
+            if i_elem:
+                val = normalize_identifier("imdb", i_elem)
+                if val:
+                    identifiers["imdb"] = val
+
+        if "sudosync" not in identifiers and target_scope != root:
+            for node in root.findall(".//uniqueid"):
+                if (node.attrib.get("type") or "").strip().lower() == "sudosync":
+                    v = normalize_identifier("sudosync", node.text)
+                    if v is not None:
+                        identifiers["sudosync"] = v
+                        break
+
         return root, identifiers
 
-    def _read_nfo_ids(self, media_path, media_type, abort_requested=None):
+    def _read_nfo_ids(self, media_path, media_type, season=None, episode=None, abort_requested=None):
         if self._nfo_reader is None:
             return {}
         for path in self._nfo_paths(media_path, media_type):
             if self._is_aborted(abort_requested):
                 raise OperationAborted("NFO reading aborted before " + path)
             try:
-                res = self._read_single_nfo(path)
+                res = self._read_single_nfo(path, season=season, episode=episode)
                 if res is None:
                     continue
                 root, identifiers = res
@@ -255,17 +293,45 @@ class KodiJsonRpcAdapter(object):
                 imdb = normalize_identifier("imdb", record.get("imdbnumber"))
                 if imdb is not None:
                     if "imdb" in kodi_ids and normalize_identifier("imdb", kodi_ids["imdb"]) != imdb:
-                        raise KodiRpcError("Kodi returned conflicting IMDb identifiers for one library item")
-                    kodi_ids["imdb"] = imdb
+                        item_desc = record.get("file") or record.get("label") or str(record.get("movieid") or record.get("episodeid") or media_type)
+                        logger.warning(
+                            "Kodi returned conflicting IMDb identifiers for %s (uniqueid: %s, imdbnumber: %s); keeping uniqueid value",
+                            item_desc,
+                            kodi_ids["imdb"],
+                            imdb,
+                        )
+                    else:
+                        kodi_ids["imdb"] = imdb
             try:
-                nfo_ids = self._read_nfo_ids(record.get("file"), media_type, abort_requested=abort_requested)
+                nfo_ids = self._read_nfo_ids(
+                    record.get("file"),
+                    media_type,
+                    season=record.get("season"),
+                    episode=record.get("episode"),
+                    abort_requested=abort_requested,
+                )
             except OperationAborted as exc:
                 exc.partial_items = enriched
                 raise
             for kind, value in nfo_ids.items():
                 current = normalize_identifier(kind, kodi_ids.get(kind))
                 if current is not None and current != value:
-                    raise KodiRpcError("Kodi and NFO contain conflicting {} identifiers for one library item".format(kind))
+                    item_desc = record.get("file") or record.get("label") or str(record.get("movieid") or record.get("episodeid") or media_type)
+                    if kind == "sudosync":
+                        logger.warning(
+                            "Kodi and NFO contain conflicting sudosync identifiers for '%s' (Kodi: %s, NFO: %s); treating NFO as authoritative",
+                            item_desc,
+                            current,
+                            value,
+                        )
+                    else:
+                        logger.warning(
+                            "Kodi and NFO contain conflicting %s identifiers for '%s' (Kodi: %s, NFO: %s); preferring NFO value",
+                            kind,
+                            item_desc,
+                            current,
+                            value,
+                        )
                 kodi_ids[kind] = value
             record["uniqueid"] = kodi_ids
             enriched.append(record)

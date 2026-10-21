@@ -80,7 +80,7 @@ class TestSnapshotBuilder(unittest.TestCase):
             build_snapshot([movie(imdbnumber="tt7654321")], [], CLIENT, "Living Room", generated_at=STAMP)
 
     def test_rejects_duplicate_identity_in_local_library(self):
-        with self.assertRaisesRegex(SnapshotBuildError, "duplicate\/overlapping strong identity"):
+        with self.assertRaisesRegex(SnapshotBuildError, r"duplicate/overlapping strong identity"):
             build_snapshot([movie(), movie(movieid=11)], [], CLIENT, "Living Room", generated_at=STAMP)
 
     def test_rejects_invalid_resume_and_rating(self):

@@ -169,24 +169,67 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
     seen = {"movie": {} , "episode": {}}
     output = {"movie": [], "episode": []}
     for media_type, source in (("movie", movies), ("episode", episodes)):
+        if media_type == "episode":
+            sudo_counts = {}
+            for item in source:
+                if isinstance(item, dict):
+                    ids_temp = _identifiers(item)
+                    s_id = ids_temp.get("sudosync")
+                    if s_id:
+                        sudo_counts[s_id] = sudo_counts.get(s_id, 0) + 1
+            if any(cnt > 1 for cnt in sudo_counts.values()):
+                for item in source:
+                    if isinstance(item, dict):
+                        u = item.get("uniqueid")
+                        if isinstance(u, dict) and u.get("sudosync"):
+                            s_id = normalize_identifier("sudosync", u.get("sudosync"))
+                            if s_id and sudo_counts.get(s_id, 0) > 1:
+                                season = item.get("season")
+                                episode = item.get("episode")
+                                if season is not None and episode is not None:
+                                    try:
+                                        qual = "{}:s{:02d}e{:02d}".format(s_id, int(season), int(episode))
+                                    except (ValueError, TypeError):
+                                        qual = "{}:s{}e{}".format(s_id, season, episode)
+                                    u["sudosync"] = qual
+                                    logger.info(
+                                        "Disambiguated shared sudosync ID for multi-episode item '%s' -> %s",
+                                        item.get("file") or item.get("label") or "episode",
+                                        qual,
+                                    )
+
         for index, item in enumerate(source):
             if not isinstance(item, dict):
                 raise SnapshotBuildError("{}[{}] must be an object".format(media_type, index))
             ids = _identifiers(item)
             has_sudosync = bool(ids.get("sudosync") and str(ids.get("sudosync")).strip())
             identities = _identity_keys(media_type, ids)
+            duplicate_detected = False
             for identity in identities:
                 if identity in seen[media_type]:
                     prev_index, prev_has_sudosync = seen[media_type][identity]
-                    if identity[1] == "sudosync" or not (has_sudosync and prev_has_sudosync):
+                    if identity[1] == "sudosync":
+                        logger.warning(
+                            "duplicate/overlapping sudosync identity in %s library: %s "
+                            "(keeping first record: '%s', skipping duplicate: '%s')",
+                            media_type, identity,
+                            source[prev_index].get("file") or source[prev_index].get("label") or prev_index,
+                            item.get("file") or item.get("label") or index,
+                        )
+                        duplicate_detected = True
+                        break
+                    elif not (has_sudosync and prev_has_sudosync):
                         raise SnapshotBuildError("duplicate/overlapping strong identity in {} library: {}".format(media_type, identity))
-                    logger.warning(
-                        "duplicate/overlapping external identity in %s library: %s "
-                        "(differentiated by unique SudoSync IDs: %s vs %s; treating SudoSync ID as authoritative)",
-                        media_type, identity,
-                        source[prev_index].get("uniqueid", {}).get("sudosync") if isinstance(source[prev_index], dict) else "",
-                        ids.get("sudosync"),
-                    )
+                    else:
+                        logger.warning(
+                            "duplicate/overlapping external identity in %s library: %s "
+                            "(differentiated by unique SudoSync IDs: %s vs %s; treating SudoSync ID as authoritative)",
+                            media_type, identity,
+                            source[prev_index].get("uniqueid", {}).get("sudosync") if isinstance(source[prev_index], dict) else "",
+                            ids.get("sudosync"),
+                        )
+            if duplicate_detected:
+                continue
             for identity in identities:
                 seen[media_type][identity] = (index, has_sudosync)
 
@@ -203,7 +246,11 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                     if len(matching_sudosync) == 1:
                         prior_candidates = {id(matching_sudosync[0]): matching_sudosync[0]}
                 if len(prior_candidates) > 1:
-                    raise SnapshotBuildError("current {} item matches multiple records in its previous snapshot".format(media_type))
+                    logger.warning(
+                        "current %s item matches multiple records in previous snapshot; selecting first candidate",
+                        media_type,
+                    )
+                    prior_candidates = {id(next(iter(prior_candidates.values()))): next(iter(prior_candidates.values()))}
             prior = next(iter(prior_candidates.values())) if prior_candidates else None
             if prior is not None:
                 conflicting_kinds = sorted(
@@ -211,10 +258,22 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                     if ids[kind] != prior["ids"][kind]
                 )
                 if conflicting_kinds:
-                    raise SnapshotBuildError(
-                        "current {} item has conflicting identifiers with its previous snapshot: {}"
-                        .format(media_type, ", ".join(conflicting_kinds))
-                    )
+                    if has_sudosync and (
+                        ids.get("sudosync") == prior.get("ids", {}).get("sudosync")
+                        or ids.get("sudosync", "").startswith(prior.get("ids", {}).get("sudosync", "") + ":")
+                    ):
+                        logger.warning(
+                            "current %s item has updated identifiers compared to previous snapshot: %s "
+                            "(sudosync ID: %s); accepting updated identifiers",
+                            media_type,
+                            ", ".join(conflicting_kinds),
+                            ids.get("sudosync"),
+                        )
+                    else:
+                        raise SnapshotBuildError(
+                            "current {} item has conflicting identifiers with its previous snapshot: {}"
+                            .format(media_type, ", ".join(conflicting_kinds))
+                        )
             state = _state(item)
             versions = _record_versions(
                 state,

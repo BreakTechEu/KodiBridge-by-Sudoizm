@@ -2496,11 +2496,36 @@ def _read_vfs_all(path, chunk_size=1024 * 1024, max_size=50*1024*1024):
     return b"".join(parts)
 
 
-def _read_vfs_json(path):
-    raw = _read_vfs_all(path)
-    if not raw:
-        raise ValueError("Empty JSON file: {}".format(path))
-    return json.loads(raw.decode("utf-8-sig", errors="strict"))
+def _read_vfs_json(path, max_attempts=3, retry_delay_ms=200):
+    last_err = None
+    for attempt in range(max_attempts):
+        raw = _read_vfs_all(path)
+        if raw:
+            try:
+                return json.loads(raw.decode("utf-8-sig", errors="strict"))
+            except (ValueError, UnicodeDecodeError) as err:
+                last_err = err
+        else:
+            last_err = ValueError("Empty JSON file: {}".format(path))
+        if attempt < max_attempts - 1:
+            try:
+                xbmc.sleep(retry_delay_ms)
+            except Exception:
+                import time
+                time.sleep(retry_delay_ms / 1000.0)
+    # If still failed, check if .bak exists as emergency fallback
+    bak = path + ".bak"
+    if xbmcvfs.exists(bak):
+        raw_bak = _read_vfs_all(bak)
+        if raw_bak:
+            try:
+                log("Fallback read from .bak for {}".format(path), xbmc.LOGWARNING)
+                return json.loads(raw_bak.decode("utf-8-sig", errors="strict"))
+            except Exception:
+                pass
+    if last_err:
+        raise last_err
+    raise ValueError("Empty JSON file: {}".format(path))
 
 
 def _parse_snapshot_timestamp(value):

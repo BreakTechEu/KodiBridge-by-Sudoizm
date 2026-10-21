@@ -73,6 +73,19 @@ class TestMultiEpisodeNfoAndSudoSyncIdentity(unittest.TestCase):
         self.assertEqual(ids.get("sudosync"), "mazury-000500")
         self.assertIn(ids.get("tmdb"), ("1001", "1002"))
 
+        # Target episode 1
+        _, ids_ep1 = adapter._read_single_nfo("smb://nas/Show/s01e01-e02.nfo", season=1, episode=1)
+        self.assertEqual(ids_ep1.get("tmdb"), "1001")
+        self.assertEqual(ids_ep1.get("imdb"), "tt0001001")
+        # Inherits top-level/first sudosync ID if not explicitly specified in block 1
+        self.assertEqual(ids_ep1.get("sudosync"), "mazury-000500")
+
+        # Target episode 2
+        _, ids_ep2 = adapter._read_single_nfo("smb://nas/Show/s01e01-e02.nfo", season=1, episode=2)
+        self.assertEqual(ids_ep2.get("tmdb"), "1002")
+        self.assertEqual(ids_ep2.get("imdb"), "tt0001002")
+        self.assertEqual(ids_ep2.get("sudosync"), "mazury-000500")
+
     def test_snapshot_build_allows_duplicate_external_ids_with_unique_sudosync(self):
         ep1 = {
             "episodeid": 101,
@@ -92,7 +105,29 @@ class TestMultiEpisodeNfoAndSudoSyncIdentity(unittest.TestCase):
         self.assertEqual(snap["episodes"][0]["ids"]["sudosync"], "mazury-000256")
         self.assertEqual(snap["episodes"][1]["ids"]["sudosync"], "mazury-000258")
 
-    def test_snapshot_build_rejects_duplicate_sudosync_id(self):
+    def test_snapshot_build_disambiguates_shared_sudosync_id_by_season_and_episode(self):
+        ep1 = {
+            "episodeid": 101,
+            "title": "Part 1",
+            "season": 1,
+            "episode": 1,
+            "uniqueid": {"sudosync": "MAZURY-000320"},
+            "playcount": 0,
+        }
+        ep2 = {
+            "episodeid": 102,
+            "title": "Part 2",
+            "season": 1,
+            "episode": 2,
+            "uniqueid": {"sudosync": "MAZURY-000320"},
+            "playcount": 1,
+        }
+        snap = build_snapshot([], [ep1, ep2], CLIENT, "Living Room", generated_at=STAMP)
+        self.assertEqual(len(snap["episodes"]), 2)
+        self.assertEqual(snap["episodes"][0]["ids"]["sudosync"], "mazury-000320:s01e01")
+        self.assertEqual(snap["episodes"][1]["ids"]["sudosync"], "mazury-000320:s01e02")
+
+    def test_snapshot_build_skips_duplicate_sudosync_id_with_warning(self):
         ep1 = {
             "episodeid": 101,
             "title": "Copy A",
@@ -105,9 +140,11 @@ class TestMultiEpisodeNfoAndSudoSyncIdentity(unittest.TestCase):
             "uniqueid": {"sudosync": "MAZURY-000256"},
             "playcount": 1,
         }
-        with self.assertRaises(SnapshotBuildError) as ctx:
-            build_snapshot([], [ep1, ep2], CLIENT, "Living Room", generated_at=STAMP)
-        self.assertIn("duplicate/overlapping strong identity", str(ctx.exception))
+        with self.assertLogs("resources.lib.sudosync_v2.snapshot", level="WARNING") as cm:
+            snap = build_snapshot([], [ep1, ep2], CLIENT, "Living Room", generated_at=STAMP)
+        self.assertEqual(len(snap["episodes"]), 1)
+        self.assertEqual(snap["episodes"][0]["ids"]["sudosync"], "mazury-000256")
+        self.assertTrue(any("duplicate/overlapping sudosync identity" in l for l in cm.output))
 
     def test_snapshot_build_rejects_duplicate_external_ids_when_not_both_have_sudosync(self):
         ep1 = {
@@ -163,6 +200,56 @@ class TestMultiEpisodeNfoAndSudoSyncIdentity(unittest.TestCase):
         ids_d = {"tmdb": "2250557"}
         ids_e = {"tmdb": "2250557"}
         self.assertTrue(match_by_strong_identity("episode", ids_d, "episode", ids_e))
+
+    def test_kodi_rpc_enrich_conflicting_sudosync_prefers_nfo(self):
+        class FakeTransport(object):
+            def __call__(self, payload):
+                import json
+                req = json.loads(payload)
+                if req["method"] == "VideoLibrary.GetMovies":
+                    return json.dumps({
+                        "jsonrpc": "2.0", "id": req["id"],
+                        "result": {
+                            "movies": [{
+                                "movieid": 1,
+                                "file": "smb://nas/Films/Movie.mkv",
+                                "uniqueid": {"sudosync": "MAZURY-000001", "tmdb": "100"},
+                            }],
+                            "limits": {"total": 1},
+                        }
+                    })
+                return json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": {}})
+
+        def fake_reader(path, max_bytes):
+            return '<movie><uniqueid type="sudosync">MAZURY-000002</uniqueid><uniqueid type="tmdb">200</uniqueid></movie>'
+
+        adapter = KodiJsonRpcAdapter(FakeTransport(), nfo_reader=fake_reader)
+        with self.assertLogs("resources.lib.sudosync_v2.kodi_rpc", level="WARNING") as cm:
+            movies = adapter.get_movies()
+        self.assertEqual(movies[0]["uniqueid"]["sudosync"], "mazury-000002")
+        self.assertEqual(movies[0]["uniqueid"]["tmdb"], "200")
+        logs = "\n".join(cm.output)
+        self.assertIn("conflicting sudosync identifiers", logs)
+        self.assertIn("conflicting tmdb identifiers", logs)
+
+    def test_read_vfs_json_retries_on_empty(self):
+        from resources.lib import sudosync_core
+        attempts = [0]
+
+        def fake_read_all(path):
+            attempts[0] += 1
+            if attempts[0] < 2:
+                return b""
+            return b'{"status": "ok"}'
+
+        orig_read = sudosync_core._read_vfs_all
+        try:
+            sudosync_core._read_vfs_all = fake_read_all
+            res = sudosync_core._read_vfs_json("test.json", max_attempts=3, retry_delay_ms=10)
+            self.assertEqual(res, {"status": "ok"})
+            self.assertEqual(attempts[0], 2)
+        finally:
+            sudosync_core._read_vfs_all = orig_read
 
 
 if __name__ == "__main__":

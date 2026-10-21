@@ -8,6 +8,7 @@
 """Versioned shared snapshot catalog backed by SharedJsonRepository."""
 from __future__ import absolute_import
 
+import logging
 import re
 import uuid
 
@@ -15,6 +16,8 @@ from . import FORMAT_NAME, SCHEMA_VERSION
 from .kodi_rpc import OperationAborted, is_aborted
 from .schema import validate_snapshot
 from .storage import RepositoryError
+
+logger = logging.getLogger(__name__)
 
 
 _CLIENT_FILE = re.compile(r"^client-([0-9a-fA-F-]{36})\.json$")
@@ -115,16 +118,23 @@ class SnapshotCatalog(object):
                 continue
             match = _CLIENT_FILE.fullmatch(filename)
             if not match:
-                raise SnapshotCatalogError("Unexpected client snapshot filename: " + filename)
+                logger.warning("Unexpected client snapshot filename: %s, skipping", filename)
+                continue
             client_id = _canonical_client_id(match.group(1))
             if client_id in seen:
-                raise SnapshotCatalogError("Duplicate client snapshot file for " + client_id)
+                logger.warning("Duplicate client snapshot file for %s in %s, skipping", client_id, filename)
+                continue
             seen.add(client_id)
             if client_id == exclude:
                 continue
-            snapshot = self.load(client_id, abort_requested=abort_requested)
+            try:
+                snapshot = self.load(client_id, abort_requested=abort_requested)
+            except (SnapshotCatalogError, RepositoryError) as exc:
+                logger.warning("Cannot load peer snapshot for client %s, skipping: %s", client_id, exc)
+                continue
             if snapshot is None:
-                raise SnapshotCatalogError("Listed client snapshot disappeared: " + filename)
+                logger.warning("Listed client snapshot disappeared: %s, skipping", filename)
+                continue
             peers.append(snapshot)
             if progress_callback:
                 progress_callback(len(peers), total_files, client_id)

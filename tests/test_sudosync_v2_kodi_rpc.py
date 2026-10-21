@@ -82,7 +82,7 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         })
         self.assertEqual(reads[0][0], "smb://nas/Films/Example.nfo")
 
-    def test_conflicting_kodi_and_nfo_identifier_fails_closed(self):
+    def test_conflicting_kodi_and_nfo_identifier_prefers_nfo_with_warning(self):
         transport = FakeTransport(lambda req: {
             "movies": [{
                 "movieid": 7,
@@ -95,8 +95,10 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         def read_nfo(path, max_bytes):
             return '<movie><uniqueid type="tmdb">456</uniqueid></movie>' if path.endswith("Example.nfo") else None
 
-        with self.assertRaisesRegex(KodiRpcError, "conflicting tmdb"):
-            KodiJsonRpcAdapter(transport, nfo_reader=read_nfo).get_movies()
+        with self.assertLogs("resources.lib.sudosync_v2.kodi_rpc", level="WARNING") as cm:
+            movies = KodiJsonRpcAdapter(transport, nfo_reader=read_nfo).get_movies()
+        self.assertEqual(movies[0]["uniqueid"]["tmdb"], "456")
+        self.assertTrue(any("conflicting tmdb identifiers" in log for log in cm.output))
 
     def test_refuses_more_items_than_reported_total(self):
         def handler(req):

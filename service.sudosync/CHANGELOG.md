@@ -1,3 +1,13 @@
+SudoSync 2.0.11
+===============
+
+- Rozwiązanie problemu plików multi-episode NFO (`kodi_rpc.py`): automatyczne dopasowywanie identyfikatorów z bloków `<episodedetails>` do odpowiednich rekordów bazy Kodi na podstawie numeru sezonu (`<season>`) i odcinka (`<episode>`).
+- Kwalifikacja tożsamości wspólnych identyfikatorów SudoSync w plikach multi-episode (`snapshot.py`): odcinki dzielące wspólny identyfikator z pliku NFO są jednoznacznie rozróżniane przyrostkiem `:s{SS}e{EE}` (np. `mazury-000320:s01e01` i `mazury-000320:s01e02`), całkowicie eliminując błąd `SnapshotBuildError`.
+- Odporność na zduplikowane identyfikatory SudoSync (`snapshot.py`): w razie wystąpienia identycznego duplikatu rejestrowane jest ostrzeżenie `logger.warning`, a pierwszy rekord jest zachowywany bez przerywania budowy snapshotu.
+- Łagodna obsługa konfliktów identyfikatorów w NFO vs Kodi (`kodi_rpc.py`): rozbieżności zewnętrznych scraperów lub identyfikatora SudoSync nie rzucają już wyjątku `KodiRpcError`, lecz logują ostrzeżenie ze ścieżką pliku i przyjmują wartości z pliku NFO na dysku jako nadrzędne.
+- Odporny odczyt plików JSON ze współdzielonych zasobów SMB (`sudosync_core.py:_read_vfs_json`): dodano pętlę ponawiania prób (3 próby z pauzą 200 ms) w przypadku chwilowego odczytu pustego pliku podczas rotacji/zapisu przez drugi proces oraz automatyczny fallback do pliku `.bak`.
+- Odporne ładowanie snapshotów węzłów w katalogu (`catalog.py:load_peers`): uszkodzone pliki lub nieprawidłowe nazwy plików peerów są bezpiecznie pomijane z ostrzeżeniem w logu bez awarii całego katalogu.
+
 SudoSync 2.0.10
 ===============
 
