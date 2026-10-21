@@ -1,6 +1,6 @@
 # Architektura i mechanizmy SudoSync (wersja 2.x)
 
-Niniejszy dokument opisuje architekturę techniczną, model danych, mechanizmy współbieżności i procedury synchronizacji wtyczki **SudoSync** w wersji 2.x (stan na wydanie `2.0.5`).
+SudoSync 2.x to rozwinięcie tego samego dodatku z wersji 1.x o dodatkowe możliwości. Zachowuje i rozbudowuje istniejące funkcje, w tym sprawdzone elementy ścieżki LIVE; nie jest nowym programem tworzonym od zera. Niniejszy dokument opisuje architekturę techniczną, model danych, mechanizmy współbieżności i procedury synchronizacji wtyczki **SudoSync**. Opisy szczegółów implementacyjnych mogą dotyczyć wcześniejszego wydania i należy je weryfikować wobec bieżącego kodu.
 
 ---
 
