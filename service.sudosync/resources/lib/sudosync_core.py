@@ -209,7 +209,10 @@ def addon_settings():
         live_poll = 60
     live_poll = min(600, max(30, live_poll))
     
-    sudosync_id_enabled = addon.getSetting("sudosync_id_enabled").strip().lower() == "true"
+    raw_sudosync_id = addon.getSetting("sudosync_id_enabled").strip().lower()
+    if not raw_sudosync_id:
+        raw_sudosync_id = addon.getSetting("enable_sudosync_id").strip().lower()
+    sudosync_id_enabled = raw_sudosync_id == "true"
     sudosync_id_prefix = addon.getSetting("sudosync_id_prefix").strip()
     if sudosync_id_prefix:
         sudosync_id_prefix = re.sub(r"[^A-Za-z0-9._-]", "-", sudosync_id_prefix)
@@ -245,6 +248,7 @@ def addon_settings():
         "live_sync_enabled": live_sync_enabled,
         "live_poll_seconds": live_poll,
         "sudosync_id_enabled": sudosync_id_enabled,
+        "enable_sudosync_id": sudosync_id_enabled,
         "sudosync_id_prefix": sudosync_id_prefix,
         "sudosync_id_last_number": sudosync_id_last_number,
     }
@@ -1459,6 +1463,7 @@ def _collect_initial_snapshot(show_notification=False):
                 assign_sudosync_ids(
                     show_notification=False,
                     auto_mode=True,
+                    silent=True,
                     collected_items=(movies, episodes),
                 )
             except Exception as exc:
@@ -1974,6 +1979,7 @@ def collect_live_snapshot(show_notification=False, suppress_local_changes=False,
                 assign_sudosync_ids(
                     show_notification=False,
                     auto_mode=True,
+                    silent=True,
                     collected_items=(movies, episodes),
                 )
             except Exception as exc:
@@ -3959,9 +3965,21 @@ def _touch_assign_ids_lock(base_path=None, s=None):
             pass
 
 
-def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items=None, base_path=None, s=None, progress_callback=None, is_canceled=None):
+def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items=None, base_path=None, s=None, progress_callback=None, is_canceled=None, silent=False):
     settings = addon_settings()
-    if not settings.get("sudosync_id_enabled"):
+    id_enabled = bool(settings.get("sudosync_id_enabled") or settings.get("enable_sudosync_id"))
+    if not id_enabled:
+        if silent:
+            log("Generowanie SudoSync ID jest wyłączone w ustawieniach (silent=True).", xbmc.LOGINFO)
+            return {
+                "movies": 0,
+                "episodes": 0,
+                "refreshed_existing": 0,
+                "last_number": 0,
+                "manifest_path": "",
+                "cancelled": False,
+                "fatal_error": "",
+            }
         raise RuntimeError("Generowanie SudoSync ID jest wylaczone w ustawieniach.")
 
     base = base_path if base_path is not None else s
@@ -3969,16 +3987,17 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
         base = settings.get("base_path") or ""
 
     if not _acquire_assign_ids_lock(base_path=base, auto_mode=auto_mode):
-        if auto_mode:
+        if auto_mode or silent:
             log("Przypisywanie SudoSync ID w tle pominięte: inna operacja przypisywania jest w toku.", xbmc.LOGINFO)
             return 0
         else:
             log("Ręczne przypisywanie SudoSync ID zablokowane: inna operacja przypisywania jest w toku.", xbmc.LOGWARNING)
-            try:
-                msg = _get_localized_string(32079, "Przypisywanie SudoSync ID jest już wykonywane w tle. Poczekaj na zakończenie.")
-                xbmcgui.Dialog().notification("SudoSync", msg, xbmcgui.NOTIFICATION_WARNING, 5000)
-            except Exception:
-                pass
+            if not silent and show_notification:
+                try:
+                    msg = _get_localized_string(32079, "Przypisywanie SudoSync ID jest już wykonywane w tle. Poczekaj na zakończenie.")
+                    xbmcgui.Dialog().notification("SudoSync", msg, xbmcgui.NOTIFICATION_WARNING, 5000)
+                except Exception:
+                    pass
             return 0
 
     try:
@@ -4068,15 +4087,32 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
 
         manifest = {
             "generated_at": utc_now_precise(),
+            "silent": bool(silent),
+            "checked_movies": len(movies),
+            "checked_episodes": len(episodes),
+            "checked_items": len(movies) + len(episodes),
+            "modified_movies": modified_movies,
+            "modified_episodes": modified_episodes,
+            "newly_assigned": modified_movies + modified_episodes,
+            "refreshed_existing": refreshed_existing,
+            "last_number": last_number,
             "modified": [],
             "errors": [],
-            "last_number": last_number,
+            "cancelled": False,
+            "fatal_error": "",
         }
 
         def _write_manifest():
+            manifest["modified_movies"] = modified_movies
+            manifest["modified_episodes"] = modified_episodes
+            manifest["newly_assigned"] = modified_movies + modified_episodes
+            manifest["refreshed_existing"] = refreshed_existing
+            manifest["last_number"] = last_number
+            if fatal_errors:
+                manifest["fatal_error"] = fatal_errors[0]
             manifest_path = os.path.join(_addon_profile_path(), "assign_ids_manifest.json")
             sudosync_manifest_path = os.path.join(_addon_profile_path(), "sudosync_id_manifest.json")
-            if not auto_mode or manifest["modified"] or manifest["errors"]:
+            if silent or not auto_mode or manifest["modified"] or manifest["errors"]:
                 try:
                     _write_local_json(manifest_path, manifest)
                 except Exception:
@@ -4267,6 +4303,15 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
         total_items = len(movies) + len(episodes)
         processed = 0
 
+        if silent:
+            log(
+                "Rozpoczęto sprawdzanie i przypisywanie SudoSync ID w tle (silent=True). "
+                "Pozycji w bibliotece: {} (filmy: {}, odcinki: {}), bieżący numer ID w sieci: {}.".format(
+                    total_items, len(movies), len(episodes), last_number
+                ),
+                xbmc.LOGINFO,
+            )
+
         for m in movies:
             if is_canceled and is_canceled():
                 log("Przypisywanie SudoSync ID przerwane na żądanie użytkownika.", xbmc.LOGINFO)
@@ -4276,7 +4321,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
             if success:
                 modified_movies += 1
             processed += 1
-            if progress_callback:
+            if progress_callback and not silent:
                 progress_callback(processed, total_items, m.get("title") or m.get("originaltitle") or "")
             if fatal:
                 aborted = True
@@ -4292,7 +4337,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                 if success:
                     modified_episodes += 1
                 processed += 1
-                if progress_callback:
+                if progress_callback and not silent:
                     progress_callback(processed, total_items, e.get("title") or e.get("originaltitle") or "")
                 if fatal:
                     aborted = True
@@ -4303,6 +4348,25 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
         if aborted:
             manifest["cancelled"] = True
         _write_manifest()
+
+        if silent:
+            log(
+                "Zakończono ciche przypisywanie SudoSync ID: sprawdzono={}, nadano nowych={} "
+                "(filmy={}, odcinki={}), odświeżono={}, ostatni numer ID w sieci={}, błędów={}.".format(
+                    total_items,
+                    modified_movies + modified_episodes,
+                    modified_movies,
+                    modified_episodes,
+                    refreshed_existing,
+                    last_number,
+                    len(manifest.get("errors") or []),
+                ),
+                xbmc.LOGINFO,
+            )
+            if fatal_errors:
+                log("Ciche przypisywanie SudoSync ID napotkało błąd krytyczny: {}".format(fatal_errors[0]), xbmc.LOGERROR)
+            for err in manifest.get("errors") or []:
+                log("Ciche przypisywanie SudoSync ID - błąd pliku '{}': {}".format(err.get("file"), err.get("error")), xbmc.LOGWARNING)
 
         return {
             "movies": modified_movies,

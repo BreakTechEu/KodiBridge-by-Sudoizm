@@ -1,3 +1,12 @@
+SudoSync 2.0.12
+===============
+
+- Automatyczne, ciche nadawanie SudoSync ID po skanowaniu biblioteki wideo (`service.py`, `sudosync_core.py`):
+  - Przechwytywanie zdarzenia `onScanFinished` dla biblioteki wideo w `SudoSyncMonitor` z 3-sekundowym debouncingiem w celu uniknięcia blokowania wątku zdarzeń Kodi.
+  - Tryb niewidoczny (`silent=True`) w `assign_sudosync_ids`: całkowite wyłączenie okien modalnych, pasków postępu i powiadomień UI (`xbmcgui.Dialog`), raportowanie postępu wyłącznie w `kodi.log` oraz `assign_ids_manifest.json`.
+  - Ochrona współbieżności w sieci lokalnej (blokada NAS `assign_ids.lock` i atomowa monotoniczna rezerwacja numerów ID w `update_shared_config`) z mechanizmem retry/backoff (10 s) w pętli usługi w przypadku zajętości blokady przez inne urządzenie Kodi.
+  - Natychmiastowa publikacja zaktualizowanego snapshotu v2 na serwer NAS po przydzieleniu nowych identyfikatorów, zapewniająca natychmiastową dostępność nowych pozycji dla pozostałych instancji Kodi w sieci domowej.
+
 SudoSync 2.0.11
 ===============
 

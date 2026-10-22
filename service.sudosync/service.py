@@ -18,6 +18,7 @@ from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_g
 
 from resources.lib.sudosync_core import (
     addon_settings,
+    assign_sudosync_ids,
     collect_and_write,
     collect_live_snapshot,
     get_or_create_client_id,
@@ -31,7 +32,24 @@ from resources.lib.sudosync_core import (
 )
 
 
-class SudoSyncMonitor(xbmc.Monitor):
+_MonitorBase = getattr(xbmc, "Monitor", object)
+if not isinstance(_MonitorBase, type) or getattr(_MonitorBase, "__module__", "").startswith("unittest.mock"):
+    class _MonitorBase(object):
+        def __init__(self):
+            pass
+        def abortRequested(self):
+            return False
+        def waitForAbort(self, timeout=0):
+            return False
+        def onScanFinished(self, library):
+            pass
+        def onNotification(self, sender, method, data):
+            pass
+        def onSettingsChanged(self):
+            pass
+
+
+class SudoSyncMonitor(_MonitorBase):
     def __init__(self):
         super(SudoSyncMonitor, self).__init__()
         self.dirty = False
@@ -40,6 +58,8 @@ class SudoSyncMonitor(xbmc.Monitor):
         self.scan_refresh_pending = False
         self.playback_dirty = False
         self.user_update_dirty = False
+        self.scan_assign_pending = False
+        self.scan_finished_at = 0.0
 
     def onSettingsChanged(self):
         try:
@@ -63,11 +83,33 @@ class SudoSyncMonitor(xbmc.Monitor):
         self.dirty = True
         self.dirty_since = time.time()
 
+    def onScanFinished(self, library):
+        try:
+            super(SudoSyncMonitor, self).onScanFinished(library)
+        except (AttributeError, TypeError):
+            pass
+        if str(library).lower() == "video":
+            self.scanning = False
+            self.scan_refresh_pending = True
+            self._mark_dirty()
+            try:
+                settings = addon_settings()
+                id_enabled = bool(settings.get("sudosync_id_enabled") or settings.get("enable_sudosync_id"))
+            except Exception:
+                id_enabled = False
+            if id_enabled:
+                self.scan_assign_pending = True
+                self.scan_finished_at = time.time()
+                log("SudoSyncMonitor: onScanFinished('video') — zarejestrowano zakończenie skanowania wideo (debounce 3s).", xbmc.LOGINFO)
+
     def onNotification(self, sender, method, data):
         if method == "VideoLibrary.OnScanStarted":
             self.scanning = True
             return
-        if method in ("VideoLibrary.OnScanFinished", "VideoLibrary.OnCleanFinished"):
+        if method == "VideoLibrary.OnScanFinished":
+            self.onScanFinished("video")
+            return
+        if method == "VideoLibrary.OnCleanFinished":
             self.scanning = False
             self.scan_refresh_pending = True
             self._mark_dirty()
@@ -412,6 +454,63 @@ def _run_service():
                 shared = read_shared_config(settings["base_path"])
                 init = shared.get("initialization") or {}
                 live_active = bool(init.get("completed", False) and settings.get("live_sync_enabled", True))
+
+                # Check for pending post-scan SudoSync ID assignment (debounce 3-5s)
+                scan_pending = getattr(monitor, "scan_assign_pending", False) is True
+                scan_at = getattr(monitor, "scan_finished_at", 0.0)
+                if (
+                    scan_pending
+                    and isinstance(scan_at, (int, float))
+                    and scan_at > 0.0
+                    and (now - scan_at) >= 3.0
+                    and not monitor.scanning
+                    and not _is_playing_video()
+                ):
+                    id_enabled = bool(settings.get("sudosync_id_enabled") or settings.get("enable_sudosync_id"))
+                    if not id_enabled:
+                        monitor.scan_assign_pending = False
+                    else:
+                        monitor.scan_assign_pending = False
+                        try:
+                            assign_res = assign_sudosync_ids(
+                                show_notification=False,
+                                auto_mode=True,
+                                silent=True,
+                                base_path=settings.get("base_path"),
+                                is_canceled=monitor.abortRequested,
+                            )
+                            if assign_res == 0:
+                                # Lock busy (another process/device is assigning IDs).
+                                # Re-arm debounce to retry shortly.
+                                monitor.scan_assign_pending = True
+                                monitor.scan_finished_at = now + 10.0
+                            else:
+                                new_ids = 0
+                                if isinstance(assign_res, dict):
+                                    new_ids = int(assign_res.get("movies", 0)) + int(assign_res.get("episodes", 0))
+                                elif isinstance(assign_res, int):
+                                    new_ids = assign_res
+
+                                if new_ids > 0:
+                                    if v2_runtime is not None:
+                                        try:
+                                            pub_res = v2_runtime.publish_local_snapshot(
+                                                abort_requested=monitor.abortRequested,
+                                                suppress_local_changes=False,
+                                            )
+                                            log("Przebudowano i opublikowano snapshot v2 po nadaniu nowych SudoSync ID (status={}).".format(pub_res.get("status")), xbmc.LOGINFO)
+                                        except Exception as exc:
+                                            log("Błąd publikacji snapshotu v2 po nadaniu ID: {}".format(exc), xbmc.LOGWARNING)
+                                    try:
+                                        collect_live_snapshot(
+                                            show_notification=False,
+                                            suppress_local_changes=False,
+                                            notify_local_changes=False,
+                                        )
+                                    except Exception as exc:
+                                        log("Błąd aktualizacji snapshotu v1 po nadaniu ID: {}".format(exc), xbmc.LOGWARNING)
+                        except Exception as exc:
+                            log("Błąd automatycznego nadawania SudoSync ID w usłudze: {}".format(exc), xbmc.LOGERROR)
 
                 if live_active:
                     # Never alter library state while a video is actively playing.
