@@ -1,3 +1,12 @@
+SudoSync 2.0.13
+===============
+
+- Naprawa synchronizacji zmian pomiędzy Android TV a Windows PC (`kodi_vfs.py`, `kodi_rpc.py`, `sudosync_bootstrap.py`, `sudosync_core.py`, `service.py`):
+  - Obejście błędu Windows SMB `Error 1219` (`ERROR_SESSION_CREDENTIAL_CONFLICT`) w Kodi na Windows: gdy zasób UNC (`\\host\share`) jest już zamontowany w sesji Windows (np. jako dysk sieciowy pod inną literą lub sesją), operacje plikowe i katalogowe (`listdir`, `mkdirs`, `exists`, odczyt/zapis JSON i NFO) korzystają bezpośrednio z natywnego dostępu UNC systemu Windows oraz fallbacku do URL-a pozbawionego osadzonych poświadczeń, zapobiegając zwracaniu pustej listy peerów `([], [])` z folderu `clients/`.
+  - Naprawa inicjalizacji lokalnego rejestru `live_registry.json` w `_ensure_client_enrolled_and_initialized` (zapis wymaganego klucza `"schema_version": 1`) oraz automatyczna migracja rejestrów utworzonych w wersji 2.0.12 w `_read_live_registry` i `collect_live_snapshot` (eliminacja pętli `client_needs_enrollment` / `registry_not_bootstrapped`).
+  - Ochrona przed utratą zdarzeń `Player.OnStop` oraz `VideoLibrary.OnUpdate` w `service.py`: użycie licznika sekwencji `dirty_seq` zapobiega skasowaniu flagi `monitor.dirty` po zakończeniu długiego cyklu synchronizacji, jeśli w trakcie jego trwania użytkownik zakończył odtwarzanie lub wystawił ocenę.
+  - Pamięć podręczna identyfikatorów `.nfo` (`_nfo_id_cache` w `KodiJsonRpcAdapter` oraz zachowywanie wpisów z `sudosync` w `_NFO_ID_CACHE` w `sudosync_core.py`): wyeliminowanie wielokrotnego odczytu ponad 1000 plików `.nfo` przez SMB w każdym cyklu LIVE (skrócenie cyklu z ~165 s do pojedynczych sekund).
+
 SudoSync 2.0.12
 ===============
 

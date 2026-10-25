@@ -107,6 +107,80 @@ class TestKodiVFSBackend(unittest.TestCase):
         self.vfs.files["share/a.json"] = "{}"
         self.assertEqual(self.backend.listdir("share"), ([], ["a.json"]))
 
+    def test_credential_stripped_fallback_when_smb_with_creds_fails(self):
+        class CredConflictVFS(FakeVFS):
+            def exists(self, path):
+                if "@" in path:
+                    return False
+                return super(CredConflictVFS, self).exists(path)
+
+            def mkdirs(self, path):
+                if "@" in path:
+                    return False
+                return super(CredConflictVFS, self).mkdirs(path)
+
+            def listdir(self, path):
+                if "@" in path:
+                    return [], []
+                return super(CredConflictVFS, self).listdir(path)
+
+        vfs = CredConflictVFS()
+        vfs.files["smb://192.168.69.100/Wideo/.SudoSync/clients/peer.json"] = "{}"
+        vfs.directories["smb://192.168.69.100/Wideo/.SudoSync/clients"] = True
+        backend = KodiVFSBackend(vfs, max_bytes=64, allow_win_unc=False)
+
+        cred_dir = "smb://user:pass@192.168.69.100/Wideo/.SudoSync/clients"
+        self.assertTrue(backend.exists(cred_dir))
+        self.assertTrue(backend.mkdirs(cred_dir))
+        self.assertEqual(backend.listdir(cred_dir), ([], ["peer.json"]))
+
+    def test_win_unc_resolution_reads_writes_and_lists_via_os(self):
+        import tempfile
+        import shutil
+        from unittest.mock import patch
+
+        tmp = tempfile.mkdtemp()
+        try:
+            share_root = os.path.join(tmp, "Wideo")
+            os.makedirs(share_root)
+
+            def fake_smb_to_unc_parts(path):
+                if not isinstance(path, str) or not path.startswith("smb://"):
+                    return None
+                clean = path.split("@", 1)[-1] if "@" in path else path[len("smb://"):]
+                parts = [p for p in clean.split("/") if p]
+                if len(parts) < 2:
+                    return None
+                unc_share = share_root
+                unc_full = os.path.join(share_root, *parts[2:]) if len(parts) > 2 else share_root
+                return parts[0], parts[1], unc_share, unc_full
+
+            # Failing VFS simulates Windows Error 1219 on SMB
+            class BrokenVFS(FakeVFS):
+                def listdir(self, path):
+                    return [], []
+                def mkdirs(self, path):
+                    return False
+                def exists(self, path):
+                    return False
+
+            with patch("resources.lib.sudosync_v2.kodi_vfs._smb_to_unc_parts", side_effect=fake_smb_to_unc_parts), \
+                    patch("resources.lib.sudosync_v2.kodi_vfs.os.name", "nt"):
+                backend = KodiVFSBackend(BrokenVFS(), max_bytes=128, allow_win_unc=True)
+                base_smb = "smb://xiaomi:wrongpass@192.168.69.100/Wideo/.SudoSync/clients"
+                self.assertTrue(backend.mkdirs(base_smb))
+                self.assertTrue(backend.exists(base_smb))
+                file_smb = base_smb + "/android.json"
+                self.assertTrue(backend.write_text(file_smb, '{"peer": 1}'))
+                self.assertEqual(backend.read_text(file_smb), '{"peer": 1}')
+                self.assertEqual(backend.listdir(base_smb), ([], ["android.json"]))
+                renamed_smb = base_smb + "/android2.json"
+                self.assertTrue(backend.rename(file_smb, renamed_smb))
+                self.assertTrue(backend.delete(renamed_smb))
+                self.assertFalse(backend.exists(renamed_smb))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
 
 class TestKodiVFSMetadataReader(unittest.TestCase):
     def setUp(self):

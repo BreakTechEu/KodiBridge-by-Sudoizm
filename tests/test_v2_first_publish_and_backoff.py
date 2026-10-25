@@ -357,6 +357,55 @@ class TestV2FirstPublishAndBackoff(unittest.TestCase):
         # Dirty flag was preserved so it can retry after backoff expires
         self.assertTrue(mock_monitor.dirty)
 
+    def test_09_service_loop_preserves_dirty_when_notification_arrives_during_cycle(self):
+        """Case 9: If Player.OnStop / VideoLibrary.OnUpdate fires while _execute_integrated_live_cycle is running, dirty flags are not wiped out."""
+        monitor = sudosync_service.SudoSyncMonitor()
+        monitor.aborted = False
+        monitor.onNotification("xbmc", "Player.OnStop", "{}")
+        monitor.dirty_since = 1000.0
+
+        iteration = [0]
+
+        def fake_wait_for_abort(timeout=None):
+            iteration[0] += 1
+            if iteration[0] >= 1:
+                monitor.aborted = True
+                return True
+            return False
+
+        monitor.abortRequested = lambda: monitor.aborted
+        monitor.waitForAbort = fake_wait_for_abort
+
+        def fake_execute_integrated_live_cycle(**kwargs):
+            # Simulate user rating or playback stopping while the slow SMB cycle is executing
+            monitor.onNotification("xbmc", "VideoLibrary.OnUpdate", "{}")
+            return {"busy": False, "applied_items": 0}
+
+        with patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=True), \
+                patch("resources.lib.sudosync_v2.runtime.build_kodi_v2_runtime", return_value=MagicMock()), \
+                patch.object(sudosync_service, "SudoSyncMonitor", return_value=monitor), \
+                patch.object(sudosync_service, "addon_settings", return_value={
+                    "base_path": "smb://nas/sudosync",
+                    "client_name": "AndroidTV",
+                    "interval_seconds": 300,
+                    "live_poll_seconds": 60,
+                    "live_sync_enabled": True,
+                }), \
+                patch.object(sudosync_service, "read_shared_config", side_effect=[
+                    {"initialization": {"completed": False}},
+                    {"initialization": {"completed": True}},
+                ]), \
+                patch.object(sudosync_service, "sync_initial_base_selection"), \
+                patch.object(sudosync_service, "_is_playing_video", return_value=False), \
+                patch.object(sudosync_service, "live_local_changes_detected", return_value={"changed": False}), \
+                patch.object(sudosync_service, "_execute_integrated_live_cycle", side_effect=fake_execute_integrated_live_cycle), \
+                patch.object(sudosync_service.time, "time", return_value=1010.0):
+            sudosync_service._run_service()
+
+        self.assertTrue(monitor.dirty)
+        self.assertTrue(monitor.user_update_dirty)
+        self.assertGreaterEqual(monitor.dirty_seq, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

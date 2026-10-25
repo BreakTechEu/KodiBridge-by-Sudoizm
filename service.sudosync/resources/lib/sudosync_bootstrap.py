@@ -40,10 +40,81 @@ def set_base_path(path):
     set_addon_setting("base_path", path)
     log("Ustalono nową ścieżkę bazową: {}".format(path))
 
+def _bootstrap_win_unc(path):
+    """Return a native Windows UNC path inside real Kodi on Windows when the share is accessible."""
+    import sys
+    if os.name != "nt" or "unittest" in sys.modules or "pytest" in sys.modules:
+        return None
+    try:
+        from resources.lib.sudosync_v2.kodi_vfs import _resolve_win_unc
+        return _resolve_win_unc(path, allow_win_unc=True)
+    except Exception:
+        return None
+
+
+def _b_exists(path):
+    unc = _bootstrap_win_unc(path)
+    if unc is not None:
+        return os.path.exists(unc)
+    if xbmcvfs.exists(path):
+        return True
+    stripped = mask_vfs_credentials(path)
+    if stripped != path:
+        return bool(xbmcvfs.exists(stripped))
+    return False
+
+
+def _b_mkdirs(path):
+    unc = _bootstrap_win_unc(path)
+    if unc is not None:
+        try:
+            os.makedirs(unc, exist_ok=True)
+            return True
+        except Exception:
+            return False
+    if xbmcvfs.mkdirs(path):
+        return True
+    stripped = mask_vfs_credentials(path)
+    if stripped != path:
+        return bool(xbmcvfs.mkdirs(stripped))
+    return False
+
+
+def _b_delete(path):
+    unc = _bootstrap_win_unc(path)
+    if unc is not None:
+        try:
+            if os.path.exists(unc):
+                os.remove(unc)
+            return True
+        except Exception:
+            return False
+    if xbmcvfs.delete(path):
+        return True
+    stripped = mask_vfs_credentials(path)
+    if stripped != path:
+        return bool(xbmcvfs.delete(stripped))
+    return False
+
+
 def test_vfs_rw(test_dir):
     try:
-        if not xbmcvfs.exists(test_dir):
-            if not xbmcvfs.mkdirs(test_dir):
+        unc = _bootstrap_win_unc(test_dir)
+        if unc is not None:
+            if not os.path.exists(unc):
+                os.makedirs(unc, exist_ok=True)
+            test_file = os.path.join(unc, "rw_test.tmp")
+            with open(test_file, "w", encoding="utf-8") as f:
+                f.write("test")
+            with open(test_file, "r", encoding="utf-8") as f:
+                data = f.read()
+            os.remove(test_file)
+            if data != "test":
+                return False, "Błąd weryfikacji zapisu/odczytu"
+            return True, "OK"
+
+        if not _b_exists(test_dir):
+            if not _b_mkdirs(test_dir):
                 return False, "Nie można utworzyć katalogu .SudoSync"
         
         test_file = test_dir + "rw_test.tmp"
@@ -65,7 +136,24 @@ def test_vfs_rw(test_dir):
         return False, str(exc)
 
 def _read_json_file(filepath):
-    if not xbmcvfs.exists(filepath):
+    unc = _bootstrap_win_unc(filepath)
+    if unc is not None:
+        if not os.path.exists(unc):
+            return "NOT_FOUND", None
+        try:
+            with open(unc, "r", encoding="utf-8-sig") as f:
+                data = f.read()
+        except Exception as exc:
+            log("Cannot read JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
+            return "IO_ERROR", None
+        try:
+            obj = json.loads(data)
+            return "VALID", obj
+        except (ValueError, TypeError) as exc:
+            log("Cannot parse JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
+            return "INVALID", None
+
+    if not _b_exists(filepath):
         return "NOT_FOUND", None
     try:
         f = xbmcvfs.File(filepath, 'r')
@@ -85,14 +173,20 @@ def _read_json_file(filepath):
 
 def _remove_quietly(path):
     try:
-        if xbmcvfs.exists(path):
-            xbmcvfs.delete(path)
+        if _b_exists(path):
+            _b_delete(path)
     except Exception as exc:
         log("Cannot remove {}: {}".format(path, exc), xbmc.LOGWARNING)
 
 
 def _read_back_size(path):
     """Return the number of bytes readable from ``path`` (0 when empty/unreadable)."""
+    unc = _bootstrap_win_unc(path)
+    if unc is not None:
+        try:
+            return os.path.getsize(unc) if os.path.exists(unc) else 0
+        except Exception:
+            return 0
     handle = None
     try:
         handle = xbmcvfs.File(path, 'r')
@@ -117,6 +211,29 @@ def _write_json_file(filepath, obj):
     The original file is deleted only after the .bak copy has been confirmed,
     and it is restored from .bak if the final rename fails.
     """
+    unc = _bootstrap_win_unc(filepath)
+    if unc is not None:
+        tmp_unc = unc + ".tmp"
+        try:
+            data = json.dumps(obj, indent=2, sort_keys=True)
+            with open(tmp_unc, "w", encoding="utf-8") as f:
+                f.write(data)
+                f.flush()
+            if not os.path.exists(tmp_unc) or os.path.getsize(tmp_unc) <= 0:
+                if os.path.exists(tmp_unc):
+                    os.remove(tmp_unc)
+                return False
+            os.replace(tmp_unc, unc)
+            return True
+        except Exception as exc:
+            log("Cannot write JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
+            try:
+                if os.path.exists(tmp_unc):
+                    os.remove(tmp_unc)
+            except Exception:
+                pass
+            return False
+
     tmp_file = filepath + ".tmp"
     bak_file = filepath + ".bak"
     try:
@@ -178,7 +295,7 @@ def is_legacy_installation(base_path):
     # Sprawdzamy czy istnieje system/config.json oraz clients/
     sys_config = base_path + "system/config.json"
     clients_dir = base_path + "clients/"
-    return xbmcvfs.exists(sys_config) and xbmcvfs.exists(clients_dir)
+    return _b_exists(sys_config) and _b_exists(clients_dir)
 
 def _get_local_addon_version():
     try:
@@ -448,8 +565,8 @@ def release_network_active_kodi_lease(base_path=None):
             owner_id = str(existing.get("client_id") or "").strip()
             if owner_id and owner_id != client_id:
                 return False
-        if xbmcvfs.exists(lock_path):
-            xbmcvfs.delete(lock_path)
+        if _b_exists(lock_path):
+            _b_delete(lock_path)
         return True
     except Exception as exc:
         log("Nie udało się zwolnić blokady aktywnego Kodi: {}".format(exc), xbmc.LOGWARNING)
@@ -460,6 +577,7 @@ def _ensure_client_enrolled_and_initialized(base_path):
     """Automatically mark shared config initialized and enroll this client after wizard/bootstrap."""
     try:
         from resources.lib.sudosync_core import (
+            LIVE_SCHEMA_VERSION,
             _live_registry_file,
             _read_local_json,
             _write_local_json,
@@ -484,9 +602,16 @@ def _ensure_client_enrolled_and_initialized(base_path):
 
         reg_path = _live_registry_file()
         reg_data = _read_local_json(reg_path) or {}
-        if not reg_data.get("bootstrapped"):
+        if (
+            not reg_data.get("bootstrapped")
+            or reg_data.get("client_id") != client_id
+            or reg_data.get("schema_version") != LIVE_SCHEMA_VERSION
+        ):
+            reg_data["format"] = "SudoSync local live registry"
+            reg_data["schema_version"] = LIVE_SCHEMA_VERSION
             reg_data["client_id"] = client_id
             reg_data["bootstrapped"] = True
+            reg_data.setdefault("seq", 0)
             reg_data.setdefault("records", {})
             reg_data["updated_at"] = utc_now()
             _write_local_json(reg_path, reg_data)

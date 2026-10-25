@@ -122,6 +122,7 @@ class KodiJsonRpcAdapter(object):
         self._max_nfo_bytes = max_nfo_bytes
         self._abort_requested = abort_requested
         self._skipped_nfos = []
+        self._nfo_id_cache = {}
         self._request_id = 0
 
     @property
@@ -130,6 +131,9 @@ class KodiJsonRpcAdapter(object):
 
     def clear_skipped_nfos(self):
         self._skipped_nfos = []
+
+    def clear_nfo_cache(self):
+        self._nfo_id_cache.clear()
 
     def _is_aborted(self, abort_requested=None):
         target = abort_requested if abort_requested is not None else self._abort_requested
@@ -229,6 +233,9 @@ class KodiJsonRpcAdapter(object):
     def _read_nfo_ids(self, media_path, media_type, season=None, episode=None, abort_requested=None):
         if self._nfo_reader is None:
             return {}
+        cache_key = (media_type, media_path, season, episode) if isinstance(media_path, str) and media_path else None
+        if cache_key is not None and cache_key in self._nfo_id_cache:
+            return dict(self._nfo_id_cache[cache_key])
         for path in self._nfo_paths(media_path, media_type):
             if self._is_aborted(abort_requested):
                 raise OperationAborted("NFO reading aborted before " + path)
@@ -247,6 +254,8 @@ class KodiJsonRpcAdapter(object):
                             if kind in identifiers and identifiers[kind] != value:
                                 raise NfoConflictError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
                             identifiers[kind] = value
+                if cache_key is not None and identifiers.get("sudosync"):
+                    self._nfo_id_cache[cache_key] = dict(identifiers)
                 return identifiers
             except (IOError, OSError) as exc:
                 reason = "Cannot read metadata file: {}".format(exc)

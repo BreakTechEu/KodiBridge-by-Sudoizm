@@ -54,6 +54,7 @@ class SudoSyncMonitor(_MonitorBase):
         super(SudoSyncMonitor, self).__init__()
         self.dirty = False
         self.dirty_since = 0.0
+        self.dirty_seq = 0
         self.scanning = False
         self.scan_refresh_pending = False
         self.playback_dirty = False
@@ -82,6 +83,7 @@ class SudoSyncMonitor(_MonitorBase):
     def _mark_dirty(self):
         self.dirty = True
         self.dirty_since = time.time()
+        self.dirty_seq = int(getattr(self, "dirty_seq", 0)) + 1
 
     def onScanFinished(self, library):
         try:
@@ -494,6 +496,9 @@ def _run_service():
                                 if new_ids > 0:
                                     if v2_runtime is not None:
                                         try:
+                                            kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
+                                            if hasattr(kodi_adapter, "clear_nfo_cache"):
+                                                kodi_adapter.clear_nfo_cache()
                                             pub_res = v2_runtime.publish_local_snapshot(
                                                 abort_requested=monitor.abortRequested,
                                                 suppress_local_changes=False,
@@ -547,6 +552,8 @@ def _run_service():
                         if poll_due:
                             last_live_poll = time.time()
                     elif (event_due or poll_due) and not monitor.scanning and time.time() >= live_retry_not_before:
+                        cycle_dirty_seq = getattr(monitor, "dirty_seq", 0)
+                        cycle_dirty_since = monitor.dirty_since
                         suppress = bool(
                             monitor.scan_refresh_pending
                             and not monitor.playback_dirty
@@ -571,15 +578,21 @@ def _run_service():
                         if retry_delay > 0:
                             live_retry_not_before = time.time() + retry_delay
                         if not result.get("busy"):
-                            monitor.dirty = False
-                            monitor.dirty_since = 0.0
-                            monitor.scan_refresh_pending = False
-                            monitor.playback_dirty = False
-                            monitor.user_update_dirty = False
+                            if (
+                                getattr(monitor, "dirty_seq", 0) == cycle_dirty_seq
+                                and monitor.dirty_since == cycle_dirty_since
+                            ):
+                                monitor.dirty = False
+                                monitor.dirty_since = 0.0
+                                monitor.scan_refresh_pending = False
+                                monitor.playback_dirty = False
+                                monitor.user_update_dirty = False
                 else:
                     periodic_due = (now - last_snapshot) >= snapshot_interval
                     dirty_due = monitor.dirty and monitor.dirty_since and (now - monitor.dirty_since) >= 20 and (now - last_snapshot) >= 60
                     if periodic_due or dirty_due:
+                        cycle_dirty_seq = getattr(monitor, "dirty_seq", 0)
+                        cycle_dirty_since = monitor.dirty_since
                         _initial_snapshot_and_analyse(
                             v2_runtime=v2_runtime,
                             abort_requested=monitor.abortRequested,
@@ -587,11 +600,15 @@ def _run_service():
                             init_completed=bool(init.get("completed", False)),
                         )
                         last_snapshot = time.time()
-                        monitor.dirty = False
-                        monitor.dirty_since = 0.0
-                        monitor.scan_refresh_pending = False
-                        monitor.playback_dirty = False
-                        monitor.user_update_dirty = False
+                        if (
+                            getattr(monitor, "dirty_seq", 0) == cycle_dirty_seq
+                            and monitor.dirty_since == cycle_dirty_since
+                        ):
+                            monitor.dirty = False
+                            monitor.dirty_since = 0.0
+                            monitor.scan_refresh_pending = False
+                            monitor.playback_dirty = False
+                            monitor.user_update_dirty = False
 
                 if settings.get("check_updates", True) and not _is_playing_video():
                     try:

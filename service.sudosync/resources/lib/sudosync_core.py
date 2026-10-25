@@ -59,6 +59,107 @@ def mask_vfs_credentials(text):
     return _VFS_CRED_RE.sub(r"\1", text)
 
 
+def _core_win_unc(path):
+    """Return a native Windows UNC path inside real Kodi on Windows when the share is accessible."""
+    import sys
+    if os.name != "nt" or "unittest" in sys.modules or "pytest" in sys.modules:
+        return None
+    try:
+        from resources.lib.sudosync_v2.kodi_vfs import _resolve_win_unc
+        return _resolve_win_unc(path, allow_win_unc=True)
+    except Exception:
+        return None
+
+
+def _vfs_exists(path):
+    unc = _core_win_unc(path)
+    if unc is not None:
+        return os.path.exists(unc)
+    if xbmcvfs.exists(path):
+        return True
+    stripped = mask_vfs_credentials(path)
+    if stripped != path:
+        return bool(xbmcvfs.exists(stripped))
+    return False
+
+
+def _vfs_mkdirs(path):
+    unc = _core_win_unc(path)
+    if unc is not None:
+        try:
+            os.makedirs(unc, exist_ok=True)
+            return True
+        except Exception:
+            return False
+    if xbmcvfs.mkdirs(path):
+        return True
+    stripped = mask_vfs_credentials(path)
+    if stripped != path:
+        return bool(xbmcvfs.mkdirs(stripped))
+    return False
+
+
+def _vfs_delete(path):
+    unc = _core_win_unc(path)
+    if unc is not None:
+        try:
+            if os.path.exists(unc):
+                os.remove(unc)
+            return True
+        except Exception:
+            return False
+    if xbmcvfs.delete(path):
+        return True
+    stripped = mask_vfs_credentials(path)
+    if stripped != path:
+        return bool(xbmcvfs.delete(stripped))
+    return False
+
+
+def _vfs_rmdir(path):
+    unc = _core_win_unc(path)
+    if unc is not None:
+        try:
+            if os.path.exists(unc):
+                os.rmdir(unc)
+            return True
+        except Exception:
+            return False
+    if xbmcvfs.rmdir(path):
+        return True
+    stripped = mask_vfs_credentials(path)
+    if stripped != path:
+        return bool(xbmcvfs.rmdir(stripped))
+    return False
+
+
+def _vfs_listdir(path):
+    unc = _core_win_unc(path)
+    if unc is not None:
+        if not os.path.exists(unc):
+            return [], []
+        dirs = []
+        files = []
+        with os.scandir(unc) as it:
+            for entry in it:
+                if entry.is_dir():
+                    dirs.append(entry.name)
+                else:
+                    files.append(entry.name)
+        return dirs, files
+    dirs, files = xbmcvfs.listdir(path)
+    dirs_list, files_list = list(dirs or []), list(files or [])
+    if not dirs_list and not files_list:
+        stripped = mask_vfs_credentials(path)
+        if stripped != path:
+            try:
+                alt_d, alt_f = xbmcvfs.listdir(stripped)
+                dirs_list, files_list = list(alt_d or []), list(alt_f or [])
+            except Exception:
+                pass
+    return dirs_list, files_list
+
+
 def log(message, level=xbmc.LOGINFO):
     xbmc.log("[SudoSync] {}".format(mask_vfs_credentials(str(message))), level)
 
@@ -263,12 +364,12 @@ def read_shared_config(base_path=None):
     settings = addon_settings()
     base = (base_path or settings["base_path"]).rstrip("/") + "/"
     path = _shared_config_path(base)
-    if not xbmcvfs.exists(path):
+    if not _vfs_exists(path):
         import xbmc
         xbmc.sleep(200)
-        if not xbmcvfs.exists(path):
+        if not _vfs_exists(path):
             bak = path + ".bak"
-            if xbmcvfs.exists(bak):
+            if _vfs_exists(bak):
                 path = bak
             else:
                 return {
@@ -304,8 +405,8 @@ def update_shared_config(mutator_func, base_path=None):
     base = (base_path or settings["base_path"]).rstrip("/") + "/"
     ensure_remote_layout(base)
     system_dir = _join_vfs(base, "system")
-    if not xbmcvfs.exists(system_dir):
-        xbmcvfs.mkdirs(system_dir)
+    if not _vfs_exists(system_dir):
+        _vfs_mkdirs(system_dir)
     
     path = _shared_config_path(base)
     lock_dir = path + ".lockdir"
@@ -315,11 +416,11 @@ def update_shared_config(mutator_func, base_path=None):
     locked = False
     start = datetime.now(timezone.utc).timestamp()
     while True:
-        if not xbmcvfs.exists(lock_dir) and xbmcvfs.mkdirs(lock_dir):
+        if not _vfs_exists(lock_dir) and _vfs_mkdirs(lock_dir):
             # Direct (non-rotating) write: rename on SMB can fail and the lock file is disposable.
             try:
-                if xbmcvfs.exists(lock_info_path):
-                    xbmcvfs.delete(lock_info_path)
+                if _vfs_exists(lock_info_path):
+                    _vfs_delete(lock_info_path)
                 _write_vfs_bytes(lock_info_path, json.dumps({"client_id": my_client_id, "timestamp": datetime.now(timezone.utc).timestamp()}))
             except Exception as exc:
                 log("Nie udalo sie zapisac lock_info.json (kontynuacja z blokada katalogowa): {}".format(exc), xbmc.LOGWARNING)
@@ -337,8 +438,8 @@ def update_shared_config(mutator_func, base_path=None):
         if no_info_stale or (lock_ts > 0.0 and (now_ts - lock_ts > 60.0)):
             log("Znaleziono osierocona blokade. Usuwanie...")
             try:
-                xbmcvfs.delete(lock_info_path)
-                xbmcvfs.rmdir(lock_dir)
+                _vfs_delete(lock_info_path)
+                _vfs_rmdir(lock_dir)
             except Exception:
                 pass
             continue
@@ -351,7 +452,7 @@ def update_shared_config(mutator_func, base_path=None):
 
     try:
         data = None
-        if xbmcvfs.exists(path):
+        if _vfs_exists(path):
             try:
                 data = _read_vfs_json(path)
             except Exception:
@@ -382,8 +483,8 @@ def update_shared_config(mutator_func, base_path=None):
     finally:
         if locked:
             try:
-                xbmcvfs.delete(lock_info_path)
-                xbmcvfs.rmdir(lock_dir)
+                _vfs_delete(lock_info_path)
+                _vfs_rmdir(lock_dir)
             except Exception:
                 pass
 
@@ -1193,6 +1294,11 @@ def _nfo_candidates(media_file, kind):
 
 def _read_vfs_text(path, max_bytes=256 * 1024):
     try:
+        unc = _core_win_unc(path)
+        if unc is not None:
+            with open(unc, "rb") as f:
+                raw = f.read(max_bytes)
+            return raw.decode("utf-8-sig", errors="replace")
         f = xbmcvfs.File(path)
         raw = f.readBytes(max_bytes)
         f.close()
@@ -1208,7 +1314,7 @@ def _find_best_nfo(media_file, kind):
     first_existing = None
     
     for path in candidates:
-        if not xbmcvfs.exists(path):
+        if not _vfs_exists(path):
             continue
         if first_existing is None:
             first_existing = path
@@ -1287,7 +1393,11 @@ def _record(kind, item, first_import=True):
 
 
 def collect_library(first_import=True, progress_callback=None, is_canceled=None):
-    _NFO_ID_CACHE.clear()
+    if first_import:
+        _NFO_ID_CACHE.clear()
+    else:
+        for k in [k for k, v in list(_NFO_ID_CACHE.items()) if not (isinstance(v, dict) and v.get("sudosync"))]:
+            _NFO_ID_CACHE.pop(k, None)
     if is_canceled and is_canceled():
         return [], []
     movie_props = [
@@ -1345,6 +1455,13 @@ def _join_vfs(base, *parts):
 
 
 def _write_vfs_bytes(path, payload):
+    unc = _core_win_unc(path)
+    if unc is not None:
+        raw_bytes = payload.encode("utf-8") if isinstance(payload, str) else bytes(payload)
+        with open(unc, "wb") as f:
+            f.write(raw_bytes)
+            f.flush()
+        return len(raw_bytes) or True
     if isinstance(payload, str):
         payload = bytearray(payload.encode("utf-8"))
     elif isinstance(payload, bytes):
@@ -1361,6 +1478,14 @@ def _write_vfs_bytes(path, payload):
 
 def _write_vfs_json(path, data):
     payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
+    unc = _core_win_unc(path)
+    if unc is not None:
+        tmp_unc = unc + ".new"
+        with open(tmp_unc, "wb") as f:
+            f.write(payload.encode("utf-8"))
+            f.flush()
+        os.replace(tmp_unc, unc)
+        return
     tmp = path + ".new"
     bak = path + ".bak"
     _write_vfs_bytes(tmp, payload)
@@ -1393,19 +1518,19 @@ def _write_vfs_json(path, data):
 
 
 def ensure_remote_layout(base_path):
-    if not xbmcvfs.exists(base_path):
-        xbmcvfs.mkdirs(base_path)
+    if not _vfs_exists(base_path):
+        _vfs_mkdirs(base_path)
     clients = _join_vfs(base_path, "clients")
-    if not xbmcvfs.exists(clients):
-        xbmcvfs.mkdirs(clients)
+    if not _vfs_exists(clients):
+        _vfs_mkdirs(clients)
     system_dir = _join_vfs(base_path, "system")
-    if not xbmcvfs.exists(system_dir):
-        xbmcvfs.mkdirs(system_dir)
+    if not _vfs_exists(system_dir):
+        _vfs_mkdirs(system_dir)
     live_dir = _join_vfs(base_path, "live")
-    if not xbmcvfs.exists(live_dir):
-        xbmcvfs.mkdirs(live_dir)
+    if not _vfs_exists(live_dir):
+        _vfs_mkdirs(live_dir)
     marker = base_path.rstrip("/") + "/format.json"
-    if not xbmcvfs.exists(marker):
+    if not _vfs_exists(marker):
         _write_vfs_json(marker, {
             "format": "SudoSync",
             "schema_version": SCHEMA_VERSION,
@@ -1427,7 +1552,7 @@ def cleanup_old_client_snapshots(base_path, client_id, keep_path):
     suffix = "--{}.json".format(client_id[:8]).lower()
     keep = keep_path.lower()
     try:
-        dirs, files = xbmcvfs.listdir(clients)
+        dirs, files = _vfs_listdir(clients)
     except Exception as exc:
         log("Cannot list client snapshots for cleanup: {}".format(exc), xbmc.LOGWARNING)
         return 0
@@ -1578,6 +1703,15 @@ def _baseline_version(initialization):
 def _read_live_registry(client_id, initialization):
     path = _live_registry_file()
     data = _read_local_json(path) or {}
+    if (
+        isinstance(data, dict)
+        and data.get("client_id") == client_id
+        and data.get("bootstrapped") is True
+        and data.get("schema_version") is None
+    ):
+        data["format"] = "SudoSync local live registry"
+        data["schema_version"] = LIVE_SCHEMA_VERSION
+        data.setdefault("baseline_version", _baseline_version(initialization))
     if data.get("client_id") != client_id or data.get("schema_version") != LIVE_SCHEMA_VERSION:
         data = {}
     if not data:
@@ -1693,18 +1827,18 @@ def _release_live_lock():
 def _live_backup_path(base_path, client_name, client_id):
     backups = _join_vfs(base_path, "backups")
     client_dir = _join_vfs(backups, "{}--{}".format(_slug(client_name), client_id[:8]))
-    if not xbmcvfs.exists(backups):
-        xbmcvfs.mkdirs(backups)
-    if not xbmcvfs.exists(client_dir):
-        xbmcvfs.mkdirs(client_dir)
+    if not _vfs_exists(backups):
+        _vfs_mkdirs(backups)
+    if not _vfs_exists(client_dir):
+        _vfs_mkdirs(client_dir)
     # Rolling backup: bounded disk usage for continuous synchronization.
     return client_dir + "pre-live-latest.json"
 
 
 def live_report_path(base_path, client_name, client_id):
     reports = _join_vfs(base_path, "reports")
-    if not xbmcvfs.exists(reports):
-        xbmcvfs.mkdirs(reports)
+    if not _vfs_exists(reports):
+        _vfs_mkdirs(reports)
     return reports + "{}--{}--live.json".format(_slug(client_name), client_id[:8])
 
 
@@ -1717,7 +1851,7 @@ def _cleanup_old_live_pulses(base_path, client_id, keep_path):
     live_dir = _join_vfs(base_path, "live")
     suffix = "--{}.json".format(client_id[:8]).lower()
     try:
-        _dirs, files = xbmcvfs.listdir(live_dir)
+        _dirs, files = _vfs_listdir(live_dir)
     except Exception:
         return
     for filename in files:
@@ -1739,10 +1873,10 @@ def _peer_pulse_cache_file():
 def _read_live_pulses(base_path):
     live_dir = _join_vfs(base_path, "live")
     result = {}
-    if not xbmcvfs.exists(live_dir):
+    if not _vfs_exists(live_dir):
         return result
     try:
-        _dirs, files = xbmcvfs.listdir(live_dir)
+        _dirs, files = _vfs_listdir(live_dir)
     except Exception:
         return result
     for filename in files:
@@ -1966,7 +2100,7 @@ def collect_live_snapshot(show_notification=False, suppress_local_changes=False,
 
     client_id = get_or_create_client_id()
     registry = _read_live_registry(client_id, initialization)
-    first_bootstrap = not bool(registry.get("bootstrapped"))
+    first_bootstrap = not bool(registry.get("bootstrapped")) or not bool(registry.get("records"))
     baseline = registry.get("baseline_version") or _baseline_version(initialization)
     movies, episodes = collect_library(first_import=False)
     if settings.get("sudosync_id_enabled"):
@@ -1975,15 +2109,20 @@ def collect_live_snapshot(show_notification=False, suppress_local_changes=False,
         except Exception:
             playing = False
         if not playing:
-            try:
-                assign_sudosync_ids(
-                    show_notification=False,
-                    auto_mode=True,
-                    silent=True,
-                    collected_items=(movies, episodes),
-                )
-            except Exception as exc:
-                log("Auto-assign SudoSync ID during live snapshot skipped: {}".format(exc), xbmc.LOGWARNING)
+            missing_sudosync = any(
+                bool(item.get("file")) and not _has_sudosync_id(item.get("ids") or {})
+                for item in (list(movies) + list(episodes))
+            )
+            if missing_sudosync:
+                try:
+                    assign_sudosync_ids(
+                        show_notification=False,
+                        auto_mode=True,
+                        silent=True,
+                        collected_items=(movies, episodes),
+                    )
+                except Exception as exc:
+                    log("Auto-assign SudoSync ID during live snapshot skipped: {}".format(exc), xbmc.LOGWARNING)
     current_records = {}
     local_changed_items = 0
     local_changed_fields = {field: 0 for field in LIVE_FIELDS}
@@ -2479,6 +2618,15 @@ def read_local_status():
 
 def _read_vfs_all(path, chunk_size=1024 * 1024, max_size=50*1024*1024):
     """Read an arbitrary-size VFS file without assuming local filesystem access."""
+    unc = _core_win_unc(path)
+    if unc is not None:
+        if not os.path.exists(unc):
+            return b""
+        with open(unc, "rb") as f:
+            data = f.read(max_size + 1)
+        if len(data) > max_size:
+            raise ValueError("Plik przekracza limit rozmiaru: {}".format(path))
+        return data
     f = xbmcvfs.File(path)
     parts = []
     total_size = 0
@@ -2521,7 +2669,7 @@ def _read_vfs_json(path, max_attempts=3, retry_delay_ms=200):
                 time.sleep(retry_delay_ms / 1000.0)
     # If still failed, check if .bak exists as emergency fallback
     bak = path + ".bak"
-    if xbmcvfs.exists(bak):
+    if _vfs_exists(bak):
         raw_bak = _read_vfs_all(bak)
         if raw_bak:
             try:
@@ -2589,10 +2737,10 @@ def read_remote_snapshots(base_path=None):
     settings = addon_settings()
     base = (base_path or settings["base_path"]).rstrip("/") + "/"
     clients_path = _join_vfs(base, "clients")
-    if not xbmcvfs.exists(clients_path):
+    if not _vfs_exists(clients_path):
         return [], []
     try:
-        _dirs, files = xbmcvfs.listdir(clients_path)
+        _dirs, files = _vfs_listdir(clients_path)
     except Exception as exc:
         raise IOError("Cannot list SudoSync clients: {}".format(exc))
 
@@ -2635,8 +2783,8 @@ def run_dry_run(show_notification=False):
     base = settings["base_path"]
     ensure_remote_layout(base)
     reports = _join_vfs(base, "reports")
-    if not xbmcvfs.exists(reports):
-        xbmcvfs.mkdirs(reports)
+    if not _vfs_exists(reports):
+        _vfs_mkdirs(reports)
 
     snapshots, errors = read_remote_snapshots(base)
     if len(snapshots) < 2:
@@ -2725,18 +2873,18 @@ def run_dry_run(show_notification=False):
 def _backup_snapshot_path(base_path, client_name, client_id, stamp=None):
     backups = _join_vfs(base_path, "backups")
     client_dir = _join_vfs(backups, "{}--{}".format(_slug(client_name), client_id[:8]))
-    if not xbmcvfs.exists(backups):
-        xbmcvfs.mkdirs(backups)
-    if not xbmcvfs.exists(client_dir):
-        xbmcvfs.mkdirs(client_dir)
+    if not _vfs_exists(backups):
+        _vfs_mkdirs(backups)
+    if not _vfs_exists(client_dir):
+        _vfs_mkdirs(client_dir)
     stamp = stamp or utc_now().replace(":", "-")
     return client_dir + "pre-initial-sync--{}.json".format(stamp)
 
 
 def _write_apply_report(base_path, client_name, client_id, report):
     reports = _join_vfs(base_path, "reports")
-    if not xbmcvfs.exists(reports):
-        xbmcvfs.mkdirs(reports)
+    if not _vfs_exists(reports):
+        _vfs_mkdirs(reports)
     path = reports + "{}--{}--initial-apply.json".format(_slug(client_name), client_id[:8])
     _write_vfs_json(path, report)
     return path
@@ -3234,9 +3382,9 @@ def get_network_sudosync_id_last_number(base_path=None, local_records=None):
         for subdir in ("clients", "snapshots"):
             try:
                 dir_path = _join_vfs(base_norm, subdir)
-                if not xbmcvfs.exists(dir_path):
+                if not _vfs_exists(dir_path):
                     continue
-                _dirs, files = xbmcvfs.listdir(dir_path)
+                _dirs, files = _vfs_listdir(dir_path)
                 if not isinstance(files, (list, tuple)):
                     continue
                 for filename in files:

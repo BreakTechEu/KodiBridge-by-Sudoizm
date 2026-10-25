@@ -603,6 +603,31 @@ class TestUpdateIntegrityAndZipLimits(unittest.TestCase):
         self.assertEqual(res["sha256"], "")
         self.assertEqual(res["sha256_url"], url + ".sha256")
 
+    def test_ensure_client_enrolled_writes_schema_version_and_core_migrates_legacy_registry(self):
+        reg_store = {}
+        shared_store = {"initialization": {"completed": True, "base_client_id": "client-PC", "completed_at": "2026-10-25T18:00:00Z"}}
+        with patch.object(bootstrap, "_local_client_identity", return_value=("client-PC", "PC")), \
+                patch.object(core, "read_shared_config", return_value=shared_store), \
+                patch.object(core, "_live_registry_file", return_value="/fake/live_registry.json"), \
+                patch.object(core, "_read_local_json", side_effect=lambda _p: dict(reg_store) if reg_store else None), \
+                patch.object(core, "_write_local_json", side_effect=lambda _p, data: reg_store.clear() or reg_store.update(data)):
+            bootstrap._ensure_client_enrolled_and_initialized("smb://nas/video/.SudoSync/")
+            self.assertEqual(reg_store.get("schema_version"), core.LIVE_SCHEMA_VERSION)
+            self.assertTrue(reg_store.get("bootstrapped"))
+
+            # Simulate a registry created by v2.0.12 without schema_version
+            legacy_reg = {
+                "client_id": "client-PC",
+                "bootstrapped": True,
+                "records": {},
+                "updated_at": "2026-10-25T18:30:00Z",
+            }
+            reg_store.clear()
+            reg_store.update(legacy_reg)
+            loaded = core._read_live_registry("client-PC", shared_store["initialization"])
+            self.assertTrue(loaded.get("bootstrapped"))
+            self.assertEqual(loaded.get("schema_version"), core.LIVE_SCHEMA_VERSION)
+
 
 if __name__ == "__main__":
     unittest.main()

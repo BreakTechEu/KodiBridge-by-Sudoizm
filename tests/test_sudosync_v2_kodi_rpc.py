@@ -82,6 +82,39 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         })
         self.assertEqual(reads[0][0], "smb://nas/Films/Example.nfo")
 
+    def test_nfo_ids_with_sudosync_are_cached_across_get_calls_until_cleared(self):
+        transport = FakeTransport(lambda req: {
+            "episodes": [{
+                "episodeid": 11,
+                "season": 1,
+                "episode": 1,
+                "file": "smb://nas/Series/Show/S01E01.mkv",
+                "uniqueid": {"imdb": "tt4171822"},
+            }],
+            "limits": {"total": 1},
+        })
+        reads = []
+
+        def read_nfo(path, max_bytes):
+            reads.append(path)
+            return '<episodedetails><uniqueid type="sudosync">MAZURY-001200</uniqueid></episodedetails>'
+
+        adapter = KodiJsonRpcAdapter(transport, nfo_reader=read_nfo)
+        ep1 = adapter.get_episodes()[0]
+        self.assertEqual(ep1["uniqueid"]["sudosync"], "mazury-001200")
+        self.assertEqual(len(reads), 1)
+
+        # Second call uses cache without re-reading NFO over SMB
+        ep2 = adapter.get_episodes()[0]
+        self.assertEqual(ep2["uniqueid"]["sudosync"], "mazury-001200")
+        self.assertEqual(len(reads), 1)
+
+        # Clearing cache forces re-read
+        adapter.clear_nfo_cache()
+        ep3 = adapter.get_episodes()[0]
+        self.assertEqual(ep3["uniqueid"]["sudosync"], "mazury-001200")
+        self.assertEqual(len(reads), 2)
+
     def test_conflicting_kodi_and_nfo_identifier_prefers_nfo_with_warning(self):
         transport = FakeTransport(lambda req: {
             "movies": [{
