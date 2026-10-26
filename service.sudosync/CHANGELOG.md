@@ -1,15 +1,22 @@
+SudoSync 2.1.1
+==============
+
+- Poprawki stabilności i odporności po audycie zewnętrznym (Claude Sonnet 5.5 High):
+  - Eliminacja gorącej pętli usługi przy błędach silnika v1 (`service.py`): przechwytywanie wyjątków z `run_live_sync_cycle` w `_execute_integrated_live_cycle` i przekazywanie statusu `busy` z `error` do mechanizmu backoffu (`max(live_poll, 30)` s), z zachowaniem powiadomień UI o zmianach zatwierdzonych w tym samym cyklu przez v2 oraz asekuracyjnym backoffem w głównym `except` pętli usługi.
+  - Odciążenie NAS i ochrona przed zapętleniem pytań o aktualizację (`sudosync_core.py`): usunięcie odczytów z NAS wewnątrz `maybe_check_github_update_daily` (wersję sieciową sprawdza co 60 s pętla dzierżawy w `sudosync_bootstrap.py`) oraz zapamiętywanie odrzuconej wersji (`last_declined_github_version` w `status.json`), zapobiegające powtórnemu pytaniu po wybraniu opcji „Później”.
+  - Normalizacja ocen użytkownika (`kodi_rpc.py`): zamiana `userrating: None` na `0` w `_validate_sync_details` dla pełnej zgodności z JSON-RPC Kodi.
+  - Publikacja snapshotu przy odroczeniu (`runtime.py`): publikowanie lokalnego snapshotu na NAS również w przypadku stanu `deferred` transakcji (np. rozpoczęcie odtwarzania w trakcie cyklu), o ile stan lokalny uległ zmianie.
+  - Bezpieczne maskowanie poświadczeń URL (`kodi_vfs.py`): automatyczne ukrywanie haseł (`user:***@`) bezpośrednio w komunikatach wyjątków `KodiVFSBackendError` oraz polu `last_live_error`.
+  - Higiena kodu i zgodność z Pythonem 3.12: zastąpienie przestarzałego `datetime.utcnow()` przez `datetime.now(timezone.utc)` w `session.py`, usunięcie nieużywanych importów i zmiennych w `runtime.py`, `catalog.py`, `default.py` i `sudosync_core.py`.
+
 SudoSync 2.1.0
 ==============
 
 - Wydanie produkcyjne architektury v2 (`runtime.py`, `engine.py`, `snapshot.py`, `kodi_rpc.py`, `kodi_vfs.py`, `sudosync_bootstrap.py`, `sudosync_core.py`, `service.py`):
   - Utworzenie i walidacja pełnej struktury katalogów transakcyjnych na NAS (`transactions/`, `transactions/backups`, `transactions/journals`) podczas przygotowywania udziału sieciowego (`ensure_remote_layout`) oraz automatyczne tworzenie brakujących katalogów nadrzędnych przy zapisie w `KodiVFSBackend.write_text`.
-  - Strażnik wersji w sieci lokalnej (`_discover_highest_network_addon_version`, `is_network_addon_version_newer`, `enforce_network_version_guard`): wykrywanie najwyższej wersji wtyczki z `SudoSync.cfg` (`min_addon_version`), `active_kodi_lock.json` (`.bak`) oraz rejestru `clients` w `system/config.json`; weryfikacja wersji przy starcie i podczas odświeżania dzierżawy sesji co 60 s z możliwością natychmiastowej aktualizacji.
-  - Dobowy aktualizator GitHub Releases (`maybe_check_github_update_daily`): sprawdzanie limitu 24h na podstawie lokalnego `status.json` bez generowania nadmiarowych odczytów z NAS w pętli usługi oraz zapamiętywanie odrzuconej wersji (`last_declined_github_version`), aby nie wyświetlać powtórnie pytania o tę samą wersję po wybraniu „Później”.
-  - Ochrona pętli usługi przed gorącą pętlą przy błędach silnika v1 (`_execute_integrated_live_cycle` w `service.py`): przechwytywanie wyjątków z `run_live_sync_cycle` i przekazywanie statusu `busy` z `error` do mechanizmu backoffu (`max(live_poll, 30)` s) przy zachowaniu powiadomień o zmianach zatwierdzonych w tym samym cyklu przez v2.
-  - Publikacja lokalnego snapshotu v2 na NAS również wtedy, gdy wykonanie transakcji zmian zdalnych zostało odroczone (`status == "deferred"`, np. z powodu rozpoczęcia odtwarzania wideo), o ile stan lokalny uległ zmianie.
-  - Zachowywanie listy aktywnych identyfikatorów rekordów (`kept_kodi_ids_out`) podczas budowy snapshotu v2 (`build_snapshot`), ograniczające weryfikację przedtransakcyjną wyłącznie do pozycji niekolidujących w bieżącym snapshocie.
-  - Normalizacja wartości `userrating: None -> 0` w `KodiJsonRpcAdapter._validate_sync_details` dla pełnej zgodności ze schematem JSON-RPC Kodi przy czyszczeniu lub braku oceny użytkownika.
-  - Automatyczne maskowanie poświadczeń URL (`user:***@`) bezpośrednio w komunikatach wyjątków `KodiVFSBackendError` oraz w polu `last_live_error`.
+  - Strażnik wersji w sieci lokalnej (`_discover_highest_network_addon_version`, `is_network_addon_version_newer`, `enforce_network_version_guard`): wykrywanie najwyższej wersji wtyczki z `SudoSync.cfg` (`min_addon_version`), `active_kodi_lock.json` (`.bak`) oraz rejestru `clients` w `system/config.json`.
+  - Dzierżawa pojedynczego aktywnego Kodi (`active_kodi_lock.json`) z heartbeatem co 60 s i automatycznym zwalnianiem w `finally`.
+  - Zachowywanie listy aktywnych identyfikatorów rekordów (`kept_kodi_ids_out`) podczas budowy snapshotu v2 (`build_snapshot`).
 
 SudoSync 2.0.13
 ===============
