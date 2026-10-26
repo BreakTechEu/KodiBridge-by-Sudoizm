@@ -264,14 +264,22 @@ def _execute_integrated_live_cycle(
     v1_collect = True if v2_committed else collect_local
     v1_skip = False if v2_committed else skip_if_no_remote_change
 
-    result = run_live_sync_cycle(
-        show_notification=show_notification and not v2_committed,
-        suppress_local_changes=v1_suppress,
-        collect_local=v1_collect,
-        skip_if_no_remote_change=v1_skip,
-        notify_local_changes=notify_local_changes,
-        receiver_notification_delay_ms=receiver_notification_delay_ms,
-    )
+    try:
+        result = run_live_sync_cycle(
+            show_notification=show_notification and not v2_committed,
+            suppress_local_changes=v1_suppress,
+            collect_local=v1_collect,
+            skip_if_no_remote_change=v1_skip,
+            notify_local_changes=notify_local_changes,
+            receiver_notification_delay_ms=receiver_notification_delay_ms,
+        )
+    except Exception as exc:
+        log("V1 live sync cycle error: {}".format(exc), xbmc.LOGERROR)
+        result = {
+            "busy": True,
+            "error": str(exc),
+            "applied_items": 0,
+        }
     if not isinstance(result, dict):
         result = {}
 
@@ -639,8 +647,10 @@ def _run_service():
             except Exception as exc:
                 log("Service cycle failed: {}".format(exc), xbmc.LOGERROR)
                 # Avoid a hot failure loop on broken NAS/network.
-                last_live_poll = time.time()
-                last_snapshot = time.time()
+                err_now = time.time()
+                last_live_poll = err_now
+                last_snapshot = err_now
+                live_retry_not_before = err_now + _live_retry_delay_seconds({"error": True}, live_poll)
 
             if monitor.waitForAbort(2):
                 break

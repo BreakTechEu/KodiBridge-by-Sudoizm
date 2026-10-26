@@ -183,6 +183,10 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         self.assertEqual(adapter.set_movie_details(4, {"playcount": 2}), "OK")
         self.assertEqual(transport.calls[0]["method"], "VideoLibrary.SetMovieDetails")
         self.assertEqual(transport.calls[0]["params"], {"movieid": 4, "playcount": 2})
+        self.assertEqual(adapter.set_movie_details(4, {"userrating": None}), "OK")
+        self.assertEqual(transport.calls[1]["params"], {"movieid": 4, "userrating": 0})
+        self.assertEqual(adapter.set_episode_details(8, {"userrating": None}), "OK")
+        self.assertEqual(transport.calls[2]["params"], {"episodeid": 8, "userrating": 0})
         with self.assertRaisesRegex(ValueError, "unsupported synchronized fields"):
             adapter.set_movie_details(4, {"file": "/some/path"})
 

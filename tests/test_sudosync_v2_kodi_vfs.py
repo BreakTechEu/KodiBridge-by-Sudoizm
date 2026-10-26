@@ -206,6 +206,11 @@ class TestKodiVFSMetadataReader(unittest.TestCase):
         with self.assertRaisesRegex(KodiVFSBackendError, "UTF-8"):
             self.reader("smb://nas/media/movie.nfo", 4)
 
+    def test_vfs_backend_error_masks_embedded_credentials(self):
+        err = KodiVFSBackendError("Cannot read smb://admin:secret123@192.168.1.10/Share/file.json: I/O error")
+        self.assertNotIn("secret123", str(err))
+        self.assertIn("smb://admin:***@192.168.1.10/Share/file.json", str(err))
+
 
 if __name__ == "__main__":
     unittest.main()

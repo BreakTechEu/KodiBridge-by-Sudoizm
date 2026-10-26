@@ -311,6 +311,66 @@ class TestV2BusyBackoff(unittest.TestCase):
         self.assertFalse(mock_monitor.playback_dirty)
         self.assertFalse(mock_monitor.user_update_dirty)
 
+    def test_05_v1_runtime_error_in_integrated_cycle_returns_busy_error_and_preserves_v2_notification(self):
+        """Case 5: When run_live_sync_cycle (v1) raises RuntimeError, _execute_integrated_live_cycle catches it, returns busy+error for backoff, and still emits v2 committed toast."""
+        mock_monitor = MagicMock()
+        mock_monitor.abortRequested.return_value = False
+        mock_v2 = MagicMock()
+        mock_v2.sync_cycle.return_value = {"status": "committed", "applied_count": 2}
+
+        with patch.object(sudosync_service, "run_live_sync_cycle", side_effect=RuntimeError("peer v1 snapshot unreadable")), \
+                patch.object(sudosync_service.xbmcgui, "Dialog") as mock_dialog_cls:
+            res = sudosync_service._execute_integrated_live_cycle(
+                v2_runtime=mock_v2,
+                monitor=mock_monitor,
+                show_notification=True,
+                suppress_local_changes=False,
+                collect_local=True,
+                skip_if_no_remote_change=False,
+                notify_local_changes=False,
+                receiver_notification_delay_ms=0,
+            )
+            self.assertTrue(res.get("busy"))
+            self.assertEqual(res.get("error"), "peer v1 snapshot unreadable")
+            self.assertEqual(res.get("applied_items"), 2)
+            self.assertEqual(_live_retry_delay_seconds(res, 60), 60)
+            mock_dialog_cls.return_value.notification.assert_called_once()
+
+    def test_06_runtime_deferred_transaction_still_publishes_changed_local_snapshot(self):
+        """Case 6: When TransactionRunner defers because playback started after preview, runtime.sync_cycle still publishes the updated local snapshot."""
+        from resources.lib.sudosync_v2.runtime import ProcessLocalLockFactory, build_v2_runtime
+        from tests.test_sudosync_v2_runtime import InMemorySharedBackend, MutableFakeKodi
+
+        client_a = "12345678-1234-4234-8234-123456789012"
+        client_b = "22345678-1234-4234-8234-123456789012"
+        backend = InMemorySharedBackend()
+        lock_factory = ProcessLocalLockFactory()
+
+        kodi_a = MutableFakeKodi(movie_id=10, playcount=1)
+        kodi_b = MutableFakeKodi(movie_id=20, playcount=0)
+
+        runtime_a = build_v2_runtime(kodi_a, backend, "smb://nas/.SudoSync", lock_factory, client_a, "Kodi A")
+        runtime_b = build_v2_runtime(kodi_b, backend, "smb://nas/.SudoSync", lock_factory, client_b, "Kodi B")
+
+        # Device A publishes playcount=1
+        runtime_a.sync_cycle()
+
+        # Device B has local state (playcount=0) and receives a plan with 1 change from A,
+        # but playback starts right after preview (when get_episodes finishes, before transaction_runner.run)
+        orig_get_episodes = kodi_b.get_episodes
+        def get_episodes_then_start_playing():
+            eps = orig_get_episodes()
+            kodi_b.playing = True
+            return eps
+        kodi_b.get_episodes = get_episodes_then_start_playing
+
+        res_b = runtime_b.sync_cycle(publish_local=True)
+        self.assertEqual(res_b["status"], "deferred")
+        self.assertEqual(res_b["applied_count"], 0)
+        self.assertEqual(kodi_b.writes, 0)
+        self.assertIsNotNone(res_b["published_snapshot_path"])
+        self.assertIsNotNone(runtime_b.catalog.load(client_b))
+
 
 if __name__ == "__main__":
     unittest.main()

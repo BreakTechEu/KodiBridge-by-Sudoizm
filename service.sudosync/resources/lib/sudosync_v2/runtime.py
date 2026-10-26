@@ -25,7 +25,7 @@ from .session import SharedOperationCoordinator
 from .storage import SharedJsonRepository
 from .transaction import TransactionRunner
 from .transaction_store import TransactionStore
-from .kodi_rpc import KodiJsonRpcAdapter, accepts_abort_requested, invoke_with_abort
+from .kodi_rpc import KodiJsonRpcAdapter, invoke_with_abort
 from .kodi_vfs import KodiVFSMetadataReader
 
 

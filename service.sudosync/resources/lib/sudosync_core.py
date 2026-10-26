@@ -1132,18 +1132,9 @@ def install_update_from_zip_path(zip_path, allow_same_or_older=False, show_dialo
 
 
 def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=False):
-    """Check GitHub Releases at most once per 24 hours (unless force=True or network peer is newer) and ask user consent before installing."""
+    """Check GitHub Releases at most once per 24 hours (unless force=True) and ask user consent before installing."""
     settings = addon_settings()
-    network_has_newer = False
-    try:
-        from resources.lib.sudosync_bootstrap import is_network_addon_version_newer
-        base_p = settings.get("base_path") or ""
-        if base_p:
-            network_has_newer = bool(is_network_addon_version_newer(base_p)[0])
-    except Exception:
-        network_has_newer = False
-
-    if not settings.get("check_updates", True) and not force and not network_has_newer:
+    if not settings.get("check_updates", True) and not force:
         return {"checked": False, "reason": "disabled"}
 
     now = float(now_epoch if now_epoch is not None else datetime.now(timezone.utc).timestamp())
@@ -1153,21 +1144,26 @@ def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=
     except Exception:
         last_check = 0.0
 
-    if not force and not network_has_newer and last_check > 0.0 and (now - last_check) < DAILY_UPDATE_CHECK_INTERVAL_SECONDS:
+    if not force and last_check > 0.0 and (now - last_check) < DAILY_UPDATE_CHECK_INTERVAL_SECONDS:
         return {"checked": False, "reason": "not_due", "last_check_epoch": last_check}
 
     result = find_github_update()
+    target_version = str(result.get("version") or "").strip()
+    declined_version = str(local_status.get("last_declined_github_version") or "").strip()
     local_status["last_github_update_check_epoch"] = now
     local_status["last_github_update_check_at"] = utc_now()
     local_status["last_github_update_result"] = {
         "available": bool(result.get("available")),
-        "version": str(result.get("version") or ""),
+        "version": target_version,
         "current_version": str(result.get("current_version") or ""),
         "error": str(result.get("error") or ""),
     }
     _write_local_json(os.path.join(_addon_profile_path(), "status.json"), local_status)
 
     if result.get("available") and ask_and_install:
+        if not force and target_version and target_version == declined_version:
+            result["declined_previously"] = True
+            return result
         if xbmcgui.Dialog().yesno(
             "SudoSync — dostępna aktualizacja",
             "Dostępna jest nowa wersja SudoSync {} na GitHub Releases (obecnie zainstalowana: {}).\n\n"
@@ -1186,6 +1182,10 @@ def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=
                     "SudoSync — błąd aktualizacji",
                     "Nie udało się zainstalować aktualizacji z GitHub:\n{}".format(exc),
                 )
+        elif target_version:
+            local_status["last_declined_github_version"] = target_version
+            _write_local_json(os.path.join(_addon_profile_path(), "status.json"), local_status)
+            result["declined"] = True
     return result
 
 
@@ -2582,7 +2582,7 @@ def run_live_sync_cycle(show_notification=False, suppress_local_changes=False, c
         status["last_live_applied_items"] = len(applied_results)
         status["last_live_guarded_items"] = guarded_count
         status["last_live_apply_report"] = apply_path
-        status["last_live_error"] = apply_report["errors"][0]["error"] if apply_report["errors"] else ""
+        status["last_live_error"] = mask_vfs_credentials(apply_report["errors"][0]["error"]) if apply_report["errors"] else ""
         _write_local_json(os.path.join(_addon_profile_path(), "status.json"), status)
 
         if apply_report["errors"]:
@@ -3219,8 +3219,6 @@ def _sync_v2_after_initial_apply(settings, client_id):
         v2_runtime.publish_local_snapshot(suppress_local_changes=True)
     except Exception as exc:
         log("V2 post-initialization snapshot publish skipped: {}".format(exc), xbmc.LOGWARNING)
-
-import hashlib
 
 STRONG_ID_TYPES = ("imdb", "tmdb", "tvdb", "trakt", "sudosync")
 _SEQ_SUDOSYNC_SUFFIX_RE = re.compile(r"^\d{1,9}$")

@@ -540,7 +540,6 @@ def main():
             stage1_desc = _get_localized_string(32080, "Skanowanie biblioteki i sprawdzanie SudoSync ID...")
             stage2_desc = _get_localized_string(32081, "Przypisywanie SudoSync ID...")
             auto_close_notice = _get_localized_string(32082, "To okno zamknie się automatycznie po zakończeniu operacji.")
-            cancel_msg = _get_localized_string(32083, "Operacja została anulowana przez użytkownika.")
 
             def is_canceled():
                 try:

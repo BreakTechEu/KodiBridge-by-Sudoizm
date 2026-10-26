@@ -68,8 +68,16 @@ def _resolve_win_unc(path, allow_win_unc=False):
     return unc_path if accessible else None
 
 
+_MASK_CRED_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@:\s]+):([^/@\s]+)@")
+
+
 class KodiVFSBackendError(IOError):
     """Kodi VFS operation failed or returned an unverifiable result."""
+
+    def __init__(self, message=""):
+        if isinstance(message, str) and "@" in message:
+            message = _MASK_CRED_RE.sub(r"\1\2:***@", message)
+        super(KodiVFSBackendError, self).__init__(message)
 
 
 class KodiVFSMetadataReader(object):

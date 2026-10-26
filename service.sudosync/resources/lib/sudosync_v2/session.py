@@ -14,10 +14,10 @@ clients require cross-process exclusion on the actual filesystem.
 """
 from __future__ import absolute_import
 
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
-from .storage import RepositoryError, decode_json, encode_json
+from .storage import decode_json, encode_json
 
 
 MARKER_FORMAT = "SudoSync v2 active operation"
@@ -37,7 +37,7 @@ class SessionOwnershipError(SessionError):
 
 
 def _utc_now():
-    return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _validate_marker(marker):

@@ -12,7 +12,6 @@ import logging
 import re
 import uuid
 
-from . import FORMAT_NAME, SCHEMA_VERSION
 from .kodi_rpc import OperationAborted, is_aborted
 from .schema import validate_snapshot
 from .storage import RepositoryError

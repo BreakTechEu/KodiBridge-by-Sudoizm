@@ -1094,12 +1094,38 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
                 "/profile_kodi_old/status.json",
                 {"last_github_update_check_epoch": 1000.0},
             )
-            # 1) When network has same version (2.0.12), 24h counter blocks routine check
-            res_blocked = sudosync_core.maybe_check_github_update_daily(now_epoch=1100.0, ask_and_install=False)
+            # 1) Routine check before 24h returns not_due without reading NAS files
+            nas_reads = []
+            orig_exists = self.vfs.exists
+            def tracking_exists(path):
+                nas_reads.append(path)
+                return orig_exists(path)
+
+            with patch.object(sudosync_bootstrap.xbmcvfs, "exists", side_effect=tracking_exists):
+                res_blocked = sudosync_core.maybe_check_github_update_daily(now_epoch=1100.0, ask_and_install=False)
             self.assertFalse(res_blocked.get("checked", True))
             self.assertEqual(res_blocked.get("reason"), "not_due")
+            self.assertEqual(nas_reads, [])
 
-            # 2) When another Kodi in the network already promoted version to 2.1.0, 24h counter does NOT block
+            # 2) When 24h elapses and user selects "Później" (declines version 2.1.0),
+            # status.json records last_declined_github_version and does not re-prompt for 2.1.0
+            with patch.object(sudosync_core, "find_github_update", return_value={
+                "available": True,
+                "version": "2.1.0",
+                "current_version": "2.0.12",
+            }) as mock_find, patch.object(sudosync_core.xbmcgui, "Dialog") as mock_dialog_cls:
+                mock_dialog_cls.return_value.yesno.return_value = False
+                res_declined = sudosync_core.maybe_check_github_update_daily(now_epoch=90000.0, ask_and_install=True)
+                mock_find.assert_called_once()
+                mock_dialog_cls.return_value.yesno.assert_called_once()
+                self.assertTrue(res_declined.get("declined"))
+
+                # Subsequent due check for the same version 2.1.0 does not open yesno dialog again
+                res_repeat = sudosync_core.maybe_check_github_update_daily(now_epoch=180000.0, ask_and_install=True)
+                self.assertTrue(res_repeat.get("declined_previously"))
+                self.assertEqual(mock_dialog_cls.return_value.yesno.call_count, 1)
+
+            # 3) Network version bump to 2.1.0 is enforced by refresh_network_active_kodi_lease (every 60s)
             self.vfs.files[self.base_path + "SudoSync.cfg"] = json.dumps({
                 "schema_version": 1,
                 "configuration": {"completed": True},
@@ -1110,14 +1136,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
                     "min_addon_version": "2.1.0",
                 },
             }).encode("utf-8")
-            with patch.object(sudosync_core, "find_github_update", return_value={
-                "available": True,
-                "version": "2.1.0",
-                "current_version": "2.0.12",
-            }) as mock_find:
-                res_allowed = sudosync_core.maybe_check_github_update_daily(now_epoch=1100.0, ask_and_install=False)
-                mock_find.assert_called_once()
-                self.assertTrue(res_allowed.get("available"))
+            self.assertFalse(sudosync_bootstrap.refresh_network_active_kodi_lease(self.base_path, now_epoch=1200.0))
 
 
 if __name__ == "__main__":
