@@ -123,7 +123,7 @@ def _record_versions(state, prior, client_id, logical_clock, has_previous_snapsh
 
 def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=None,
                    generated_at=None, logical_clock=0, max_records=100000,
-                   suppress_local_changes=False):
+                   suppress_local_changes=False, kept_kodi_ids_out=None):
     """Convert Kodi movie/episode arrays into a schema-validated snapshot.
 
     A changed field advances that field's local version relative to the previous
@@ -168,6 +168,7 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
 
     seen = {"movie": {} , "episode": {}}
     output = {"movie": [], "episode": []}
+    kept_ids = {"movie": [], "episode": []}
     for media_type, source in (("movie", movies), ("episode", episodes)):
         if media_type == "episode":
             sudo_counts = {}
@@ -289,6 +290,12 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                 "state": state,
                 "versions": versions,
             })
+            id_key = "movieid" if media_type == "movie" else "episodeid"
+            kept_ids[media_type].append(item.get(id_key))
+
+    if isinstance(kept_kodi_ids_out, dict):
+        kept_kodi_ids_out["movie"] = kept_ids["movie"]
+        kept_kodi_ids_out["episode"] = kept_ids["episode"]
 
     snapshot = {
         "format": FORMAT_NAME,

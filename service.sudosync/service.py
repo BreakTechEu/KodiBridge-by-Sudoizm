@@ -325,6 +325,8 @@ def _run_service():
     settings = addon_settings()
     
     from resources.lib.sudosync_bootstrap import (
+        enforce_network_version_guard,
+        is_network_addon_version_newer,
         refresh_network_active_kodi_lease,
         release_network_active_kodi_lease,
         run_bootstrap,
@@ -442,14 +444,28 @@ def _run_service():
                             xbmc.LOGWARNING,
                         )
                         try:
-                            xbmcgui.Dialog().notification(
-                                "SudoSync",
-                                "Inne Kodi przejęło sesję lub wymaga nowszej wersji. Usługa wstrzymana.",
-                                xbmcgui.NOTIFICATION_WARNING,
-                                5000,
-                            )
+                            outdated, _, _, net_cfg = is_network_addon_version_newer(base_for_lease)
                         except Exception:
-                            pass
+                            outdated, net_cfg = False, {}
+                        if outdated and not _is_playing_video():
+                            try:
+                                release_network_active_kodi_lease(base_for_lease)
+                            except Exception:
+                                pass
+                            try:
+                                enforce_network_version_guard(base_for_lease, net_cfg)
+                            except Exception as exc:
+                                log("Version guard dialog failed: {}".format(exc), xbmc.LOGWARNING)
+                        else:
+                            try:
+                                xbmcgui.Dialog().notification(
+                                    "SudoSync",
+                                    "Inne Kodi przejęło sesję lub wymaga nowszej wersji. Usługa wstrzymana.",
+                                    xbmcgui.NOTIFICATION_WARNING,
+                                    5000,
+                                )
+                            except Exception:
+                                pass
                         break
                 snapshot_interval = settings["interval_seconds"]
                 live_poll = settings.get("live_poll_seconds", 60)

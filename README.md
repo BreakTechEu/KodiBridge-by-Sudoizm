@@ -2,9 +2,9 @@
 
 ---
 
-> [!WARNING]
-> **Beta Release Notice (SudoSync 2.0.13):**
-> SudoSync 2.0.13 is a **public beta / testing release** featuring the rebuilt v2 architecture and SudoSync ID system for private videos and local networks. While tested thoroughly, it is intended for testing and early adopters. If you require a battle-tested, fully stable environment, use **SudoSync 1.0.0** from branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
+> [!NOTE]
+> **Production Release (SudoSync 2.1.0):**
+> SudoSync 2.1.0 is the **production release** of the v2 architecture featuring journaled synchronization, SudoSync ID for private videos and local networks, single-active-Kodi session guard, and cross-device version enforcement. The legacy **SudoSync 1.0.0** line remains available on the read-only branch [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
 > Both releases are available in the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section.
 
 # SudoSync for Kodi
@@ -43,8 +43,8 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **SudoSync 2.0.13 (Beta):** Download `service.sudosync-2.0.13.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for testing new v2 features and SudoSync ID).
-   - **SudoSync 1.0.0 (Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended for production environments requiring maximum stability).
+   - **SudoSync 2.1.0 (Production):** Download `service.sudosync-2.1.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended production release with v2 architecture and SudoSync ID).
+   - **SudoSync 1.0.0 (Legacy Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section.
 
 2. **Install in Kodi:**
    - In Kodi, navigate to: *Settings -> Add-ons -> Install from zip file*.

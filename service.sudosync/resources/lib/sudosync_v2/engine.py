@@ -116,6 +116,7 @@ class SyncEngine(object):
 
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before building snapshot")
+            local_kodi_ids = {"movie": [], "episode": []}
             candidate = build_snapshot(
                 movies,
                 episodes,
@@ -125,11 +126,8 @@ class SyncEngine(object):
                 logical_clock=logical_clock,
                 max_records=self._max_records,
                 suppress_local_changes=bool(suppress_local_changes),
+                kept_kodi_ids_out=local_kodi_ids,
             )
-            local_kodi_ids = {
-                "movie": [item.get("movieid") for item in movies],
-                "episode": [item.get("episodeid") for item in episodes],
-            }
 
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before building sync plan")
@@ -297,6 +295,7 @@ class SyncEngine(object):
 
             if is_aborted(abort):
                 raise OperationAborted("Initialization preview aborted before building snapshot")
+            local_kodi_ids = {"movie": [], "episode": []}
             candidate = build_snapshot(
                 movies,
                 episodes,
@@ -305,11 +304,8 @@ class SyncEngine(object):
                 previous_snapshot=previous,
                 logical_clock=logical_clock,
                 max_records=self._max_records,
+                kept_kodi_ids_out=local_kodi_ids,
             )
-            local_kodi_ids = {
-                "movie": [item.get("movieid") for item in movies],
-                "episode": [item.get("episodeid") for item in episodes],
-            }
 
             if is_aborted(abort):
                 raise OperationAborted("Initialization preview aborted before building initialization plan")

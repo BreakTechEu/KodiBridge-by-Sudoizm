@@ -100,7 +100,7 @@ class FakeAddon(object):
 
     def getAddonInfo(self, key):
         if key == "version":
-            return "2.0.9"
+            return getattr(self, "version", "2.0.9")
         return ""
 
 
@@ -1048,6 +1048,76 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     sudosync_core.assign_sudosync_ids(show_notification=False)
             self.assertFalse(sudosync_core._ASSIGN_IDS_LOCK_HELD)
+
+    def test_09_bootstrap_unc_read_write_and_24h_timer_bypass_when_peer_newer(self):
+        """Verify _read_json_file/_write_json_file over UNC never hit UnboundLocalError and 24h timer is bypassed only when a network peer has a newer version."""
+        import tempfile
+        import shutil
+        tmp = tempfile.mkdtemp()
+        try:
+            unc_cfg = os.path.join(tmp, "SudoSync.cfg")
+            with patch.object(sudosync_bootstrap, "_bootstrap_win_unc", return_value=unc_cfg):
+                ok = sudosync_bootstrap._write_json_file(
+                    self.base_path + "SudoSync.cfg",
+                    {"schema_version": 1, "network_settings": {"min_addon_version": "2.1.0"}},
+                )
+                self.assertTrue(ok)
+                status, data = sudosync_bootstrap._read_json_file(self.base_path + "SudoSync.cfg")
+                self.assertEqual(status, "VALID")
+                self.assertEqual(data["network_settings"]["min_addon_version"], "2.1.0")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+        addon_kodi = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi Starsze",
+            "check_updates": "true",
+        })
+        addon_kodi.version = "2.0.12"
+        self.active_profile = "/profile_kodi_old"
+        p = self._patch_env(addon_kodi)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
+                patch.object(sudosync_bootstrap.xbmcvfs, "exists", side_effect=self.vfs.exists), \
+                patch.object(sudosync_bootstrap.xbmcvfs, "File", side_effect=self.vfs.make_file):
+            # Seed recent check 100s ago (< 86400s) and same network version 2.0.12
+            self.vfs.files[self.base_path + "SudoSync.cfg"] = json.dumps({
+                "schema_version": 1,
+                "configuration": {"completed": True},
+                "network_settings": {
+                    "sudosync_id_enabled": True,
+                    "sudosync_id_prefix": "DOM",
+                    "sudosync_id_last_number": 0,
+                    "min_addon_version": "2.0.12",
+                },
+            }).encode("utf-8")
+            sudosync_core._write_local_json(
+                "/profile_kodi_old/status.json",
+                {"last_github_update_check_epoch": 1000.0},
+            )
+            # 1) When network has same version (2.0.12), 24h counter blocks routine check
+            res_blocked = sudosync_core.maybe_check_github_update_daily(now_epoch=1100.0, ask_and_install=False)
+            self.assertFalse(res_blocked.get("checked", True))
+            self.assertEqual(res_blocked.get("reason"), "not_due")
+
+            # 2) When another Kodi in the network already promoted version to 2.1.0, 24h counter does NOT block
+            self.vfs.files[self.base_path + "SudoSync.cfg"] = json.dumps({
+                "schema_version": 1,
+                "configuration": {"completed": True},
+                "network_settings": {
+                    "sudosync_id_enabled": True,
+                    "sudosync_id_prefix": "DOM",
+                    "sudosync_id_last_number": 0,
+                    "min_addon_version": "2.1.0",
+                },
+            }).encode("utf-8")
+            with patch.object(sudosync_core, "find_github_update", return_value={
+                "available": True,
+                "version": "2.1.0",
+                "current_version": "2.0.12",
+            }) as mock_find:
+                res_allowed = sudosync_core.maybe_check_github_update_daily(now_epoch=1100.0, ask_and_install=False)
+                mock_find.assert_called_once()
+                self.assertTrue(res_allowed.get("available"))
 
 
 if __name__ == "__main__":

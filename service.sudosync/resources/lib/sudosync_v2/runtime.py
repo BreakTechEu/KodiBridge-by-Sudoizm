@@ -192,13 +192,21 @@ class V2RuntimeComponents(object):
 
         tx_result = self.transaction_runner.run(plan, client_id, candidate, abort_requested=abort_requested)
         if tx_result.get("status") == "deferred":
+            published_path = None
+            previous = self.catalog.load(client_id, abort_requested=abort_requested)
+            if publish_local or previous is None:
+                if (previous is None
+                        or previous.get("movies") != candidate.get("movies")
+                        or previous.get("episodes") != candidate.get("episodes")
+                        or previous.get("client") != candidate.get("client")):
+                    published_path = self.catalog.publish(candidate)
             return {
                 "status": "deferred",
                 "reason": tx_result.get("reason", "deferred"),
                 "recovery": startup.get("recovery"),
                 "preview": preview,
                 "transaction": tx_result,
-                "published_snapshot_path": None,
+                "published_snapshot_path": published_path,
                 "applied_count": 0,
             }
 

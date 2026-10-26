@@ -178,6 +178,11 @@ class TestKodiVFSBackend(unittest.TestCase):
                 self.assertTrue(backend.rename(file_smb, renamed_smb))
                 self.assertTrue(backend.delete(renamed_smb))
                 self.assertFalse(backend.exists(renamed_smb))
+
+                # Also verify write_text creates nested transaction directories automatically
+                nested_tx = "smb://xiaomi:wrongpass@192.168.69.100/Wideo/.SudoSync/transactions/backups/backup-1.json"
+                self.assertTrue(backend.write_text(nested_tx, '{"ok": 1}'))
+                self.assertEqual(backend.read_text(nested_tx), '{"ok": 1}')
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 

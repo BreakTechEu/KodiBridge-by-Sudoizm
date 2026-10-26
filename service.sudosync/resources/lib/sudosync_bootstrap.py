@@ -164,7 +164,6 @@ def _read_json_file(filepath):
         return "IO_ERROR", None
 
     try:
-        import json
         obj = json.loads(data)
         return "VALID", obj
     except (ValueError, TypeError) as exc:
@@ -237,7 +236,6 @@ def _write_json_file(filepath, obj):
     tmp_file = filepath + ".tmp"
     bak_file = filepath + ".bak"
     try:
-        import json
         data = json.dumps(obj, indent=2, sort_keys=True)
 
         # 1. Write and verify the temporary file (must exist and be non-empty).
@@ -307,6 +305,77 @@ def _get_local_addon_version():
     return ""
 
 
+def _discover_highest_network_addon_version(base_path, cfg=None):
+    """Return the highest addon version string recorded across shared network files."""
+    from resources.lib.sudosync_core import _numeric_version
+    base = (base_path or get_base_path() or "").rstrip("/")
+    if not base:
+        return ""
+    base_slash = base + "/"
+    candidates = []
+
+    if not isinstance(cfg, dict):
+        st, loaded_cfg = read_sudosync_cfg(base_slash)
+        if st == "VALID" and isinstance(loaded_cfg, dict):
+            cfg = loaded_cfg
+
+    if isinstance(cfg, dict):
+        net = cfg.get("network_settings")
+        if isinstance(net, dict):
+            ver = str(net.get("min_addon_version") or "").strip()
+            if ver:
+                candidates.append(ver)
+
+    for lock_name in (ACTIVE_KODI_LOCK_FILENAME, ACTIVE_KODI_LOCK_FILENAME + ".bak"):
+        st, lock_doc = _read_json_file(base_slash + lock_name)
+        if st == "VALID" and isinstance(lock_doc, dict):
+            ver = str(lock_doc.get("addon_version") or "").strip()
+            if ver:
+                candidates.append(ver)
+
+    st, sys_doc = _read_json_file(base_slash + "system/config.json")
+    if st == "VALID" and isinstance(sys_doc, dict):
+        sys_net = sys_doc.get("network_settings")
+        if isinstance(sys_net, dict):
+            ver = str(sys_net.get("min_addon_version") or "").strip()
+            if ver:
+                candidates.append(ver)
+        clients = sys_doc.get("clients")
+        if isinstance(clients, dict):
+            for cinfo in clients.values():
+                if isinstance(cinfo, dict):
+                    ver = str(cinfo.get("addon_version") or "").strip()
+                    if ver:
+                        candidates.append(ver)
+
+    best_ver = ""
+    best_num = (0, 0, 0, 3, 0)
+    for ver in candidates:
+        num = _numeric_version(ver)
+        if num > best_num:
+            best_num = num
+            best_ver = ver
+    return best_ver
+
+
+def is_network_addon_version_newer(base_path=None, cfg=None):
+    """Return (is_newer, remote_min, local_version, cfg_dict)."""
+    from resources.lib.sudosync_core import _numeric_version
+    base = (base_path or get_base_path() or "").rstrip("/")
+    local_version = _get_local_addon_version()
+    if not base or not local_version:
+        return False, "", local_version, cfg if isinstance(cfg, dict) else {}
+    base_slash = base + "/"
+    if not isinstance(cfg, dict):
+        st, loaded_cfg = read_sudosync_cfg(base_slash)
+        cfg = loaded_cfg if (st == "VALID" and isinstance(loaded_cfg, dict)) else {}
+    remote_min = _discover_highest_network_addon_version(base_slash, cfg=cfg)
+    if not remote_min:
+        return False, "", local_version, cfg
+    is_newer = _numeric_version(local_version) < _numeric_version(remote_min)
+    return is_newer, remote_min, local_version, cfg
+
+
 def update_network_min_version(base_path, new_version):
     """Update min_addon_version in SudoSync.cfg if new_version is newer."""
     from resources.lib.sudosync_core import _numeric_version
@@ -326,8 +395,8 @@ def update_network_min_version(base_path, new_version):
     return False
 
 
-def enforce_network_version_guard(base_path, cfg):
-    """Ensure this Kodi's SudoSync version is not older than min_addon_version in SudoSync.cfg.
+def enforce_network_version_guard(base_path, cfg=None):
+    """Ensure this Kodi's SudoSync version is not older than the highest version in the network.
 
     If this Kodi has a newer version than recorded in SudoSync.cfg, promotes
     min_addon_version in SudoSync.cfg.
@@ -344,20 +413,31 @@ def enforce_network_version_guard(base_path, cfg):
     if not local_version:
         return True
 
-    net = cfg.setdefault("network_settings", {})
+    base = (base_path or get_base_path() or "").rstrip("/") + "/"
+    if not isinstance(cfg, dict):
+        st, loaded_cfg = read_sudosync_cfg(base)
+        cfg = loaded_cfg if (st == "VALID" and isinstance(loaded_cfg, dict)) else {}
+
+    net = cfg.setdefault("network_settings", {}) if isinstance(cfg, dict) else {}
     if not isinstance(net, dict):
         return True
 
-    remote_min = str(net.get("min_addon_version") or "").strip()
+    cfg_min = str(net.get("min_addon_version") or "").strip()
+    remote_min = _discover_highest_network_addon_version(base, cfg=cfg) or cfg_min
     local_num = _numeric_version(local_version)
     remote_num = _numeric_version(remote_min) if remote_min else (0, 0, 0, 3, 0)
+    cfg_num = _numeric_version(cfg_min) if cfg_min else (0, 0, 0, 3, 0)
 
     if not remote_min or local_num > remote_num:
-        if local_num > (0, 0, 0, 3, 0):
+        if local_num > (0, 0, 0, 3, 0) and local_num > cfg_num and isinstance(cfg, dict) and cfg.get("configuration"):
             net["min_addon_version"] = local_version
-            write_sudosync_cfg(base_path, cfg)
+            write_sudosync_cfg(base, cfg)
             log("Zaktualizowano minimalną wersję sieciową SudoSync w SudoSync.cfg: {}".format(local_version))
         return True
+
+    if remote_num > cfg_num and isinstance(cfg, dict) and cfg.get("configuration"):
+        net["min_addon_version"] = remote_min
+        write_sudosync_cfg(base, cfg)
 
     if local_num == remote_num:
         return True
@@ -504,21 +584,17 @@ def refresh_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
         now = float(now_epoch if now_epoch is not None else time.time())
 
         if local_version:
-            cfg_status, cfg = read_sudosync_cfg(base + "/")
-            if cfg_status == "VALID" and isinstance(cfg, dict):
-                net = cfg.get("network_settings")
-                if isinstance(net, dict):
-                    remote_min = str(net.get("min_addon_version") or "").strip()
-                    if remote_min:
-                        from resources.lib.sudosync_core import _numeric_version
-                        if _numeric_version(local_version) < _numeric_version(remote_min):
-                            log(
-                                "Wykryto nowszą wymaganą wersję SudoSync w sieci ({}) podczas działania usługi (lokalna: {}). Zatrzymuję usługę.".format(
-                                    remote_min, local_version
-                                ),
-                                xbmc.LOGWARNING,
-                            )
-                            return False
+            remote_min = _discover_highest_network_addon_version(base + "/")
+            if remote_min:
+                from resources.lib.sudosync_core import _numeric_version
+                if _numeric_version(local_version) < _numeric_version(remote_min):
+                    log(
+                        "Wykryto nowszą wymaganą wersję SudoSync w sieci ({}) podczas działania usługi (lokalna: {}). Zatrzymuję usługę.".format(
+                            remote_min, local_version
+                        ),
+                        xbmc.LOGWARNING,
+                    )
+                    return False
 
         status, existing = _read_json_file(lock_path)
         if status == "VALID" and isinstance(existing, dict):
@@ -831,7 +907,6 @@ def run_bootstrap(force_select_path=False):
         _ensure_client_enrolled_and_initialized(base_path)
         return True
     elif status in ("INVALID", "IO_ERROR"):
-        import time
         corrupted_path = base_path + "SudoSync.cfg"
         backup_path = base_path + "SudoSync.cfg.corrupted_" + str(int(time.time()))
         if xbmcvfs.exists(corrupted_path):

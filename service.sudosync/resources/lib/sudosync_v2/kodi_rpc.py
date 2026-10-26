@@ -525,6 +525,8 @@ class KodiJsonRpcAdapter(object):
             value = result["userrating"]
             if value is not None and (type(value) is not int or not 1 <= value <= 10):
                 raise ValueError("userrating must be null or an integer from 1 to 10")
+            if value is None:
+                result["userrating"] = 0
         if "resume" in result:
             resume = result["resume"]
             if not isinstance(resume, dict) or set(resume) != {"position", "total"}:

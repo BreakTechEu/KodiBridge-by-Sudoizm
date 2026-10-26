@@ -1131,10 +1131,19 @@ def install_update_from_zip_path(zip_path, allow_same_or_older=False, show_dialo
     return _extract_and_swap_addon(local_zip, package_version, zip_path, show_dialogs=show_dialogs)
 
 
-def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True):
-    """Check GitHub Releases at most once per 24 hours and ask user consent before installing."""
+def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=False):
+    """Check GitHub Releases at most once per 24 hours (unless force=True or network peer is newer) and ask user consent before installing."""
     settings = addon_settings()
-    if not settings.get("check_updates", True):
+    network_has_newer = False
+    try:
+        from resources.lib.sudosync_bootstrap import is_network_addon_version_newer
+        base_p = settings.get("base_path") or ""
+        if base_p:
+            network_has_newer = bool(is_network_addon_version_newer(base_p)[0])
+    except Exception:
+        network_has_newer = False
+
+    if not settings.get("check_updates", True) and not force and not network_has_newer:
         return {"checked": False, "reason": "disabled"}
 
     now = float(now_epoch if now_epoch is not None else datetime.now(timezone.utc).timestamp())
@@ -1144,7 +1153,7 @@ def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True):
     except Exception:
         last_check = 0.0
 
-    if last_check > 0.0 and (now - last_check) < DAILY_UPDATE_CHECK_INTERVAL_SECONDS:
+    if not force and not network_has_newer and last_check > 0.0 and (now - last_check) < DAILY_UPDATE_CHECK_INTERVAL_SECONDS:
         return {"checked": False, "reason": "not_due", "last_check_epoch": last_check}
 
     result = find_github_update()
@@ -1529,6 +1538,15 @@ def ensure_remote_layout(base_path):
     live_dir = _join_vfs(base_path, "live")
     if not _vfs_exists(live_dir):
         _vfs_mkdirs(live_dir)
+    tx_dir = _join_vfs(base_path, "transactions")
+    if not _vfs_exists(tx_dir):
+        _vfs_mkdirs(tx_dir)
+    tx_backups = _join_vfs(base_path, "transactions", "backups")
+    if not _vfs_exists(tx_backups):
+        _vfs_mkdirs(tx_backups)
+    tx_journals = _join_vfs(base_path, "transactions", "journals")
+    if not _vfs_exists(tx_journals):
+        _vfs_mkdirs(tx_journals)
     marker = base_path.rstrip("/") + "/format.json"
     if not _vfs_exists(marker):
         _write_vfs_json(marker, {

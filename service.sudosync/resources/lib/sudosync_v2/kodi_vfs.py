@@ -212,12 +212,23 @@ class KodiVFSBackend(object):
         unc_path = _resolve_win_unc(path, self._allow_win_unc)
         if unc_path is not None:
             try:
+                parent_dir = os.path.dirname(unc_path)
+                if parent_dir and not os.path.isdir(parent_dir):
+                    os.makedirs(parent_dir, exist_ok=True)
                 with open(unc_path, "wb") as handle:
                     handle.write(raw_bytes)
                     handle.flush()
                 return True
             except Exception as exc:
                 raise KodiVFSBackendError("Cannot write {}: {}".format(path, exc))
+        if "/" in path:
+            parent_vfs = path.rsplit("/", 1)[0]
+            if parent_vfs and not parent_vfs.endswith(":/"):
+                try:
+                    if not self.exists(parent_vfs):
+                        self.mkdirs(parent_vfs)
+                except Exception:
+                    pass
         handle = None
         try:
             handle = self._vfs.File(path, "w")
@@ -244,6 +255,9 @@ class KodiVFSBackend(object):
             try:
                 if os.path.exists(unc_dst):
                     return False
+                parent_dir = os.path.dirname(unc_dst)
+                if parent_dir and not os.path.isdir(parent_dir):
+                    os.makedirs(parent_dir, exist_ok=True)
                 os.replace(unc_src, unc_dst)
                 return True
             except Exception as exc:
@@ -253,7 +267,13 @@ class KodiVFSBackend(object):
             # check-and-rename sequence from other SudoSync writers.
             if self._vfs.exists(destination):
                 return False
-            return bool(self._vfs.rename(source, destination))
+            if self._vfs.rename(source, destination):
+                return True
+            stripped_src = _strip_vfs_credentials(source)
+            stripped_dst = _strip_vfs_credentials(destination)
+            if (stripped_src != source or stripped_dst != destination) and not self._vfs.exists(stripped_dst):
+                return bool(self._vfs.rename(stripped_src, stripped_dst))
+            return False
         except Exception as exc:
             raise KodiVFSBackendError("Cannot rename {} to {}: {}".format(source, destination, exc))
 
@@ -268,9 +288,12 @@ class KodiVFSBackend(object):
             except Exception as exc:
                 raise KodiVFSBackendError("Cannot delete {}: {}".format(path, exc))
         try:
-            if not self._vfs.exists(path):
-                return False
-            return bool(self._vfs.delete(path))
+            if self._vfs.exists(path):
+                return bool(self._vfs.delete(path))
+            stripped = _strip_vfs_credentials(path)
+            if stripped != path and self._vfs.exists(stripped):
+                return bool(self._vfs.delete(stripped))
+            return False
         except Exception as exc:
             raise KodiVFSBackendError("Cannot delete {}: {}".format(path, exc))
 
