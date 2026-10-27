@@ -195,6 +195,15 @@ def _execute_integrated_live_cycle(
     v2_applied = 0
 
     if v2_runtime is not None:
+        # NFO identifiers are cached between cycles; a finished library scan/clean
+        # may have changed sidecar files, so drop the cache before re-reading.
+        if getattr(monitor, "scan_refresh_pending", False) is True:
+            try:
+                kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
+                if hasattr(kodi_adapter, "clear_nfo_cache"):
+                    kodi_adapter.clear_nfo_cache()
+            except Exception as exc:
+                log("V2 NFO cache invalidation failed: {}".format(exc), xbmc.LOGWARNING)
         try:
             v2_result = v2_runtime.sync_cycle(
                 abort_requested=monitor.abortRequested,
@@ -375,24 +384,16 @@ def _run_service():
                 settings["client_name"],
                 abort_requested=monitor.abortRequested,
             )
-            v2_startup = v2_runtime.start(abort_requested=monitor.abortRequested)
+            # Recovery only: the library scan is done once, by the first sync cycle.
+            # A second full NFO scan here delayed the first snapshot by 1-2 minutes.
+            v2_startup = v2_runtime.recover(abort_requested=monitor.abortRequested)
             if v2_startup.get("status") == "blocked":
                 v2_blocked = True
                 log("V2 startup blocked by unrecovered session marker.", xbmc.LOGERROR)
-            v2_preview = v2_startup.get("preview")
-            if v2_preview is None:
-                log("V2 startup preview {}: {}".format(
-                    v2_startup.get("status"),
-                    (v2_startup.get("recovery") or {}).get("status", "no preview"),
-                ), xbmc.LOGINFO)
-            else:
-                log("V2 startup preview active={} reason={}".format(
-                    v2_preview.get("active"), v2_preview.get("reason", ""),
-                ), xbmc.LOGINFO)
-                if v2_preview.get("skipped_nfo_count"):
-                    log("V2 startup preview skipped {} corrupted NFO file(s)".format(
-                        v2_preview.get("skipped_nfo_count")
-                    ), xbmc.LOGWARNING)
+            log("V2 startup recovery {}: {}".format(
+                v2_startup.get("status"),
+                (v2_startup.get("recovery") or {}).get("status", "n/a"),
+            ), xbmc.LOGINFO)
         except Exception as exc:
             # A preview failure must not disable the currently working service.
             log("V2 startup preview unavailable: {}".format(exc), xbmc.LOGWARNING)

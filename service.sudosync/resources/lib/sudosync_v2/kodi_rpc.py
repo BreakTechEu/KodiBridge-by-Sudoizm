@@ -236,6 +236,7 @@ class KodiJsonRpcAdapter(object):
         cache_key = (media_type, media_path, season, episode) if isinstance(media_path, str) and media_path else None
         if cache_key is not None and cache_key in self._nfo_id_cache:
             return dict(self._nfo_id_cache[cache_key])
+        had_error = False
         for path in self._nfo_paths(media_path, media_type):
             if self._is_aborted(abort_requested):
                 raise OperationAborted("NFO reading aborted before " + path)
@@ -254,33 +255,42 @@ class KodiJsonRpcAdapter(object):
                             if kind in identifiers and identifiers[kind] != value:
                                 raise NfoConflictError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
                             identifiers[kind] = value
-                if cache_key is not None and identifiers.get("sudosync"):
+                if cache_key is not None and not had_error:
                     self._nfo_id_cache[cache_key] = dict(identifiers)
                 return identifiers
             except (IOError, OSError) as exc:
                 reason = "Cannot read metadata file: {}".format(exc)
                 self._record_nfo_error(path, reason)
+                had_error = True
                 continue
             except UnicodeDecodeError as exc:
                 reason = "Metadata file is not valid UTF-8: {}".format(exc)
                 self._record_nfo_error(path, reason)
+                had_error = True
                 continue
             except NfoSizeLimitError as exc:
                 reason = "Metadata file exceeds configured size limit: {}".format(exc)
                 self._record_nfo_error(path, reason)
+                had_error = True
                 continue
             except NfoConflictError as exc:
                 reason = "Metadata file has conflicting identifiers: {}".format(exc)
                 self._record_nfo_error(path, reason)
+                had_error = True
                 continue
             except NfoEmptyError as exc:
                 reason = "Metadata file is empty: {}".format(exc)
                 self._record_nfo_error(path, reason)
+                had_error = True
                 continue
             except (ET.ParseError, ValueError) as exc:
                 reason = "Metadata file parsing error: {}".format(exc)
                 self._record_nfo_error(path, reason)
+                had_error = True
                 continue
+        if cache_key is not None and not had_error:
+            # Negative result (no NFO present): do not hit the NAS again every cycle.
+            self._nfo_id_cache[cache_key] = {}
         return {}
 
     def _enrich_with_nfo(self, items, media_type, abort_requested=None, progress_callback=None):

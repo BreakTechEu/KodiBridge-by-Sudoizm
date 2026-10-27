@@ -139,6 +139,26 @@ class V2RuntimeComponents(object):
             suppress_local_changes=suppress_local_changes,
         )
 
+    def recover(self, abort_requested=None):
+        """Recover an owned session only, without scanning the Kodi library.
+
+        Startup only needs to know whether an unrecovered session blocks v2.
+        The (expensive) library preview is performed once by ``sync_cycle``.
+        """
+        from .kodi_rpc import is_aborted
+        abort = abort_requested if abort_requested is not None else self.service_runtime._abort_requested
+        if is_aborted(abort):
+            return {"status": "aborted", "recovery": {"status": "aborted"}, "preview": None}
+        recovery = self.service_runtime._recovery_runner.recover_on_start(self.client_id)
+        if not isinstance(recovery, dict) or not isinstance(recovery.get("status"), str):
+            raise V2RuntimeError("Recovery runner returned an invalid startup result")
+        status = recovery["status"]
+        if status in ("blocked", "deferred"):
+            return {"status": status, "recovery": recovery, "preview": None}
+        if status not in ("clear", "recovered"):
+            raise V2RuntimeError("Recovery runner returned an unsupported startup status: " + status)
+        return {"status": "ready", "recovery": recovery, "preview": None}
+
     def sync_cycle(self, abort_requested=None, suppress_local_changes=False, publish_local=True):
         """Execute one complete v2 sync cycle: recover -> preview -> transact -> publish."""
         startup = self.start(
