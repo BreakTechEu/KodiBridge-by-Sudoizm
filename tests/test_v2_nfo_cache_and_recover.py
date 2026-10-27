@@ -196,6 +196,70 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
         mock_collect.assert_not_called()
         mock_dry_run.assert_not_called()
 
+    @patch.object(sudosync_service, "collect_and_write")
+    @patch.object(sudosync_service, "run_dry_run")
+    def test_initial_snapshot_skipped_when_v2_aborted(self, mock_dry_run, mock_collect):
+        mock_v2 = MagicMock()
+        mock_v2.recover.return_value = {"status": "aborted", "recovery": {"status": "aborted"}}
+
+        res = sudosync_service._initial_snapshot_and_analyse(
+            v2_runtime=mock_v2,
+            abort_requested=lambda: False,
+            init_completed=False,
+        )
+
+        self.assertEqual(res.get("status"), "aborted")
+        mock_collect.assert_not_called()
+        mock_dry_run.assert_not_called()
+
+    @patch.object(sudosync_service, "collect_and_write")
+    @patch.object(sudosync_service, "run_dry_run")
+    def test_initial_snapshot_skipped_when_v2_recover_raises_exception_fail_closed(self, mock_dry_run, mock_collect):
+        mock_v2 = MagicMock()
+        mock_v2.recover.side_effect = RuntimeError("VFS storage offline")
+
+        res = sudosync_service._initial_snapshot_and_analyse(
+            v2_runtime=mock_v2,
+            abort_requested=lambda: False,
+            init_completed=False,
+        )
+
+        self.assertEqual(res.get("status"), "error")
+        self.assertIn("VFS storage offline", res.get("error", ""))
+        mock_collect.assert_not_called()
+        mock_dry_run.assert_not_called()
+
+    @patch.object(sudosync_service, "collect_and_write")
+    @patch.object(sudosync_service, "run_dry_run")
+    def test_initial_snapshot_skipped_when_v2_recover_returns_unexpected_status_fail_closed(self, mock_dry_run, mock_collect):
+        mock_v2 = MagicMock()
+        mock_v2.recover.return_value = {"status": "unknown_corruption_state"}
+
+        res = sudosync_service._initial_snapshot_and_analyse(
+            v2_runtime=mock_v2,
+            abort_requested=lambda: False,
+            init_completed=False,
+        )
+
+        self.assertEqual(res.get("status"), "unknown_corruption_state")
+        mock_collect.assert_not_called()
+        mock_dry_run.assert_not_called()
+
+    @patch.object(sudosync_service, "collect_and_write")
+    @patch.object(sudosync_service, "run_dry_run")
+    def test_initial_snapshot_proceeds_when_v2_recover_ready(self, mock_dry_run, mock_collect):
+        mock_v2 = MagicMock()
+        mock_v2.recover.return_value = {"status": "ready"}
+
+        res = sudosync_service._initial_snapshot_and_analyse(
+            v2_runtime=mock_v2,
+            abort_requested=lambda: False,
+            init_completed=False,
+        )
+
+        mock_collect.assert_called_once_with(show_notification=False)
+        mock_dry_run.assert_called_once_with(show_notification=False)
+
 
 if __name__ == "__main__":
     unittest.main()

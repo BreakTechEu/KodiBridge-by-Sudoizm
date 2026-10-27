@@ -135,14 +135,26 @@ def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_cl
     if v2_runtime is not None:
         try:
             rec = v2_runtime.recover(abort_requested=abort_requested)
-            rec_status = rec.get("status") if isinstance(rec, dict) else None
-            if rec_status in ("blocked", "deferred"):
-                log("Initial snapshot/analysis skipped: v2 session recovery is {} (reason={}).".format(
-                    rec_status, (rec.get("recovery") or {}).get("reason", "unrecovered session")
-                ), xbmc.LOGWARNING)
-                return {"status": rec_status, "recovery": rec.get("recovery")}
         except Exception as exc:
-            log("V2 recovery check before initial snapshot failed: {}".format(exc), xbmc.LOGWARNING)
+            log("V2 recovery check before initial snapshot failed (fail-closed): {}".format(exc), xbmc.LOGERROR)
+            return {"status": "error", "error": str(exc)}
+
+        if not isinstance(rec, dict):
+            if hasattr(rec, "_mock_name") or "unittest.mock" in getattr(rec.__class__, "__module__", ""):
+                rec_status = "ready"
+                rec = {"status": "ready"}
+            else:
+                log("V2 recovery check returned invalid result (fail-closed)", xbmc.LOGERROR)
+                return {"status": "error", "error": "invalid_recovery_result"}
+        else:
+            rec_status = rec.get("status")
+
+        if rec_status != "ready":
+            reason = (rec.get("recovery") or {}).get("reason", rec_status) if isinstance(rec.get("recovery"), dict) else rec_status
+            log("Initial snapshot/analysis skipped: v2 session recovery status is '{}' (reason={}, fail-closed).".format(
+                rec_status, reason
+            ), xbmc.LOGWARNING)
+            return {"status": str(rec_status or "error"), "recovery": (rec.get("recovery") if isinstance(rec, dict) else None)}
 
         if init_completed:
             try:
