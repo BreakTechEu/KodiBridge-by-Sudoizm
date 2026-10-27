@@ -133,6 +133,17 @@ class SudoSyncMonitor(_MonitorBase):
 
 def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_client_id=None, init_completed=False):
     if v2_runtime is not None:
+        try:
+            rec = v2_runtime.recover(abort_requested=abort_requested)
+            rec_status = rec.get("status") if isinstance(rec, dict) else None
+            if rec_status in ("blocked", "deferred"):
+                log("Initial snapshot/analysis skipped: v2 session recovery is {} (reason={}).".format(
+                    rec_status, (rec.get("recovery") or {}).get("reason", "unrecovered session")
+                ), xbmc.LOGWARNING)
+                return {"status": rec_status, "recovery": rec.get("recovery")}
+        except Exception as exc:
+            log("V2 recovery check before initial snapshot failed: {}".format(exc), xbmc.LOGWARNING)
+
         if init_completed:
             try:
                 v2_pub = v2_runtime.publish_local_snapshot(
@@ -387,9 +398,14 @@ def _run_service():
             # Recovery only: the library scan is done once, by the first sync cycle.
             # A second full NFO scan here delayed the first snapshot by 1-2 minutes.
             v2_startup = v2_runtime.recover(abort_requested=monitor.abortRequested)
-            if v2_startup.get("status") == "blocked":
+            v2_startup_status = v2_startup.get("status")
+            if v2_startup_status == "blocked":
                 v2_blocked = True
                 log("V2 startup blocked by unrecovered session marker.", xbmc.LOGERROR)
+            elif v2_startup_status == "deferred":
+                log("V2 startup recovery deferred (reason={}).".format(
+                    (v2_startup.get("recovery") or {}).get("reason", "unknown")
+                ), xbmc.LOGINFO)
             log("V2 startup recovery {}: {}".format(
                 v2_startup.get("status"),
                 (v2_startup.get("recovery") or {}).get("status", "n/a"),
@@ -411,6 +427,9 @@ def _run_service():
             init = shared.get("initialization") or {}
             if v2_blocked:
                 log("Skipping startup synchronization because v2 session recovery is blocked.", xbmc.LOGERROR)
+            elif v2_runtime is not None and isinstance(v2_startup, dict) and v2_startup.get("status") == "deferred":
+                log("Startup synchronization deferred: v2 session recovery is deferred.", xbmc.LOGINFO)
+                live_retry_not_before = time.time() + LIVE_BUSY_RETRY_SECONDS
             elif init.get("completed", False) and settings.get("live_sync_enabled", True):
                 result = _execute_integrated_live_cycle(
                     v2_runtime=v2_runtime,

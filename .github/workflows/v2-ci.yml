@@ -15,7 +15,7 @@ permissions:
 jobs:
   test:
     name: v2 unit tests and syntax (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:

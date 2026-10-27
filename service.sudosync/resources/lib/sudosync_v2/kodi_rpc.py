@@ -18,11 +18,14 @@ import logging
 import math
 import posixpath
 import re
+import time
 import xml.etree.ElementTree as ET
 
 from .identity import normalize_identifier
 
 logger = logging.getLogger(__name__)
+
+NEGATIVE_NFO_CACHE_TTL = 300.0
 
 
 def is_aborted(abort_requested):
@@ -104,7 +107,7 @@ class KodiJsonRpcAdapter(object):
 
     def __init__(self, execute_jsonrpc, page_size=500, max_records=100000,
                  nfo_reader=None, max_nfo_bytes=256 * 1024,
-                 abort_requested=None):
+                 abort_requested=None, negative_nfo_ttl=NEGATIVE_NFO_CACHE_TTL):
         if not callable(execute_jsonrpc):
             raise ValueError("execute_jsonrpc must be callable")
         if type(page_size) is not int or not 1 <= page_size <= 5000:
@@ -121,6 +124,7 @@ class KodiJsonRpcAdapter(object):
         self._nfo_reader = nfo_reader
         self._max_nfo_bytes = max_nfo_bytes
         self._abort_requested = abort_requested
+        self._negative_nfo_ttl = float(negative_nfo_ttl)
         self._skipped_nfos = []
         self._nfo_id_cache = {}
         self._request_id = 0
@@ -235,7 +239,13 @@ class KodiJsonRpcAdapter(object):
             return {}
         cache_key = (media_type, media_path, season, episode) if isinstance(media_path, str) and media_path else None
         if cache_key is not None and cache_key in self._nfo_id_cache:
-            return dict(self._nfo_id_cache[cache_key])
+            entry = self._nfo_id_cache[cache_key]
+            if isinstance(entry, tuple):
+                cached_ids, cached_time = entry
+                if cached_ids or (time.time() - cached_time) < self._negative_nfo_ttl:
+                    return dict(cached_ids)
+            elif isinstance(entry, dict):
+                return dict(entry)
         had_error = False
         for path in self._nfo_paths(media_path, media_type):
             if self._is_aborted(abort_requested):
@@ -256,7 +266,7 @@ class KodiJsonRpcAdapter(object):
                                 raise NfoConflictError("Metadata file has conflicting {} identifiers: {}".format(kind, path))
                             identifiers[kind] = value
                 if cache_key is not None and not had_error:
-                    self._nfo_id_cache[cache_key] = dict(identifiers)
+                    self._nfo_id_cache[cache_key] = (dict(identifiers), time.time())
                 return identifiers
             except (IOError, OSError) as exc:
                 reason = "Cannot read metadata file: {}".format(exc)
@@ -289,8 +299,8 @@ class KodiJsonRpcAdapter(object):
                 had_error = True
                 continue
         if cache_key is not None and not had_error:
-            # Negative result (no NFO present): do not hit the NAS again every cycle.
-            self._nfo_id_cache[cache_key] = {}
+            # Negative result (no NFO present): cached with timestamp for TTL
+            self._nfo_id_cache[cache_key] = ({}, time.time())
         return {}
 
     def _enrich_with_nfo(self, items, media_type, abort_requested=None, progress_callback=None):

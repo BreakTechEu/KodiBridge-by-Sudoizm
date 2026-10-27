@@ -146,10 +146,15 @@ class V2RuntimeComponents(object):
         The (expensive) library preview is performed once by ``sync_cycle``.
         """
         from .kodi_rpc import is_aborted
-        abort = abort_requested if abort_requested is not None else self.service_runtime._abort_requested
+        abort = abort_requested if abort_requested is not None else (
+            self.service_runtime._abort_requested if self.service_runtime else None
+        )
         if is_aborted(abort):
             return {"status": "aborted", "recovery": {"status": "aborted"}, "preview": None}
-        recovery = self.service_runtime._recovery_runner.recover_on_start(self.client_id)
+        client_id = self.client_id or (getattr(self.service_runtime, "_client_id", None) if self.service_runtime else None)
+        if not client_id or not str(client_id).strip():
+            raise V2RuntimeError("client_id is required for recover")
+        recovery = self.service_runtime._recovery_runner.recover_on_start(client_id)
         if not isinstance(recovery, dict) or not isinstance(recovery.get("status"), str):
             raise V2RuntimeError("Recovery runner returned an invalid startup result")
         status = recovery["status"]

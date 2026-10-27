@@ -1,9 +1,12 @@
 SudoSync 2.1.2
 ==============
 
-- Naprawa opóźnionych/niepowstających snapshotów po starcie Kodi:
+- Naprawa opóźnionych/niepowstających snapshotów po starcie Kodi i poprawki po audycie zewnętrznym:
   - `service.py`: start usługi wykonuje tylko odzyskiwanie sesji v2 (`V2RuntimeComponents.recover()`), bez pełnego skanu biblioteki i NFO; skan wykonuje raz pierwszy cykl synchronizacji (wcześniej skan był wykonywany dwukrotnie przed pierwszym snapshotem, 45-90 s).
-  - `kodi_rpc.py`: cache odczytów NFO obejmuje wszystkie pozycje (także bez SudoSync ID i bez pliku NFO), a nie tylko pozycje z SudoSync ID; błędy odczytu nie są cache'owane. Cache jest czyszczony po zakończeniu skanu/czyszczenia biblioteki.
+  - `service.py`: prawidłowa obsługa statusu `deferred` przy odzyskiwaniu sesji v2 (bezpieczne odroczenie synchronizacji startowej zamiast przejścia do zapisu) oraz zabezpieczenie `_initial_snapshot_and_analyse` przed pracą przy zablokowanym lub odroczonym odzyskiwaniu.
+  - `runtime.py`: kanoniczne pobieranie i walidacja `client_id` w `V2RuntimeComponents.recover()` z fallbackiem do `service_runtime._client_id`.
+  - `kodi_rpc.py`: cache odczytów NFO obejmuje wszystkie pozycje; negatywny cache (brak NFO) ma bezpieczny limit TTL 300 s (nowe pliki NFO dodane poza Kodi są wykrywane bez konieczności restartu); cache jest czyszczony natychmiast po zakończeniu skanu/czyszczenia biblioteki.
+  - CI: dostosowanie runnera GitHub Actions do `ubuntu-22.04` dla bezbłędnej obsługi testów w środowisku Python 3.8.
   - Testy: `tests/test_v2_nfo_cache_and_recover.py`.
 
 SudoSync 2.1.1
