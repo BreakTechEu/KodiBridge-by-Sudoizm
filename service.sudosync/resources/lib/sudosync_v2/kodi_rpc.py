@@ -107,7 +107,8 @@ class KodiJsonRpcAdapter(object):
 
     def __init__(self, execute_jsonrpc, page_size=500, max_records=100000,
                  nfo_reader=None, max_nfo_bytes=256 * 1024,
-                 abort_requested=None, negative_nfo_ttl=NEGATIVE_NFO_CACHE_TTL):
+                 abort_requested=None, negative_nfo_ttl=NEGATIVE_NFO_CACHE_TTL,
+                 cache_path=None, on_nfo_cached=None):
         if not callable(execute_jsonrpc):
             raise ValueError("execute_jsonrpc must be callable")
         if type(page_size) is not int or not 1 <= page_size <= 5000:
@@ -125,9 +126,13 @@ class KodiJsonRpcAdapter(object):
         self._max_nfo_bytes = max_nfo_bytes
         self._abort_requested = abort_requested
         self._negative_nfo_ttl = float(negative_nfo_ttl)
+        self._cache_path = cache_path
+        self._on_nfo_cached = on_nfo_cached
+        self._dirty_cache = False
         self._skipped_nfos = []
         self._nfo_id_cache = {}
         self._request_id = 0
+        self._load_persistent_cache()
 
     @property
     def skipped_nfos(self):
@@ -138,6 +143,82 @@ class KodiJsonRpcAdapter(object):
 
     def clear_nfo_cache(self):
         self._nfo_id_cache.clear()
+        self._dirty_cache = True
+        if self._cache_path:
+            try:
+                import os
+                if os.path.isfile(self._cache_path):
+                    os.remove(self._cache_path)
+            except Exception:
+                pass
+
+    def _load_persistent_cache(self):
+        if not self._cache_path:
+            return
+        try:
+            import os
+            if not os.path.isfile(self._cache_path):
+                profile_dir = os.path.dirname(self._cache_path)
+                manifest_path = os.path.join(profile_dir, "assign_ids_manifest.json")
+                if os.path.isfile(manifest_path):
+                    with open(manifest_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    now = time.time()
+                    for item in data.get("modified") or []:
+                        f_path = item.get("file") or ""
+                        sid = item.get("sudosync_id") or ""
+                        typ = item.get("type") or "movie"
+                        if f_path and sid:
+                            stem = f_path[:-4] if f_path.lower().endswith(".nfo") else f_path
+                            ids = {"sudosync": sid}
+                            self._nfo_id_cache[(typ, f_path, None, None)] = (ids, now)
+                            self._nfo_id_cache[(typ, stem, None, None)] = (ids, now)
+                            if callable(self._on_nfo_cached):
+                                self._on_nfo_cached(stem, typ, ids)
+                            self._dirty_cache = True
+                return
+
+            with open(self._cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            now = time.time()
+            items = data.get("items") if isinstance(data, dict) else []
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                k = item.get("key")
+                ids = item.get("ids")
+                if isinstance(k, list) and len(k) == 4 and isinstance(ids, dict) and ids:
+                    cache_key = (k[0], k[1], k[2], k[3])
+                    self._nfo_id_cache[cache_key] = (dict(ids), now)
+                    if callable(self._on_nfo_cached):
+                        self._on_nfo_cached(k[1], k[0], dict(ids))
+        except Exception as exc:
+            logger.warning("Failed to load persistent NFO cache: %s", exc)
+
+    def _save_persistent_cache(self):
+        if not self._cache_path or not self._dirty_cache:
+            return
+        try:
+            import os
+            parent = os.path.dirname(self._cache_path)
+            if parent and not os.path.isdir(parent):
+                os.makedirs(parent, exist_ok=True)
+            entries = []
+            for cache_key, entry in self._nfo_id_cache.items():
+                if isinstance(entry, tuple) and len(entry) == 2:
+                    ids, _ = entry
+                    if isinstance(ids, dict) and ids:
+                        entries.append({
+                            "key": [cache_key[0], cache_key[1], cache_key[2], cache_key[3]],
+                            "ids": ids,
+                        })
+            tmp_path = self._cache_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump({"version": 1, "items": entries}, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, self._cache_path)
+            self._dirty_cache = False
+        except Exception as exc:
+            logger.warning("Failed to save persistent NFO cache: %s", exc)
 
     def _is_aborted(self, abort_requested=None):
         target = abort_requested if abort_requested is not None else self._abort_requested
@@ -238,6 +319,10 @@ class KodiJsonRpcAdapter(object):
         if self._nfo_reader is None:
             return {}
         cache_key = (media_type, media_path, season, episode) if isinstance(media_path, str) and media_path else None
+        if cache_key is not None and cache_key not in self._nfo_id_cache and isinstance(media_path, str) and "." in media_path:
+            stem_key = (media_type, media_path.rsplit(".", 1)[0], season, episode)
+            if stem_key in self._nfo_id_cache:
+                self._nfo_id_cache[cache_key] = self._nfo_id_cache[stem_key]
         if cache_key is not None and cache_key in self._nfo_id_cache:
             entry = self._nfo_id_cache[cache_key]
             if isinstance(entry, tuple):
@@ -267,6 +352,13 @@ class KodiJsonRpcAdapter(object):
                             identifiers[kind] = value
                 if cache_key is not None and not had_error:
                     self._nfo_id_cache[cache_key] = (dict(identifiers), time.time())
+                    if identifiers:
+                        self._dirty_cache = True
+                        if callable(self._on_nfo_cached):
+                            try:
+                                self._on_nfo_cached(media_path, media_type, dict(identifiers))
+                            except Exception:
+                                pass
                 return identifiers
             except (IOError, OSError) as exc:
                 reason = "Cannot read metadata file: {}".format(exc)
@@ -308,64 +400,67 @@ class KodiJsonRpcAdapter(object):
             return items
         enriched = []
         total = len(items)
-        for idx, item in enumerate(items):
-            if self._is_aborted(abort_requested):
-                raise OperationAborted("Item enrichment aborted", partial_items=enriched)
-            if progress_callback:
-                progress_callback(idx, total, media_type, item)
-            if not isinstance(item, dict):
-                raise KodiRpcError("Kodi returned an invalid {} library record".format(media_type))
-            record = dict(item)
-            kodi_ids = record.get("uniqueid")
-            kodi_ids = dict(kodi_ids) if isinstance(kodi_ids, dict) else {}
-            if record.get("imdbnumber"):
-                imdb = normalize_identifier("imdb", record.get("imdbnumber"))
-                if imdb is not None:
-                    if "imdb" in kodi_ids and normalize_identifier("imdb", kodi_ids["imdb"]) != imdb:
+        try:
+            for idx, item in enumerate(items):
+                if self._is_aborted(abort_requested):
+                    raise OperationAborted("Item enrichment aborted", partial_items=enriched)
+                if progress_callback:
+                    progress_callback(idx, total, media_type, item)
+                if not isinstance(item, dict):
+                    raise KodiRpcError("Kodi returned an invalid {} library record".format(media_type))
+                record = dict(item)
+                kodi_ids = record.get("uniqueid")
+                kodi_ids = dict(kodi_ids) if isinstance(kodi_ids, dict) else {}
+                if record.get("imdbnumber"):
+                    imdb = normalize_identifier("imdb", record.get("imdbnumber"))
+                    if imdb is not None:
+                        if "imdb" in kodi_ids and normalize_identifier("imdb", kodi_ids["imdb"]) != imdb:
+                            item_desc = record.get("file") or record.get("label") or str(record.get("movieid") or record.get("episodeid") or media_type)
+                            logger.warning(
+                                "Kodi returned conflicting IMDb identifiers for %s (uniqueid: %s, imdbnumber: %s); keeping uniqueid value",
+                                item_desc,
+                                kodi_ids["imdb"],
+                                imdb,
+                            )
+                        else:
+                            kodi_ids["imdb"] = imdb
+                try:
+                    nfo_ids = self._read_nfo_ids(
+                        record.get("file"),
+                        media_type,
+                        season=record.get("season"),
+                        episode=record.get("episode"),
+                        abort_requested=abort_requested,
+                    )
+                except OperationAborted as exc:
+                    exc.partial_items = enriched
+                    raise
+                for kind, value in nfo_ids.items():
+                    current = normalize_identifier(kind, kodi_ids.get(kind))
+                    if current is not None and current != value:
                         item_desc = record.get("file") or record.get("label") or str(record.get("movieid") or record.get("episodeid") or media_type)
-                        logger.warning(
-                            "Kodi returned conflicting IMDb identifiers for %s (uniqueid: %s, imdbnumber: %s); keeping uniqueid value",
-                            item_desc,
-                            kodi_ids["imdb"],
-                            imdb,
-                        )
-                    else:
-                        kodi_ids["imdb"] = imdb
-            try:
-                nfo_ids = self._read_nfo_ids(
-                    record.get("file"),
-                    media_type,
-                    season=record.get("season"),
-                    episode=record.get("episode"),
-                    abort_requested=abort_requested,
-                )
-            except OperationAborted as exc:
-                exc.partial_items = enriched
-                raise
-            for kind, value in nfo_ids.items():
-                current = normalize_identifier(kind, kodi_ids.get(kind))
-                if current is not None and current != value:
-                    item_desc = record.get("file") or record.get("label") or str(record.get("movieid") or record.get("episodeid") or media_type)
-                    if kind == "sudosync":
-                        logger.warning(
-                            "Kodi and NFO contain conflicting sudosync identifiers for '%s' (Kodi: %s, NFO: %s); treating NFO as authoritative",
-                            item_desc,
-                            current,
-                            value,
-                        )
-                    else:
-                        logger.warning(
-                            "Kodi and NFO contain conflicting %s identifiers for '%s' (Kodi: %s, NFO: %s); preferring NFO value",
-                            kind,
-                            item_desc,
-                            current,
-                            value,
-                        )
-                kodi_ids[kind] = value
-            record["uniqueid"] = kodi_ids
-            enriched.append(record)
-            if progress_callback:
-                progress_callback(idx + 1, total, media_type, record)
+                        if kind == "sudosync":
+                            logger.warning(
+                                "Kodi and NFO contain conflicting sudosync identifiers for '%s' (Kodi: %s, NFO: %s); treating NFO as authoritative",
+                                item_desc,
+                                current,
+                                value,
+                            )
+                        else:
+                            logger.warning(
+                                "Kodi and NFO contain conflicting %s identifiers for '%s' (Kodi: %s, NFO: %s); preferring NFO value",
+                                kind,
+                                item_desc,
+                                current,
+                                value,
+                            )
+                    kodi_ids[kind] = value
+                record["uniqueid"] = kodi_ids
+                enriched.append(record)
+                if progress_callback:
+                    progress_callback(idx + 1, total, media_type, record)
+        finally:
+            self._save_persistent_cache()
         return enriched
 
     def call(self, method, params=None, abort_requested=None):

@@ -117,6 +117,92 @@ class NfoCacheTests(unittest.TestCase):
         adapter.get_movies()
         self.assertGreater(len(calls), 2)
 
+    def test_persistent_nfo_cache_saves_and_reloads_across_instances(self):
+        import tempfile
+        import shutil
+        temp_dir = tempfile.mkdtemp(prefix="sudosync_test_nfo_cache_")
+        try:
+            cache_file = os.path.join(temp_dir, "nfo_id_cache.json")
+            calls = []
+            nfo = "<movie><uniqueid type=\"tmdb\">456</uniqueid></movie>"
+
+            def reader(path, max_bytes):
+                calls.append(path)
+                return nfo
+
+            cached_via_cb = {}
+            def on_cached(path, typ, ids):
+                cached_via_cb[path] = ids
+
+            # Instance 1: reads NFO and writes to cache_file
+            adapter1 = KodiJsonRpcAdapter(
+                _Transport([_movie(1)]),
+                nfo_reader=reader,
+                cache_path=cache_file,
+                on_nfo_cached=on_cached,
+            )
+            movies1 = adapter1.get_movies()
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(movies1[0]["uniqueid"].get("tmdb"), "456")
+            self.assertTrue(os.path.isfile(cache_file))
+            self.assertIn("smb://nas/m/1/film.mkv", cached_via_cb)
+
+            # Instance 2: with reader that raises or tracks calls
+            reader2_calls = []
+            def reader2(path, max_bytes):
+                reader2_calls.append(path)
+                return "<movie><uniqueid type=\"tmdb\">999</uniqueid></movie>"
+
+            cached_via_cb2 = {}
+            def on_cached2(path, typ, ids):
+                cached_via_cb2[path] = ids
+
+            adapter2 = KodiJsonRpcAdapter(
+                _Transport([_movie(1)]),
+                nfo_reader=reader2,
+                cache_path=cache_file,
+                on_nfo_cached=on_cached2,
+            )
+            movies2 = adapter2.get_movies()
+            # Must NOT call reader2 because cache was loaded from disk
+            self.assertEqual(len(reader2_calls), 0)
+            self.assertEqual(movies2[0]["uniqueid"].get("tmdb"), "456")
+            self.assertIn("smb://nas/m/1/film.mkv", cached_via_cb2)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_persistent_nfo_cache_seeds_from_assign_ids_manifest(self):
+        import json
+        import tempfile
+        import shutil
+        temp_dir = tempfile.mkdtemp(prefix="sudosync_test_manifest_")
+        try:
+            cache_file = os.path.join(temp_dir, "nfo_id_cache.json")
+            manifest_file = os.path.join(temp_dir, "assign_ids_manifest.json")
+            manifest_data = {
+                "modified": [
+                    {"file": "smb://nas/m/1/film.nfo", "type": "movie", "sudosync_id": "MAZURY-000042"}
+                ]
+            }
+            with open(manifest_file, "w", encoding="utf-8") as f:
+                json.dump(manifest_data, f)
+
+            reader_calls = []
+            def reader(path, max_bytes):
+                reader_calls.append(path)
+                return None
+
+            adapter = KodiJsonRpcAdapter(
+                _Transport([_movie(1)]),
+                nfo_reader=reader,
+                cache_path=cache_file,
+            )
+            movies = adapter.get_movies()
+            self.assertEqual(len(reader_calls), 0)
+            self.assertEqual(movies[0]["uniqueid"].get("sudosync"), "MAZURY-000042")
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 class RecoverTests(unittest.TestCase):
     def _components(self, recovery_status, client_id="client-0000000001", runtime_client_id="client-0000000001"):
@@ -292,6 +378,80 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
 
         mock_collect.assert_called_once_with(show_notification=False)
         mock_dry_run.assert_called_once_with(show_notification=False)
+
+
+class V2LocalStatusAndVfsTests(unittest.TestCase):
+    def test_update_local_status_from_v2_populates_status_json(self):
+        import resources.lib.sudosync_core as sudosync_core
+        import tempfile
+        import shutil
+        temp_dir = tempfile.mkdtemp(prefix="sudosync_status_test_")
+        try:
+            with patch.object(sudosync_core, "_addon_profile_path", return_value=temp_dir), \
+                    patch.object(sudosync_core, "addon_settings", return_value={
+                        "base_path": "smb://nas/.SudoSync/",
+                        "client_name": "Salon",
+                    }), \
+                    patch.object(sudosync_core, "get_or_create_client_id", return_value="cid-12345"), \
+                    patch.object(sudosync_core, "get_kodi_info", return_value={"version": "21.0"}), \
+                    patch.object(sudosync_core, "get_network_sudosync_id_last_number", return_value=1201):
+                v2_result = {
+                    "status": "committed",
+                    "applied_count": 5,
+                    "published_snapshot_path": "smb://nas/.SudoSync/clients/client-cid-12345.json",
+                    "preview": {
+                        "snapshot": {
+                            "generated_at": "2026-10-27T19:00:00Z",
+                            "movies": [{"movieid": 1}, {"movieid": 2}],
+                            "episodes": [{"episodeid": 10}],
+                        }
+                    }
+                }
+                status = sudosync_core.update_local_status_from_v2(v2_result=v2_result)
+
+                self.assertIsNotNone(status)
+                self.assertEqual(status["client_id"], "cid-12345")
+                self.assertEqual(status["client_name"], "Salon")
+                self.assertEqual(status["counts"], {"movies": 2, "episodes": 1})
+                self.assertEqual(status["last_snapshot_at"], "2026-10-27T19:00:00Z")
+                self.assertEqual(status["remote_path"], "smb://nas/.SudoSync/clients/client-cid-12345.json")
+                self.assertEqual(status["last_live_applied_items"], 5)
+                self.assertEqual(status["sudosync_id_last_number"], 1201)
+
+                # Verify file on disk
+                disk_status = sudosync_core.read_local_status()
+                self.assertEqual(disk_status["counts"], {"movies": 2, "episodes": 1})
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_kodi_vfs_mkdirs_returns_true_if_already_exists(self):
+        from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend
+
+        fake_vfs = MagicMock()
+        # When path already exists, exists() returns True, mkdirs() returns False (Kodi SMB behavior)
+        fake_vfs.exists.return_value = True
+        fake_vfs.mkdirs.return_value = False
+
+        backend = KodiVFSBackend(fake_vfs, allow_win_unc=False)
+        self.assertTrue(backend.mkdirs("smb://nas/wideo/.SudoSync/clients"))
+        fake_vfs.exists.assert_called_with("smb://nas/wideo/.SudoSync/clients")
+
+    def test_build_live_report_single_or_no_snapshot_returns_idle_without_error(self):
+        import resources.lib.sudosync_core as sudosync_core
+
+        with patch.object(sudosync_core, "addon_settings", return_value={"base_path": "smb://nas/.SudoSync/", "client_name": "Salon"}), \
+                patch.object(sudosync_core, "collect_live_snapshot"), \
+                patch.object(sudosync_core, "read_remote_snapshots", return_value=([], [])), \
+                patch.object(sudosync_core, "get_or_create_client_id", return_value="cid-1"), \
+                patch.object(sudosync_core, "read_shared_config", return_value={}), \
+                patch.object(sudosync_core, "_observe_remote_lamport"), \
+                patch.object(sudosync_core, "_write_vfs_json"), \
+                patch.object(sudosync_core, "read_local_status", return_value={}), \
+                patch.object(sudosync_core, "_write_local_json"):
+            report = sudosync_core.build_live_report(show_notification=False, collect_first=False)
+            self.assertEqual(report.get("mode"), "live_idle")
+            self.assertTrue(report.get("summary", {}).get("no_peers"))
+            self.assertEqual(report.get("planned_changes"), {})
 
 
 if __name__ == "__main__":

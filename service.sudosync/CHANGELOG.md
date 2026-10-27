@@ -1,3 +1,20 @@
+SudoSync 2.1.3
+==============
+
+- Trwały cache identyfikatorów NFO i optymalizacja sieci SMB (`kodi_rpc.py`, `sudosync_core.py`, `service.py`):
+  - Wprowadzono plik trwały pamięci podręcznej `nfo_id_cache.json` w profilu wtyczki, zapisywany przy zamykaniu i odczytywany przy starcie; cache jest dodatkowo automatycznie seedowany z manifestu `assign_ids_manifest.json`.
+  - Wyeliminowano odczytywanie setek/tysięcy plików `.nfo` przez sieć SMB po każdym restarcie Kodi (skrócenie czasu skanowania z 30–80 sekund do poniżej 0.5 sekundy).
+  - Dodano 300-sekundowy debounce dla automatycznego sprawdzania i nadawania brakujących SudoSync ID w `sudosync_core.py`.
+- Naprawa publikacji snapshotu i tworzenia katalogów (`kodi_vfs.py`, `catalog.py`):
+  - `KodiVFSBackend.mkdirs()` sprawdza istnienie katalogu przed i po wywołaniu `xbmcvfs.mkdirs()` i zwraca `True`, jeśli katalog już istnieje. Eliminuje to błąd `SnapshotCatalogError("Cannot create shared clients directory")` po migracji z v1 lub gdy katalog `clients/` na NAS już istnieje.
+  - Dodano mechanizm 3-krotnego ponawiania operacji `rename()` dla ścieżek sieciowych SMB w `kodi_vfs.py` w celu radzenia sobie z chwilowymi blokadami uchwytów plików przez serwer/klienta SMB.
+- Ujednolicenie statusu w GUI („Pokaż status”) z silnikiem v2 (`sudosync_core.py`, `service.py`):
+  - Dodano funkcję `update_local_status_from_v2()`, która bezpośrednio aktualizuje `status.json` danymi ze snapshotu v2 (liczba filmów, odcinków, ścieżka do pliku snapshotu na NAS, znacznik czasu, liczba zastosowanych zmian oraz najwyższy numer SudoSync ID w sieci). Okno statusu w Kodi natychmiast pokazuje aktualne dane po starcie.
+- Integracja dwusilnikowa bez błędów braku peerów v1 (`sudosync_core.py`):
+  - Gdy w sieci nie ma jeszcze co najmniej dwóch snapshotów w starym formacie v1 (np. peery przeszły na format v2), funkcja `build_live_report` zwraca bezpieczny stan `live_idle` zamiast rzucać wyjątkiem `RuntimeError` i wprowadzać usługę w pętlę błędu/backoffu.
+- Testy:
+  - Rozszerzono `tests/test_v2_nfo_cache_and_recover.py` o testy trwałego cache NFO, odzyskiwania z manifestu, idempotencji `mkdirs()`, aktualizacji `status.json` z v2 oraz bezpiecznego zachowania `build_live_report` bez peerów v1 (wszystkie 315 testów zaliczonych).
+
 SudoSync 2.1.2
 ==============
 

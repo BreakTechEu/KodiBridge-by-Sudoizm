@@ -1,19 +1,19 @@
-# SudoSync 2.1.0 — instrukcja bezpiecznego testu na urządzeniu Kodi
+# SudoSync 2.1.3 — instrukcja bezpiecznego testu na urządzeniu Kodi
 
-Dokument prowadzi krok po kroku przez ręczny test wersji 2.1.0 (Produkcyjna) na pojedynczym urządzeniu Kodi (oraz sekwencyjnie między urządzeniami), z pełnym zabezpieczeniem danych przed rozpoczęciem pracy.
+Dokument prowadzi krok po kroku przez ręczny test wersji 2.1.3 (Produkcyjna) na pojedynczym urządzeniu Kodi (oraz sekwencyjnie między urządzeniami), z pełnym zabezpieczeniem danych przed rozpoczęciem pracy.
 
 ---
 
 ## Krok 1. Stan testu i identyfikacja paczki
 
-- **Wersja wtyczki:** `2.1.0` (Produkcyjna), identyfikator dodatku w `service.sudosync/addon.xml`: `service.sudosync`.
-- **Commit bazowy i paczka na GitHubie:** paczka `service.sudosync-2.1.0.zip` jest budowana bezpośrednio z wierzchołka gałęzi `master` i publikowana jako załącznik wydania `v2.1.0` w GitHub Releases (dzięki czemu wszystkie narzędzia i audytorzy widzą ten sam artefakt). Aktualny hash commitu sprawdzisz poleceniem:
+- **Wersja wtyczki:** `2.1.3` (Produkcyjna), identyfikator dodatku w `service.sudosync/addon.xml`: `service.sudosync`.
+- **Commit bazowy i paczka na GitHubie:** paczka `service.sudosync-2.1.3.zip` jest budowana bezpośrednio z wierzchołka gałęzi `master` i publikowana jako załącznik wydania `v2.1.3` w GitHub Releases (dzięki czemu wszystkie narzędzia i audytorzy widzą ten sam artefakt). Aktualny hash commitu sprawdzisz poleceniem:
   ```powershell
   git log -1 --oneline
   git rev-parse HEAD
   ```
 - **Parametry paczki:**
-  - **Nazwa pliku:** `service.sudosync-2.1.0.zip`
+  - **Nazwa pliku:** `service.sudosync-2.1.3.zip`
   - **Rozmiar:** `704669 bajtów`
   - **Suma kontrolna SHA-256:** `8f60438cc96abd5829ae7e5c76f6ec7f3c84acbd18ca8c81fce9aa1489dac23b`
 - **Model aktualizacji:** wtyczka sprawdza aktualizacje w GitHub Releases (`find_github_update` / `maybe_check_github_update_daily`) oraz obsługuje ręczną instalację ze wskazanego pliku ZIP (`install_update_from_zip_path`). Pakiet pobrany z GitHub jest przed rozpakowaniem weryfikowany: HTTPS, suma SHA-256 (z pola `digest` assetu, treści wydania lub pliku `.sha256`; brak skrótu lub niezgodność odrzuca aktualizację), limity ZIP (500 plików, 50 MB łącznie, 20 MB na plik) oraz struktura archiwum i `addon.xml` w `_validate_addon_zip_package()`.
@@ -21,8 +21,8 @@ Dokument prowadzi krok po kroku przez ręczny test wersji 2.1.0 (Produkcyjna) na
   - **Wariant A — bezpieczny test na istniejącej bibliotece / aktualizacja (ZALECANY, domyślny):** wykonujesz kopie zapasowe (kopiowanie, nie przenoszenie), **nie usuwasz i nie zmieniasz nazwy produkcyjnego katalogu `.SudoSync`** ani profilu `userdata/addon_data/service.sudosync/`, a test zaczynasz od trybu podglądu (dry-run) — bez zapisu do biblioteki. Zapis uzbrajasz dopiero po sprawdzeniu raportu podglądu.
   - **Wariant B — izolowany test czystej instalacji od zera (WYŁĄCZNIE środowisko laboratoryjne):** zmiana nazwy `.SudoSync` i czyszczenie profilu wtyczki dotyczą tylko osobnego, testowego udziału NAS i testowych urządzeń Kodi.
   - > **OSTRZEŻENIE:** nie wykonuj czynności z oznaczeniem „tylko Wariant B” na produkcyjnym NAS ani na urządzeniach z prawdziwą biblioteką. Zmiana nazwy `.SudoSync` odcina urządzenia od wspólnej konfiguracji, liczników SudoSync ID i snapshotów.
-- **Skutek:** potwierdzono pochodzenie i przeznaczenie pliku `service.sudosync-2.1.0.zip`.
-- **Kryterium „zrobione”:** znasz dokładny hash commitu z `git rev-parse HEAD` i masz przygotowany plik `service.sudosync-2.1.0.zip` o zweryfikowanej sumie SHA-256.
+- **Skutek:** potwierdzono pochodzenie i przeznaczenie pliku `service.sudosync-2.1.3.zip`.
+- **Kryterium „zrobione”:** znasz dokładny hash commitu z `git rev-parse HEAD` i masz przygotowany plik `service.sudosync-2.1.3.zip` o zweryfikowanej sumie SHA-256.
 
 ---
 

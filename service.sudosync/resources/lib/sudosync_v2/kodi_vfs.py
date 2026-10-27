@@ -275,12 +275,20 @@ class KodiVFSBackend(object):
             # check-and-rename sequence from other SudoSync writers.
             if self._vfs.exists(destination):
                 return False
-            if self._vfs.rename(source, destination):
-                return True
-            stripped_src = _strip_vfs_credentials(source)
-            stripped_dst = _strip_vfs_credentials(destination)
-            if (stripped_src != source or stripped_dst != destination) and not self._vfs.exists(stripped_dst):
-                return bool(self._vfs.rename(stripped_src, stripped_dst))
+            for attempt in range(3):
+                if self._vfs.rename(source, destination):
+                    return True
+                stripped_src = _strip_vfs_credentials(source)
+                stripped_dst = _strip_vfs_credentials(destination)
+                if (stripped_src != source or stripped_dst != destination) and not self._vfs.exists(stripped_dst):
+                    if self._vfs.rename(stripped_src, stripped_dst):
+                        return True
+                if attempt < 2 and not self._vfs.exists(destination) and self._vfs.exists(source):
+                    try:
+                        import time
+                        time.sleep(0.05 * (attempt + 1))
+                    except Exception:
+                        pass
             return False
         except Exception as exc:
             raise KodiVFSBackendError("Cannot rename {} to {}: {}".format(source, destination, exc))
@@ -314,10 +322,14 @@ class KodiVFSBackend(object):
             except Exception as exc:
                 raise KodiVFSBackendError("Cannot create directory {}: {}".format(path, exc))
         try:
+            if self.exists(path):
+                return True
             if self._vfs.mkdirs(path):
                 return True
             stripped = _strip_vfs_credentials(path)
             if stripped != path and self._vfs.mkdirs(stripped):
+                return True
+            if self.exists(path) or (stripped != path and self.exists(stripped)):
                 return True
             return False
         except Exception as exc:

@@ -475,7 +475,8 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
 
 def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
                           lock_factory, client_id, client_name, vfs_module=None,
-                          max_records=100000, abort_requested=None):
+                          max_records=100000, abort_requested=None,
+                          cache_path=None, on_nfo_cached=None):
     """Compose a Kodi runtime with JSON-RPC and NFO reads provided by Kodi VFS.
 
     A process-local lock follows the project's single-active-Kodi operating
@@ -487,6 +488,8 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
         max_records=max_records,
         nfo_reader=KodiVFSMetadataReader(vfs_module),
         abort_requested=abort_requested,
+        cache_path=cache_path,
+        on_nfo_cached=on_nfo_cached,
     )
     return build_v2_runtime(
         kodi,

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import shutil
+import time
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -1355,6 +1356,7 @@ def _find_best_nfo(media_file, kind):
     return first_existing or (candidates[0] if candidates else None), {}, ""
 
 _NFO_ID_CACHE = {}
+_LAST_AUTO_ASSIGN_EPOCH = 0.0
 
 def _ids_from_nfo(media_file, kind):
     if not media_file:
@@ -1363,8 +1365,7 @@ def _ids_from_nfo(media_file, kind):
         return dict(_NFO_ID_CACHE[media_file])
     _, ids, _ = _find_best_nfo(media_file, kind)
     ids = ids if isinstance(ids, dict) else {}
-    if ids:
-        _NFO_ID_CACHE[media_file] = dict(ids)
+    _NFO_ID_CACHE[media_file] = dict(ids)
     return dict(ids)
 
 
@@ -1404,9 +1405,6 @@ def _record(kind, item, first_import=True):
 def collect_library(first_import=True, progress_callback=None, is_canceled=None):
     if first_import:
         _NFO_ID_CACHE.clear()
-    else:
-        for k in [k for k, v in list(_NFO_ID_CACHE.items()) if not (isinstance(v, dict) and v.get("sudosync"))]:
-            _NFO_ID_CACHE.pop(k, None)
     if is_canceled and is_canceled():
         return [], []
     movie_props = [
@@ -1596,12 +1594,14 @@ def _collect_initial_snapshot(show_notification=False):
     client_id = get_or_create_client_id()
     kodi = get_kodi_info()
     movies, episodes = collect_library()
-    if settings.get("sudosync_id_enabled"):
+    global _LAST_AUTO_ASSIGN_EPOCH
+    if settings.get("sudosync_id_enabled") and (time.time() - _LAST_AUTO_ASSIGN_EPOCH) >= 300.0:
         try:
             playing = bool(xbmc.Player().isPlayingVideo())
         except Exception:
             playing = False
         if not playing:
+            _LAST_AUTO_ASSIGN_EPOCH = time.time()
             try:
                 assign_sudosync_ids(
                     show_notification=False,
@@ -2121,7 +2121,8 @@ def collect_live_snapshot(show_notification=False, suppress_local_changes=False,
     first_bootstrap = not bool(registry.get("bootstrapped")) or not bool(registry.get("records"))
     baseline = registry.get("baseline_version") or _baseline_version(initialization)
     movies, episodes = collect_library(first_import=False)
-    if settings.get("sudosync_id_enabled"):
+    global _LAST_AUTO_ASSIGN_EPOCH
+    if settings.get("sudosync_id_enabled") and (time.time() - _LAST_AUTO_ASSIGN_EPOCH) >= 300.0:
         try:
             playing = bool(xbmc.Player().isPlayingVideo())
         except Exception:
@@ -2132,6 +2133,7 @@ def collect_live_snapshot(show_notification=False, suppress_local_changes=False,
                 for item in (list(movies) + list(episodes))
             )
             if missing_sudosync:
+                _LAST_AUTO_ASSIGN_EPOCH = time.time()
                 try:
                     assign_sudosync_ids(
                         show_notification=False,
@@ -2424,27 +2426,37 @@ def build_live_report(show_notification=False, collect_first=True, suppress_loca
         shared_for_lamport.get("initialization") or {},
     )
     if len(snapshots) < 2:
-        raise RuntimeError("Synchronizacja bieżąca wymaga co najmniej dwóch poprawnych snapshotów.")
-    waiting = _snapshots_ready_for_live(snapshots)
-    if waiting:
         report = {
             "format": "SudoSync live report",
             "schema_version": LIVE_SCHEMA_VERSION,
-            "mode": "live_waiting",
+            "mode": "live_idle",
             "generated_at": utc_now_precise(),
-            "waiting_for_clients": waiting,
+            "waiting_for_clients": [],
             "snapshot_read_errors": errors,
             "planned_changes": {},
-            "summary": {"waiting_clients": len(waiting)},
+            "summary": {"waiting_clients": 0, "no_peers": True},
         }
     else:
-        report = build_live_plan(snapshots)
-        report.update({
-            "format": "SudoSync live report",
-            "schema_version": LIVE_SCHEMA_VERSION,
-            "generated_at": utc_now_precise(),
-            "snapshot_read_errors": errors,
-        })
+        waiting = _snapshots_ready_for_live(snapshots)
+        if waiting:
+            report = {
+                "format": "SudoSync live report",
+                "schema_version": LIVE_SCHEMA_VERSION,
+                "mode": "live_waiting",
+                "generated_at": utc_now_precise(),
+                "waiting_for_clients": waiting,
+                "snapshot_read_errors": errors,
+                "planned_changes": {},
+                "summary": {"waiting_clients": len(waiting)},
+            }
+        else:
+            report = build_live_plan(snapshots)
+            report.update({
+                "format": "SudoSync live report",
+                "schema_version": LIVE_SCHEMA_VERSION,
+                "generated_at": utc_now_precise(),
+                "snapshot_read_errors": errors,
+            })
     client_id = get_or_create_client_id()
     path = live_report_path(settings["base_path"], settings["client_name"], client_id)
     _write_vfs_json(path, report)
@@ -2631,6 +2643,65 @@ def read_local_status():
             "kodi": get_kodi_info(),
         }
     return data
+
+
+def update_local_status_from_v2(v2_result=None, published_snapshot=None, candidate_snapshot=None, error=None):
+    """Update status.json immediately from v2 runtime results."""
+    try:
+        status = read_local_status()
+        settings = addon_settings()
+        client_id = get_or_create_client_id()
+        kodi = get_kodi_info()
+
+        status["client_id"] = client_id
+        status["client_name"] = settings["client_name"]
+        status["kodi"] = kodi
+
+        snap = published_snapshot
+        if snap is None and isinstance(v2_result, dict):
+            preview = v2_result.get("preview") or {}
+            snap = preview.get("snapshot")
+            if snap is None:
+                snap = v2_result.get("snapshot")
+        if snap is None and candidate_snapshot is not None:
+            snap = candidate_snapshot
+
+        if isinstance(snap, dict):
+            movies = snap.get("movies") or []
+            episodes = snap.get("episodes") or []
+            status["counts"] = {"movies": len(movies), "episodes": len(episodes)}
+            generated_at = snap.get("generated_at") or utc_now_precise()
+            status["last_snapshot_at"] = generated_at
+            pub_path = (v2_result.get("published_snapshot_path") if isinstance(v2_result, dict) else None)
+            if pub_path:
+                status["remote_path"] = pub_path
+            elif not status.get("remote_path") or status.get("remote_path") == "—":
+                base_clean = (settings.get("base_path") or "").rstrip("/")
+                if base_clean:
+                    status["remote_path"] = "{}/clients/client-{}.json".format(base_clean, client_id)
+
+        if isinstance(v2_result, dict):
+            status_val = v2_result.get("status")
+            if status_val in ("committed", "no_changes"):
+                status["last_live_sync_at"] = utc_now_precise()
+                status["last_live_applied_items"] = int(v2_result.get("applied_count") or 0)
+                status["last_live_error"] = ""
+            elif status_val == "deferred":
+                status["last_live_deferred_reason"] = v2_result.get("reason", "deferred")
+
+        if error:
+            status["last_live_error"] = mask_vfs_credentials(str(error))
+
+        try:
+            status["sudosync_id_last_number"] = get_network_sudosync_id_last_number(settings.get("base_path"))
+        except Exception:
+            pass
+
+        _write_local_json(os.path.join(_addon_profile_path(), "status.json"), status)
+        return status
+    except Exception as exc:
+        log("update_local_status_from_v2 failed: {}".format(exc), xbmc.LOGWARNING)
+        return None
 
 
 
@@ -3216,7 +3287,8 @@ def _sync_v2_after_initial_apply(settings, client_id):
             settings["client_name"],
         )
         # Wartosci zapisane przez inicjalizacje pochodza ze snapshotu bazowego, a nie z lokalnej edycji, wiec nie moga otrzymac najwyzszej wersji i nadpisac nowszych zmian innych urzadzen.
-        v2_runtime.publish_local_snapshot(suppress_local_changes=True)
+        v2_pub = v2_runtime.publish_local_snapshot(suppress_local_changes=True)
+        update_local_status_from_v2(published_snapshot=(v2_pub.get("snapshot") if isinstance(v2_pub, dict) else None), v2_result=v2_pub)
     except Exception as exc:
         log("V2 post-initialization snapshot publish skipped: {}".format(exc), xbmc.LOGWARNING)
 
@@ -4165,7 +4237,6 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
             return 0
 
     try:
-        _NFO_ID_CACHE.clear()
         if is_canceled and is_canceled():
             return {
                 "movies": 0,

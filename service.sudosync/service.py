@@ -9,6 +9,7 @@ from __future__ import absolute_import, division, print_function
 # -------------------------------------------------------------------------
 
 import atexit
+import os
 import time
 
 import xbmc
@@ -29,6 +30,7 @@ from resources.lib.sudosync_core import (
     run_live_sync_cycle,
     live_local_changes_detected,
     sync_initial_base_selection,
+    update_local_status_from_v2,
 )
 
 
@@ -159,6 +161,10 @@ def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_cl
                     suppress_local_changes=False,
                 )
                 log("V2 initial snapshot status={}".format(v2_pub.get("status")), xbmc.LOGINFO)
+                update_local_status_from_v2(
+                    published_snapshot=(v2_pub.get("snapshot") if isinstance(v2_pub, dict) else None),
+                    v2_result=v2_pub,
+                )
             except Exception as exc:
                 log("V2 initial snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
         if base_client_id:
@@ -284,6 +290,7 @@ def _execute_integrated_live_cycle(
                 "V2 live sync committed {} item(s).".format(v2_applied),
                 xbmc.LOGINFO,
             )
+        update_local_status_from_v2(v2_result=v2_result)
 
     # If v2 committed remote changes to Kodi, update the v1 live snapshot with
     # suppress_local_changes=True so v1 records the newly applied state with
@@ -393,6 +400,12 @@ def _run_service():
                 ProcessLocalLockFactory,
                 build_kodi_v2_runtime,
             )
+            from resources.lib.sudosync_core import _addon_profile_path, _NFO_ID_CACHE
+
+            cache_file = os.path.join(_addon_profile_path(), "nfo_id_cache.json")
+            def _seed_core_cache(p, t, ids):
+                if p and ids:
+                    _NFO_ID_CACHE[p] = dict(ids)
 
             v2_runtime = build_kodi_v2_runtime(
                 xbmc.executeJSONRPC,
@@ -402,6 +415,8 @@ def _run_service():
                 get_or_create_client_id(),
                 settings["client_name"],
                 abort_requested=monitor.abortRequested,
+                cache_path=cache_file,
+                on_nfo_cached=_seed_core_cache,
             )
             # Recovery only: the library scan is done once, by the first sync cycle.
             # A second full NFO scan here delayed the first snapshot by 1-2 minutes.
