@@ -16,3 +16,6 @@ reference material.
 The implementation status in project documents can become stale. Verify it
 against the current code and Git history before making claims about completion,
 tests, commits, or deployment readiness.
+
+## Absolute rule regarding Kodi runtime
+Do NOT touch, modify, or copy files to the local Kodi installation (e.g. `%APPDATA%\Kodi\...` or any Kodi userdata/addon directory) or any live Kodi environment. All installations on actual Kodi devices are performed manually by the user (via GitHub Release ZIP or built-in update). Work strictly within the repository workspace and publish releases to Git/GitHub Releases.
