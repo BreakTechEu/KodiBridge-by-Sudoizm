@@ -216,6 +216,7 @@ class TestV2FirstPublishAndBackoff(unittest.TestCase):
     def test_05_initial_snapshot_and_analyse_gate_on_init_completed(self):
         """Case 5: _initial_snapshot_and_analyse with init_completed=False does NOT call publish_local_snapshot; with True it does."""
         mock_v2 = MagicMock()
+        mock_v2.recover.return_value = {"status": "ready"}
         mock_v2.publish_local_snapshot.return_value = {"status": "published"}
 
         with patch.object(sudosync_service, "collect_and_write"), \

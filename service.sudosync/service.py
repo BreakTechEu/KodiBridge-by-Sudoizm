@@ -140,14 +140,10 @@ def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_cl
             return {"status": "error", "error": str(exc)}
 
         if not isinstance(rec, dict):
-            if hasattr(rec, "_mock_name") or "unittest.mock" in getattr(rec.__class__, "__module__", ""):
-                rec_status = "ready"
-                rec = {"status": "ready"}
-            else:
-                log("V2 recovery check returned invalid result (fail-closed)", xbmc.LOGERROR)
-                return {"status": "error", "error": "invalid_recovery_result"}
-        else:
-            rec_status = rec.get("status")
+            log("V2 recovery check returned non-dict result (fail-closed)", xbmc.LOGERROR)
+            return {"status": "error", "error": "invalid_recovery_result"}
+
+        rec_status = rec.get("status")
 
         if rec_status != "ready":
             reason = (rec.get("recovery") or {}).get("reason", rec_status) if isinstance(rec.get("recovery"), dict) else rec_status

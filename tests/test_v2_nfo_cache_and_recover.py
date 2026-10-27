@@ -247,6 +247,39 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
 
     @patch.object(sudosync_service, "collect_and_write")
     @patch.object(sudosync_service, "run_dry_run")
+    def test_initial_snapshot_skipped_when_v2_recover_returns_non_dict_fail_closed(self, mock_dry_run, mock_collect):
+        mock_v2 = MagicMock()
+        mock_v2.recover.return_value = "invalid_string_result"
+
+        res = sudosync_service._initial_snapshot_and_analyse(
+            v2_runtime=mock_v2,
+            abort_requested=lambda: False,
+            init_completed=False,
+        )
+
+        self.assertEqual(res.get("status"), "error")
+        self.assertEqual(res.get("error"), "invalid_recovery_result")
+        mock_collect.assert_not_called()
+        mock_dry_run.assert_not_called()
+
+    @patch.object(sudosync_service, "collect_and_write")
+    @patch.object(sudosync_service, "run_dry_run")
+    def test_initial_snapshot_skipped_when_v2_recover_returns_mock_fail_closed(self, mock_dry_run, mock_collect):
+        mock_v2 = MagicMock()
+        # An unconfigured mock returning another MagicMock instead of a dict must fail-closed
+        res = sudosync_service._initial_snapshot_and_analyse(
+            v2_runtime=mock_v2,
+            abort_requested=lambda: False,
+            init_completed=False,
+        )
+
+        self.assertEqual(res.get("status"), "error")
+        self.assertEqual(res.get("error"), "invalid_recovery_result")
+        mock_collect.assert_not_called()
+        mock_dry_run.assert_not_called()
+
+    @patch.object(sudosync_service, "collect_and_write")
+    @patch.object(sudosync_service, "run_dry_run")
     def test_initial_snapshot_proceeds_when_v2_recover_ready(self, mock_dry_run, mock_collect):
         mock_v2 = MagicMock()
         mock_v2.recover.return_value = {"status": "ready"}
