@@ -318,6 +318,7 @@ def _run_service():
         # Initialize v2 runtime and run startup recovery/preview after bootstrap.
         v2_runtime = None
         v2_blocked = False
+        v2_startup = None
         try:
             from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend
             from resources.lib.sudosync_v2.runtime import (
@@ -360,6 +361,10 @@ def _run_service():
                 v2_startup.get("status"),
                 (v2_startup.get("recovery") or {}).get("status", "n/a"),
             ), xbmc.LOGINFO)
+            for skipped in (v2_startup.get("recovery") or {}).get("superseded") or []:
+                log("V2 recovery skipped {} {} without writing ({}): current Kodi state is newer than the interrupted plan.".format(
+                    skipped.get("type"), skipped.get("kodi_id"), skipped.get("reason")
+                ), xbmc.LOGWARNING)
         except Exception as exc:
             # A preview failure must not disable the currently working service.
             log("V2 startup preview unavailable: {}".format(exc), xbmc.LOGWARNING)

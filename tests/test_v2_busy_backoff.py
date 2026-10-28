@@ -424,3 +424,35 @@ class TestLiveCycleRecordsErrorsInStatus(unittest.TestCase):
         res, mock_status = self._run(None)
         self.assertEqual(res["error"], "v2_unavailable")
         self.assertEqual(mock_status.call_args[1]["error"], "v2_unavailable")
+
+
+class TestStartupRecoveryFailure(unittest.TestCase):
+    def test_failing_startup_recovery_does_not_break_startup_synchronization(self):
+        """recover() raising during startup must not cause an unbound v2_startup error."""
+        runtime = MagicMock()
+        runtime.recover.side_effect = RuntimeError("journal unreadable")
+        monitor = MagicMock()
+        monitor.abortRequested.return_value = False
+        monitor.waitForAbort.return_value = True
+        monitor.dirty = False
+        monitor.scanning = False
+        monitor.scan_refresh_pending = False
+        logged = []
+        with patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=True), \
+                patch("resources.lib.sudosync_bootstrap.refresh_network_active_kodi_lease", return_value=True), \
+                patch("resources.lib.sudosync_bootstrap.release_network_active_kodi_lease"), \
+                patch("resources.lib.sudosync_v2.runtime.build_kodi_v2_runtime", return_value=runtime), \
+                patch.object(sudosync_service, "SudoSyncMonitor", return_value=monitor), \
+                patch.object(sudosync_service, "addon_settings", return_value={
+                    "base_path": "smb://nas/.SudoSync/", "client_name": "PC", "interval_seconds": 300,
+                    "live_poll_seconds": 60, "live_sync_enabled": True, "check_updates": False,
+                }), \
+                patch.object(sudosync_service, "get_or_create_client_id", return_value="c1"), \
+                patch.object(sudosync_service, "read_shared_config", return_value={"initialization": {"completed": True}}), \
+                patch.object(sudosync_service, "_is_playing_video", return_value=False), \
+                patch.object(sudosync_service, "_execute_integrated_live_cycle", return_value={"busy": False, "applied_items": 0}) as cycle, \
+                patch.object(sudosync_service, "log", side_effect=lambda msg, *a, **k: logged.append(str(msg))):
+            sudosync_service._run_service()
+        self.assertFalse(any("referenced before assignment" in m for m in logged))
+        self.assertFalse(any("Startup synchronization failed" in m for m in logged))
+        self.assertGreaterEqual(cycle.call_count, 1)

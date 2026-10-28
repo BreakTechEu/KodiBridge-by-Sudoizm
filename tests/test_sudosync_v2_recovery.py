@@ -144,20 +144,24 @@ class TestRecoveryRunner(unittest.TestCase):
         self.assertEqual(self.kodi.writes, 0)
         self.assertEqual(self.journals[-1]["status"], "committed")
 
-    def test_unexpected_library_state_keeps_session_blocked(self):
+    def test_changed_library_state_is_superseded_without_write_and_releases(self):
         self.kodi.value = 9
-        with self.assertRaisesRegex(TransactionError, "matches neither"):
-            self.runner.recover_on_start(CLIENT_A)
-        self.assertTrue(self.coordinator.exists)
+        result = self.runner.recover_on_start(CLIENT_A)
+        self.assertEqual(result["status"], "recovered")
+        self.assertEqual(result["superseded"], [{"type": "movie", "kodi_id": 5, "reason": "changed_after_interruption"}])
+        self.assertFalse(self.coordinator.exists)
         self.assertEqual(self.kodi.writes, 0)
+        self.assertEqual(self.kodi.value, 9)
+        self.assertEqual(self.journals[-1]["status"], "committed")
+        self.assertEqual(self.journals[-1]["items"][0]["status"], "superseded")
 
-    def test_reused_kodi_id_for_different_title_keeps_session_blocked(self):
+    def test_reused_kodi_id_for_different_title_is_never_written(self):
         self.kodi.get_movie_details = lambda kodi_id: dict(state(self.kodi.value), movieid=kodi_id, imdbnumber="tt7654321")
-        with self.assertRaisesRegex(TransactionError, "Recovery identity check failed"):
-            self.runner.recover_on_start(CLIENT_A)
-        self.assertTrue(self.coordinator.exists)
+        result = self.runner.recover_on_start(CLIENT_A)
+        self.assertEqual(result["superseded"][0]["reason"], "identity_changed")
+        self.assertFalse(self.coordinator.exists)
         self.assertEqual(self.kodi.writes, 0)
-        self.assertEqual(self.journals[-1]["status"], "needs_recovery")
+        self.assertEqual(self.journals[-1]["status"], "committed")
 
     def test_failed_recovery_keeps_session_blocked(self):
         self.kodi.fail_write = True
@@ -165,6 +169,14 @@ class TestRecoveryRunner(unittest.TestCase):
             self.runner.recover_on_start(CLIENT_A)
         self.assertTrue(self.coordinator.exists)
         self.assertEqual(self.journals[-1]["status"], "needs_recovery")
+
+    def test_committed_journal_releases_marker_even_if_value_changed_later(self):
+        self.journals = [journal(status="committed", item_status="verified")]
+        self.kodi.value = 9
+        result = self.runner.recover_on_start(CLIENT_A)
+        self.assertTrue(result["already_committed"])
+        self.assertEqual(self.coordinator.released, [SESSION])
+        self.assertEqual(self.kodi.writes, 0)
 
     def test_committed_journal_is_verified_before_marker_release(self):
         self.journals = [journal(status="committed", item_status="verified")]
@@ -176,9 +188,20 @@ class TestRecoveryRunner(unittest.TestCase):
     def test_verified_item_that_changed_is_not_overwritten(self):
         self.journals = [journal(item_status="verified")]
         self.kodi.value = 9
-        with self.assertRaisesRegex(TransactionError, "previously verified"):
-            self.runner.recover_on_start(CLIENT_A)
-        self.assertTrue(self.coordinator.exists)
+        result = self.runner.recover_on_start(CLIENT_A)
+        self.assertEqual(result["superseded"][0]["reason"], "changed_after_verification")
+        self.assertFalse(self.coordinator.exists)
+        self.assertEqual(self.kodi.writes, 0)
+        self.assertEqual(self.kodi.value, 9)
+
+    def test_superseded_journal_from_interrupted_recovery_loads_and_finishes(self):
+        stored = journal()
+        stored["items"][0]["status"] = "superseded"
+        self.journals = [stored]
+        result = self.runner.recover_on_start(CLIENT_A)
+        self.assertEqual(result["status"], "recovered")
+        self.assertFalse(self.coordinator.exists)
+        self.assertEqual(self.kodi.writes, 0)
 
 
 if __name__ == "__main__":

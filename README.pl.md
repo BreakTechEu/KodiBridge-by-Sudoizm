@@ -3,8 +3,8 @@
 ---
 
 > [!NOTE]
-> **Wydanie produkcyjne (KodiBridge by Sudoizm 2.2.1):**
-> KodiBridge by Sudoizm 2.2.1 jest **stabilnym wydaniem produkcyjnym** nowej architektury v2 z transakcyjnym dziennikiem zmian, obsługą identyfikatorów KodiBridge ID dla prywatnych wideo i sieci lokalnej, strażnikiem pojedynczej aktywnej sesji Kodi oraz wymuszaniem zgodności wersji między urządzeniami. Starsza linia **SudoSync 1.0.0** pozostaje dostępna na zamrożonej gałęzi [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
+> **Wydanie produkcyjne (KodiBridge by Sudoizm 2.2.2):**
+> KodiBridge by Sudoizm 2.2.2 jest **stabilnym wydaniem produkcyjnym** nowej architektury v2 z transakcyjnym dziennikiem zmian, obsługą identyfikatorów KodiBridge ID dla prywatnych wideo i sieci lokalnej, strażnikiem pojedynczej aktywnej sesji Kodi oraz wymuszaniem zgodności wersji między urządzeniami. Starsza linia **SudoSync 1.0.0** pozostaje dostępna na zamrożonej gałęzi [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
 > Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)**.
 
 # KodiBridge by Sudoizm
@@ -28,7 +28,7 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 - **Dopasowanie pozycji:** Przy włączonej w sieci opcji KodiBridge ID pozycje są dopasowywane między urządzeniami Kodi wyłącznie po KodiBridge ID. Identyfikatory IMDb/TMDb/TVDb/Trakt służą do tego tylko wtedy, gdy opcja jest wyłączona (np. bez prawa zapisu na NAS). Pozycje bez użytecznego identyfikatora są pomijane i nigdy nie są dopasowywane po tytule.
 - **Rozdzielenie ID sieciowego od Aliasu UI:** Wyraźnie oddziela wewnętrzny identyfikator sieciowy od przyjaznego aliasu wyświetlanego w interfejsie. Zapewnia to stabilność przypisań przy jednoczesnym czytelnym nazewnictwie urządzeń.
 - **Aktualizacje z GitHub Releases i ochrona wersji w sieci:** Wtyczka sprawdza raz na dobę dostępność nowego wydania na GitHub Releases (za jawną zgodą użytkownika), umożliwia ręczną aktualizację ze wskazanego pliku ZIP i pilnuje w `SudoSync.cfg` wymaganej minimalnej wersji (`min_addon_version`). Nowsza wersja zapisana przez inne Kodi od razu wywołuje pytanie o aktualizację.
-- **Dziennik Zdarzeń (Journaling):** Synchronizacja używa mechanizmu transakcyjnego z dziennikiem postępu, pozwalając na bezpieczne wznowienie po nieoczekiwanym błędzie.
+- **Dziennik Zdarzeń (Journaling):** Synchronizacja używa mechanizmu transakcyjnego z dziennikiem postępu, pozwalając na bezpieczne wznowienie po nieoczekiwanym błędzie. Jeśli pozycja zmieniła się w Kodi po przerwanym zapisie, odzyskiwanie zostawia aktualną wartość z Kodi, pomija tę pozycję bez zapisu i działa dalej, więc przerwany zapis nigdy nie blokuje synchronizacji na stałe.
 - **Limity Bezpieczeństwa:** System wprowadza maksymalne limity pamięci, wielkości plików oraz liczby rekordów dla bezpieczeństwa klienta.
 
 ---
@@ -45,7 +45,7 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 ## Instalacja i konfiguracja
 
 1. **Źródło instalacji:**
-   - **KodiBridge by Sudoizm 2.2.1 (Produkcyjna):** Pobierz plik `kodibridge-by-sudoizm-2.2.1.zip` z sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** (zalecane wydanie produkcyjne z architekturą v2 i KodiBridge ID).
+   - **KodiBridge by Sudoizm 2.2.2 (Produkcyjna):** Pobierz plik `kodibridge-by-sudoizm-2.2.2.zip` z sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** (zalecane wydanie produkcyjne z architekturą v2 i KodiBridge ID).
    - **SudoSync 1.0.0 (Starsza wersja stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)**.
 
 2. **Instalacja w Kodi:**

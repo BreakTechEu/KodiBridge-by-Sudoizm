@@ -1,6 +1,8 @@
-Zmiany niewydane
-================
+KodiBridge by Sudoizm 2.2.2
+===========================
 
+- Odzyskiwanie przerwanego zapisu nie blokuje już synchronizacji na stałe. Gdy stan pozycji w Kodi zmienił się od przerwania (np. po dalszym oglądaniu) albo pod tym Kodi ID jest inna pozycja, pozycja jest pomijana bez zapisu (aktualna wartość w Kodi wygrywa), oznaczana w dzienniku jako `superseded`, a sesja jest kończona. Wcześniej taki dziennik (np. z czasów równoległych silników v1/v2) blokował synchronizację z komunikatem „manual inspection is required”, bez możliwości zdjęcia blokady przez użytkownika.
+- Naprawiono błąd startu usługi „local variable 'v2_startup' referenced before assignment”, gdy odzyskiwanie przy starcie zgłosiło błąd.
 - Okno statusu: błąd cyklu synchronizacji jest zapisywany także przy zablokowanej sesji v2, nieoczekiwanym wyniku v2 i braku silnika v2 (wcześniej tylko przy wyjątku). Publikacja snapshotu w trakcie odtwarzania odświeża czas ostatniego snapshotu w oknie statusu (uwagi z audytu Gemini).
 
 KodiBridge by Sudoizm 2.2.1

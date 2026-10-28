@@ -3,8 +3,8 @@
 ---
 
 > [!NOTE]
-> **Production Release (KodiBridge by Sudoizm 2.2.1):**
-> KodiBridge by Sudoizm 2.2.1 is the **production release** of the v2 architecture featuring journaled synchronization, KodiBridge ID for private videos and local networks, single-active-Kodi session guard, and cross-device version enforcement. The legacy **SudoSync 1.0.0** line remains available on the read-only branch [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
+> **Production Release (KodiBridge by Sudoizm 2.2.2):**
+> KodiBridge by Sudoizm 2.2.2 is the **production release** of the v2 architecture featuring journaled synchronization, KodiBridge ID for private videos and local networks, single-active-Kodi session guard, and cross-device version enforcement. The legacy **SudoSync 1.0.0** line remains available on the read-only branch [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
 > Both releases are available in the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section.
 
 # KodiBridge by Sudoizm
@@ -28,7 +28,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 - **Media Matching:** When the network KodiBridge ID option is enabled, items are matched between Kodi devices only by KodiBridge ID. IMDb/TMDb/TVDb/Trakt identifiers are used only when the option is disabled (e.g. without write access to the NAS). Items without a usable identifier are skipped, never matched by title.
 - **Network ID vs UI Alias:** Distinctly separates internal network identifiers from user-friendly UI aliases to keep network mapping robust while displaying readable names.
 - **GitHub Releases & Version Guard:** Checks GitHub Releases once per day (with explicit user consent), supports manual ZIP installation, and enforces a minimum add-on version (`min_addon_version` in `SudoSync.cfg`) across all Kodi devices in the network; a newer version recorded by another Kodi triggers the update prompt immediately.
-- **Journaled Sync:** Network sync gracefully handles partial Kodi API errors with an incremental journaling system, allowing for safe recovery.
+- **Journaled Sync:** Network sync gracefully handles partial Kodi API errors with an incremental journaling system, allowing for safe recovery. If an item changed in Kodi after an interrupted write, recovery keeps the current Kodi value, skips the item without writing and continues, so an interrupted write never blocks synchronization permanently.
 - **Strong File Limits:** Automatic file size and record count limits prevent Kodi memory exhaustion.
 
 ---
@@ -45,7 +45,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **KodiBridge by Sudoizm 2.2.1 (Production):** Download `kodibridge-by-sudoizm-2.2.1.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section (recommended production release with v2 architecture and KodiBridge ID).
+   - **KodiBridge by Sudoizm 2.2.2 (Production):** Download `kodibridge-by-sudoizm-2.2.2.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section (recommended production release with v2 architecture and KodiBridge ID).
    - **SudoSync 1.0.0 (Legacy Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section.
 
 2. **Install in Kodi:**

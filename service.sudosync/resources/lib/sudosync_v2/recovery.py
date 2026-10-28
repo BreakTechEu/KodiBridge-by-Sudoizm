@@ -101,7 +101,7 @@ class RecoveryRunner(object):
                 raise TransactionError("recovery item {} has an invalid strong identity".format(index))
             if not item["changes"] or not set(item["changes"]).issubset(SYNC_FIELDS):
                 raise TransactionError("recovery item {} has unsupported changes".format(index))
-            if item.get("status") not in ("pending", "applying", "verified"):
+            if item.get("status") not in ("pending", "applying", "verified", "superseded"):
                 raise TransactionError("recovery item {} has unsupported status".format(index))
         return journal
 
@@ -150,40 +150,48 @@ class RecoveryRunner(object):
                 return {"status": "deferred", "reason": "video_playing", "session_id": session_id}
 
             # A committed journal may coexist with a marker if Kodi stopped
-            # between durable commit and marker release. Verify before release.
+            # between durable commit and marker release. Its writes were already
+            # verified before the commit; values changed later by the user are
+            # newer local state, so the marker is released without writing.
             if journal["status"] == "committed":
-                for item in journal["items"]:
-                    self._verify_after(item)
                 self._coordinator.release(session_id)
                 return {"status": "recovered", "session_id": session_id, "already_committed": True}
 
+            superseded = []
+
+            def supersede(item, reason):
+                # Never write an uncertain value: the current Kodi state is newer
+                # than the interrupted plan (or the Kodi ID no longer holds the
+                # planned item), so the item is skipped and the session can finish.
+                item["status"] = "superseded"
+                item["superseded_reason"] = reason
+                item["superseded_at"] = self._clock()
+                self._persist_journal(deepcopy(journal))
+                superseded.append({"type": item["type"], "kodi_id": item["kodi_id"], "reason": reason})
+
             for item in journal["items"]:
+                if item["status"] == "superseded":
+                    continue
                 if self._kodi.is_video_playing():
                     raise TransactionError("video playback started during recovery")
                 actual = self._details(item)
                 if not isinstance(actual, dict):
                     raise TransactionError("Kodi returned invalid details during recovery")
                 if not identity_matches_kodi_item(item["identity"], actual):
-                    raise TransactionError(
-                        "Recovery identity check failed for {} {}; refusing to access a different library item"
-                        .format(item["type"], item["kodi_id"])
-                    )
+                    supersede(item, "identity_changed")
+                    continue
 
                 if item["status"] == "verified":
                     if not self._matches_after(item, actual):
-                        raise TransactionError(
-                            "A previously verified field changed after interruption; refusing to overwrite it"
-                        )
+                        supersede(item, "changed_after_verification")
                     continue
 
                 # The RPC may have completed just before Kodi stopped, or it
                 # may not have started. Resume only from recorded before/after values.
                 if not self._matches_after(item, actual):
                     if not self._matches_before_or_after(item, actual):
-                        raise TransactionError(
-                            "Current Kodi state matches neither before nor intended after values; "
-                            "manual inspection is required"
-                        )
+                        supersede(item, "changed_after_interruption")
+                        continue
                     item["status"] = "applying"
                     item["started_at"] = self._clock()
                     journal["status"] = "applying"
@@ -201,7 +209,8 @@ class RecoveryRunner(object):
             journal["error"] = ""
             self._persist_journal(deepcopy(journal))
             self._coordinator.release(session_id)
-            return {"status": "recovered", "session_id": session_id, "already_committed": False}
+            return {"status": "recovered", "session_id": session_id, "already_committed": False,
+                    "superseded": superseded}
         except Exception as exc:
             journal["status"] = "needs_recovery"
             journal["error"] = str(exc)
