@@ -64,7 +64,7 @@ For a step-by-step safe manual testing guide for version 2.x (Beta) on Kodi (in 
 > **Safe Update & Network Version Guard:**
 > KodiBridge includes a built-in update mechanism that protects network consistency:
 > 1. **Automatic GitHub Releases Check (Once Every 24 Hours):** KodiBridge checks the official GitHub Releases (`BreakTechEu/SudoSync-Kodi-addon`) at most once per day. Silent background updates are disabled — when a newer release is found, KodiBridge prompts you for explicit consent before downloading and installing (you can also trigger the check manually in add-on settings).
-> 2. **Update from Local ZIP File:** Add-on settings provide an option to browse and install a `service.sudosync-X.X.X.zip` package directly from local storage or a network share.
+> 2. **Update from Local ZIP File:** Add-on settings provide an option to browse and install a `kodibridge-by-sudoizm-X.Y.Z.zip` package directly from local storage or a network share. Existing historical releases keep their original filenames; the built-in updater accepts both the new KodiBridge filename and legacy `service.sudosync-X.Y.Z.zip` names.
 > 3. **Network Minimum Version Guard (`min_addon_version` in `SudoSync.cfg`):** Whenever a Kodi device on the shared network runs a newer KodiBridge version, it records that version as `min_addon_version` in `SudoSync.cfg`. Any other Kodi instance starting with an older version will detect the mismatch and either force an immediate update (via GitHub Releases or local ZIP) or stay paused until updated.
 
 ---
