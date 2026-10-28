@@ -148,3 +148,29 @@ class TestKodiBridgeIdOnlyMatching(unittest.TestCase):
         remote = make_snapshot(B, "Bedroom", [{"imdb": "tt1234567", "playcount": 2}], previous=remote_base)
         plan = build_sync_plan(local, [remote], {"movie": [7], "episode": []})
         self.assertEqual(plan["change_count"], 1)
+
+
+class TestApplyPlanWithSharedExternalIds(unittest.TestCase):
+    """Two local items share an external ID but differ by KodiBridge ID (e.g. multi-episode files)."""
+
+    def _snapshots(self):
+        shared = {"imdb": "tt1234567", "tmdb": 2250557}
+        local = make_snapshot(A, "Living Room", [
+            {"imdb": "tt1234567", "uniqueid": dict(shared, sudosync="dom-000256"), "playcount": 0},
+            {"imdb": "tt1234567", "uniqueid": dict(shared, sudosync="dom-000258"), "playcount": 0},
+        ])
+        remote_base = make_snapshot(B, "Bedroom", [
+            {"imdb": "tt1234567", "uniqueid": dict(shared, sudosync="dom-000256"), "playcount": 0},
+        ])
+        remote = make_snapshot(B, "Bedroom", [
+            {"imdb": "tt1234567", "uniqueid": dict(shared, sudosync="dom-000256"), "playcount": 3},
+        ], previous=remote_base)
+        return local, remote
+
+    def test_applied_plan_updates_only_the_matching_record(self):
+        local, remote = self._snapshots()
+        plan = build_sync_plan(local, [remote], {"movie": [7, 8], "episode": []}, identity_kinds=("sudosync",))
+        self.assertEqual(plan["change_count"], 1)
+        updated = apply_plan_to_snapshot(local, plan)
+        by_sid = {r["ids"]["sudosync"]: r["state"]["playcount"] for r in updated["movies"]}
+        self.assertEqual(by_sid, {"dom-000256": 3, "dom-000258": 0})

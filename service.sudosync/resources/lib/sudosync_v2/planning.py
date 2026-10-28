@@ -252,13 +252,20 @@ def apply_plan_to_snapshot(snapshot, plan, max_records=100000):
         identity = item.get("identity") or []
         if not isinstance(identity, list) or not identity:
             raise PlanningError("plan item lacks strong identity")
-        candidates = {}
+        # The plan identity is the full identifier set of one local record, so a
+        # record must match every entry. Matching any single entry is ambiguous
+        # when items share an external ID and differ only by KodiBridge ID.
+        candidates = None
         for entry in identity:
             if not isinstance(entry, str) or ":" not in entry:
                 raise PlanningError("plan item contains malformed identity")
             kind, value = entry.split(":", 1)
-            for record in records_by_alias[media_type].get((media_type, kind, value), []):
-                candidates[id(record)] = record
+            matched = {id(record): record for record in records_by_alias[media_type].get((media_type, kind, value), [])}
+            if candidates is None:
+                candidates = matched
+            else:
+                candidates = {key: rec for key, rec in candidates.items() if key in matched}
+        candidates = candidates or {}
         if len(candidates) != 1:
             raise PlanningError("plan item identity does not uniquely match one snapshot record")
         record = next(iter(candidates.values()))

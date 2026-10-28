@@ -1,6 +1,6 @@
 # Architektura i mechanizmy SudoSync (wersja 2.x)
 
-SudoSync 2.x to rozwinięcie tego samego dodatku z wersji 1.x o dodatkowe możliwości. Zachowuje i rozbudowuje istniejące funkcje, w tym sprawdzone elementy ścieżki LIVE; nie jest nowym programem tworzonym od zera. Niniejszy dokument opisuje architekturę techniczną, model danych, mechanizmy współbieżności i procedury synchronizacji wtyczki **SudoSync**. Opisy szczegółów implementacyjnych mogą dotyczyć wcześniejszego wydania i należy je weryfikować wobec bieżącego kodu.
+KodiBridge by Sudoizm 2.x (dawniej SudoSync) to rozwinięcie tego samego dodatku z wersji 1.x. Sprawdzone zachowania ścieżki LIVE z 1.x realizuje obecnie silnik v2, który od wydania 2.2.0 jest jedynym silnikiem synchronizacji. Niniejszy dokument opisuje architekturę techniczną, model danych, mechanizmy współbieżności i procedury synchronizacji wtyczki **SudoSync**. Opisy szczegółów implementacyjnych mogą dotyczyć wcześniejszego wydania i należy je weryfikować wobec bieżącego kodu.
 
 ---
 

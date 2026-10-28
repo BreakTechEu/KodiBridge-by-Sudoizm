@@ -1,3 +1,12 @@
+KodiBridge by Sudoizm 2.2.1
+===========================
+
+- Poprawki po audycie zewnętrznym 2.2.0:
+  - Po zapisaniu zmian w Kodi snapshot jest aktualizowany po pełnym zestawie identyfikatorów pozycji. Wcześniej dwie pozycje ze wspólnym zewnętrznym ID (np. odcinki z jednego pliku) i różnym KodiBridge ID powodowały błąd „does not uniquely match” i brak publikacji snapshotu po udanym zapisie.
+  - Strażnik wersji: anulowanie lub nieudana instalacja z pliku ZIP kończy się komunikatem o wstrzymaniu synchronizacji (wcześniej brak komunikatu).
+  - Dokumentacja (`docs/ARCHITECTURE.md`, `docs/V2_DESIGN.md`) opisuje v2 jako jedyny silnik.
+- Testy: regresja dla wspólnego zewnętrznego ID, ścieżki instalacji z ZIP w strażniku wersji oraz kolejności bootstrapu (strażnik wersji przed jakąkolwiek synchronizacją).
+
 KodiBridge by Sudoizm 2.2.0
 ===========================
 

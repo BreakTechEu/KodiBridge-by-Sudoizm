@@ -1,19 +1,19 @@
 # SudoSync 2.x — rozwój architektury dodatku
 
-SudoSync 2.x jest kolejną, rozszerzoną wersją tego samego dodatku SudoSync, rozwijaną na bazie wersji 1.x. Nie jest odrębnym programem ani przebudową od zera. Dokument opisuje docelowe usprawnienia architektury i dodatkowe możliwości; nie oznacza to, że istniejące, sprawdzone elementy v1 należy odrzucić.
+KodiBridge by Sudoizm 2.x (dawniej SudoSync) jest kolejną wersją tego samego dodatku, który zaczynał jako SudoSync 1.x. Funkcje sprawdzone w 1.x (m.in. model LIVE z wersjami pól i catch-up po długiej przerwie) zostały przeniesione do silnika v2. Od wydania 2.2.0 v2 jest jedynym silnikiem synchronizacji; kod silnika 1.x usunięto. Dokument opisuje architekturę v2.
 
 ## Nienaruszalne granice
 
-- `master` jest aktywną gałęzią główną, na której bezpośrednio rozwija się SudoSync 2.x jako kontynuację dodatku v1. `v1-stable` pozostaje zamrożoną gałęzią wydania 1.0.0.
+- `master` jest aktywną gałęzią główną, na której rozwija się wersja 2.x. `v1-stable` pozostaje zamrożoną gałęzią archiwalnego wydania 1.0.0.
 - Gałąź `v1-stable` i wydanie SudoSync 1.0.0 są zamrożone. Nie cherry-pickować do niej zmian, nie zmieniać tagów ani opublikowanych plików.
-- Zachowuj sprawdzone funkcje i zachowania wersji 1.x oraz rozwijaj je wraz z nowymi opcjami v2. Zmiany architektury mają wspierać rozwój tego samego dodatku, a nie zakładać zastąpienia wszystkiego nowym programem.
+- Jeden silnik synchronizacji (v2). Nie przywracać równoległego działania silnika 1.x. Zachowania wymagane przez użytkownika (model LIVE, catch-up, ochrona przed pętlą zmian) realizuje v2.
 - SudoSync pozostaje darmowym oprogramowaniem open source.
 - **Model pracy:** użytkownik korzysta tylko z jednego Kodi naraz. Jest to podstawowa zasada operacyjna v2; blokady i odzyskiwanie są dodatkowymi zabezpieczeniami. Nie wymagaj fizycznego testu konkurencji dwóch aktywnych urządzeń jako warunku pracy w tym modelu. Ponieważ SudoSync działa jako usługa w tle, nie uruchamiaj usługi na pozostałych urządzeniach w tym samym czasie.
 - Bez MySQL/MariaDB, bez serwera centralnego i bez chmury. Wspólnym transportem danych jest katalog dostępny dla wszystkich urządzeń Kodi: SMB, NFS lub lokalny udział.
 - Współdzielony katalog nie może zawierać danych, które należą wyłącznie do jednej instancji Kodi.
 - Zmiany biblioteki Kodi wyłącznie przez oficjalne JSON-RPC. Nie otwierać ani nie modyfikować plików `MyVideos*.db`.
-- Aktualizacje są pobierane z oficjalnego GitHub Releases (`BreakTechEu/KodiBridge-by-Sudoizm`, sprawdzane najwyżej raz na dobę i instalowane wyłącznie za jawną zgodą użytkownika) lub instalowane ręcznie ze wskazanego przez użytkownika pliku `.zip`.
-- W pliku `SudoSync.cfg` utrzymywana jest minimalna wymagana wersja wtyczki w sieci (`min_addon_version`). Urządzenie ze starszą wersją wtyczki jest zatrzymywane na etapie bootstrapu lub odświeżenia dzierżawy do czasu aktualizacji.
+- Aktualizacje są pobierane z oficjalnego GitHub Releases (`BreakTechEu/KodiBridge-by-Sudoizm`, sprawdzane najwyżej raz na dobę, a od razu, gdy inne Kodi zapisało nowszą wersję w `SudoSync.cfg`; instalowane wyłącznie za jawną zgodą użytkownika) lub instalowane ręcznie ze wskazanego przez użytkownika pliku `.zip`. Na NAS nie przechowuje się paczek ZIP.
+- W pliku `SudoSync.cfg` utrzymywana jest minimalna wymagana wersja wtyczki w sieci (`min_addon_version`). Urządzenie ze starszą wersją wtyczki jest zatrzymywane na etapie bootstrapu (przed jakąkolwiek synchronizacją) lub odświeżenia dzierżawy (podczas odtwarzania po zatrzymaniu filmu) i nie synchronizuje do czasu aktualizacji lub następnego uruchomienia Kodi.
 - Wspierane są dwie najnowsze główne wersje Kodi. Zmianę zakresu wsparcia dokumentować w każdym wydaniu.
 
 ## Cele v2
@@ -21,7 +21,7 @@ SudoSync 2.x jest kolejną, rozszerzoną wersją tego samego dodatku SudoSync, r
 1. Konserwatywna synchronizacja stanu odtwarzania pomiędzy instancjami Kodi.
 2. Bezpieczna inicjalizacja nowej sieci i jawny podgląd przed pierwszym zapisem.
 3. Rozstrzyganie konfliktów deterministycznie, bez cichego nadpisywania niejednoznacznych danych.
-4. Obsługa filmów/odcinków bez stabilnych identyfikatorów zewnętrznych przez opcjonalne SudoSync ID, bez utożsamiania elementów wyłącznie na podstawie podobnych tytułów.
+4. Identyfikacja pozycji przez KodiBridge ID (dawniej SudoSync ID, w `.nfo` jako `uniqueid type="sudosync"`): przy włączonej opcji jest to jedyny klucz dopasowania między urządzeniami; IMDb/TMDb/TVDb/Trakt tylko przy wyłączonej opcji. Nigdy dopasowanie po tytule.
 5. Odporny na przerwanie zapis plików współdzielonych i jawna obsługa błędów I/O.
 6. Weryfikowalny, testowalny mechanizm aktualizacji oraz regresyjne testy bezpieczeństwa.
 7. Czytelne komunikaty PL/EN i przewidywalne logowanie bez ujawniania sekretów.

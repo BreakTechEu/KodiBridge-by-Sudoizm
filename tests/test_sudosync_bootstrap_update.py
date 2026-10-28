@@ -171,6 +171,40 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             dialog.ok.assert_called_once()
             self.assertIn("2.1.0", dialog.ok.call_args[0][1])
 
+    def _zip_guard(self, install_result=None, install_error=None):
+        cfg = {
+            "schema_version": 1,
+            "configuration": {"completed": True},
+            "network_settings": {"sudosync_id_enabled": False, "sudosync_id_prefix": "", "min_addon_version": "2.1.0"},
+        }
+        dialog = MagicMock()
+        dialog.yesno.side_effect = [False, True]  # no GitHub, yes local ZIP
+        dialog.browse.return_value = "smb://nas/update.zip"
+        install = MagicMock(return_value=install_result, side_effect=install_error)
+        with patch.object(bootstrap, "_get_local_addon_version", return_value="2.0.0"), \
+                patch.object(bootstrap.xbmcgui, "Dialog", return_value=dialog), \
+                patch.object(core, "install_update_from_zip_path", install):
+            allowed = bootstrap.enforce_network_version_guard("smb://nas/video/.SudoSync/", cfg)
+        return allowed, dialog, install
+
+    def test_network_version_guard_zip_installed_stops_without_paused_message(self):
+        allowed, dialog, install = self._zip_guard(install_result={"installed": True})
+        self.assertFalse(allowed)
+        install.assert_called_once()
+        dialog.ok.assert_not_called()
+
+    def test_network_version_guard_zip_cancelled_shows_paused_message(self):
+        allowed, dialog, _ = self._zip_guard(install_result={"installed": False, "cancelled": True})
+        self.assertFalse(allowed)
+        dialog.ok.assert_called_once()
+        self.assertIn("2.1.0", dialog.ok.call_args[0][1])
+
+    def test_network_version_guard_zip_error_shows_error_and_paused_message(self):
+        allowed, dialog, _ = self._zip_guard(install_error=ValueError("bad package"))
+        self.assertFalse(allowed)
+        self.assertEqual(dialog.ok.call_count, 2)
+        self.assertIn("bad package", dialog.ok.call_args_list[0][0][1])
+
     def test_find_github_update_parses_latest_release(self):
         import json
         fake_payload = json.dumps({
@@ -372,6 +406,39 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
         mock_refresh.assert_called_once()
         dialog_mock.notification.assert_called_once()
         mock_release.assert_called_once()
+
+    def test_service_stops_before_any_sync_when_bootstrap_version_guard_blocks(self):
+        """run_bootstrap() runs the network version guard first; a refusal stops the service before v2 starts."""
+        import service as sudosync_service
+        with patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=False), \
+                patch.object(sudosync_service, "SudoSyncMonitor", return_value=MagicMock()), \
+                patch.object(sudosync_service, "addon_settings", return_value={"base_path": "smb://nas/video/.SudoSync/"}), \
+                patch("resources.lib.sudosync_v2.runtime.build_kodi_v2_runtime") as mock_build, \
+                patch.object(sudosync_service, "_execute_integrated_live_cycle") as mock_cycle, \
+                patch.object(sudosync_service, "_initial_snapshot_and_analyse") as mock_init, \
+                patch.object(sudosync_service, "maybe_check_github_update_daily") as mock_daily:
+            sudosync_service._run_service()
+        mock_build.assert_not_called()
+        mock_cycle.assert_not_called()
+        mock_init.assert_not_called()
+        mock_daily.assert_not_called()
+
+    def test_bootstrap_runs_version_guard_before_lease_and_settings(self):
+        cfg = {
+            "schema_version": 1,
+            "configuration": {"completed": True},
+            "network_settings": {"sudosync_id_enabled": False, "sudosync_id_prefix": "", "min_addon_version": "2.2.0"},
+        }
+        with patch.object(bootstrap, "get_base_path", return_value="smb://nas/video/.SudoSync/"), \
+                patch.object(bootstrap, "test_vfs_rw", return_value=(True, "")), \
+                patch.object(bootstrap, "read_sudosync_cfg", return_value=("VALID", cfg)), \
+                patch.object(bootstrap, "enforce_network_version_guard", return_value=False) as mock_guard, \
+                patch.object(bootstrap, "acquire_network_active_kodi_lease") as mock_lease, \
+                patch.object(bootstrap, "apply_network_settings") as mock_apply:
+            self.assertFalse(bootstrap.run_bootstrap())
+        mock_guard.assert_called_once()
+        mock_lease.assert_not_called()
+        mock_apply.assert_not_called()
 
     def test_service_loop_defers_version_prompt_until_playback_stops(self):
         import service as sudosync_service

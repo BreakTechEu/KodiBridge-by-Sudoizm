@@ -486,10 +486,12 @@ def enforce_network_version_guard(base_path, cfg=None):
         zip_path = dialog.browse(1, "Wybierz pakiet aktualizacji KodiBridge (.zip)", "files", ".zip")
         if zip_path:
             try:
-                install_update_from_zip_path(zip_path, show_dialogs=True)
+                res = install_update_from_zip_path(zip_path, show_dialogs=True)
+                if isinstance(res, dict) and res.get("installed"):
+                    # Kodi restarts the updated service; this instance stops here.
+                    return False
             except Exception as exc:
                 dialog.ok("KodiBridge — błąd aktualizacji", str(exc))
-            return False
 
     dialog.ok(
         "KodiBridge — usługa wstrzymana",
