@@ -1298,9 +1298,6 @@ def ensure_remote_layout(base_path):
     system_dir = _join_vfs(base_path, "system")
     if not _vfs_exists(system_dir):
         _vfs_mkdirs(system_dir)
-    live_dir = _join_vfs(base_path, "live")
-    if not _vfs_exists(live_dir):
-        _vfs_mkdirs(live_dir)
     tx_dir = _join_vfs(base_path, "transactions")
     if not _vfs_exists(tx_dir):
         _vfs_mkdirs(tx_dir)
