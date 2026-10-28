@@ -220,7 +220,7 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
         addon_mock = MagicMock()
         addon_mock.getAddonInfo.return_value = "2.1.3"
 
-        with patch.object(core.xbmcaddon, "Addon", return_value=addon_mock), \\
+        with patch.object(core.xbmcaddon, "Addon", return_value=addon_mock), \
                 patch("urllib.request.urlopen", return_value=resp_mock):
             res = core.find_github_update()
             self.assertTrue(res["available"])
