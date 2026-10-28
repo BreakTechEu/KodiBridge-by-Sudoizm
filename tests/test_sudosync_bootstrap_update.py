@@ -201,7 +201,6 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             self.assertEqual(res["filename"], "service.sudosync-2.1.0.zip")
 
     def test_find_github_update_parses_kodibridge_release_asset(self):
-        import io
         import json
         filename = "kodibridge-by-sudoizm-2.1.4.zip"
         fake_payload = json.dumps({
