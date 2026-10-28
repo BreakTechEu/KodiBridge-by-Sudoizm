@@ -200,6 +200,33 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             self.assertEqual(res["version"], "2.1.0")
             self.assertEqual(res["filename"], "service.sudosync-2.1.0.zip")
 
+    def test_find_github_update_parses_kodibridge_release_asset(self):
+        import io
+        import json
+        filename = "kodibridge-by-sudoizm-2.1.4.zip"
+        fake_payload = json.dumps({
+            "tag_name": "v2.1.4",
+            "html_url": "https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases/tag/v2.1.4",
+            "assets": [{
+                "name": filename,
+                "browser_download_url": "https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases/download/v2.1.4/" + filename,
+            }],
+        }).encode("utf-8")
+
+        resp_mock = MagicMock()
+        resp_mock.read.return_value = fake_payload
+        resp_mock.__enter__.return_value = resp_mock
+        resp_mock.__exit__.return_value = False
+        addon_mock = MagicMock()
+        addon_mock.getAddonInfo.return_value = "2.1.3"
+
+        with patch.object(core.xbmcaddon, "Addon", return_value=addon_mock), \\
+                patch("urllib.request.urlopen", return_value=resp_mock):
+            res = core.find_github_update()
+            self.assertTrue(res["available"])
+            self.assertEqual(res["version"], "2.1.4")
+            self.assertEqual(res["filename"], filename)
+
     def test_maybe_check_github_update_daily_respects_24h_interval_and_consent(self):
         status_store = {"last_github_update_check_epoch": 1000.0}
         dialog = MagicMock()
