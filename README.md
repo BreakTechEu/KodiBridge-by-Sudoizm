@@ -43,7 +43,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **SudoSync 2.1.3 (Production):** Download `service.sudosync-2.1.3.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended production release with v2 architecture and SudoSync ID).
+   - **KodiBridge by Sudoizm 2.1.3 (Production):** Download `service.sudosync-2.1.3.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section (recommended production release with v2 architecture and SudoSync ID).
    - **SudoSync 1.0.0 (Legacy Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** section.
 
 2. **Install in Kodi:**
