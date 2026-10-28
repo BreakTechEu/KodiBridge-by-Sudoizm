@@ -1,3 +1,8 @@
+Zmiany niewydane
+================
+
+- Okno statusu: błąd cyklu synchronizacji jest zapisywany także przy zablokowanej sesji v2, nieoczekiwanym wyniku v2 i braku silnika v2 (wcześniej tylko przy wyjątku). Publikacja snapshotu w trakcie odtwarzania odświeża czas ostatniego snapshotu w oknie statusu (uwagi z audytu Gemini).
+
 KodiBridge by Sudoizm 2.2.1
 ===========================
 

@@ -209,6 +209,7 @@ def _execute_integrated_live_cycle(
     """Run one LIVE sync cycle with the v2 engine (the only synchronization engine)."""
     if v2_runtime is None:
         log("V2 runtime unavailable; LIVE sync cycle skipped.", xbmc.LOGERROR)
+        update_local_status_from_v2(error="v2_unavailable")
         return {"busy": True, "error": "v2_unavailable", "v2": None, "applied_items": 0}
 
     # NFO identifiers are cached between cycles; a finished library scan/clean
@@ -233,16 +234,19 @@ def _execute_integrated_live_cycle(
 
     if not isinstance(v2_result, dict):
         log("V2 live sync returned invalid result: {}".format(v2_result), xbmc.LOGERROR)
+        update_local_status_from_v2(error="invalid_v2_result")
         return {"busy": True, "error": "invalid_v2_result", "v2": v2_result, "applied_items": 0}
 
     v2_status = v2_result.get("status")
     v2_applied = int(v2_result.get("applied_count") or 0)
     if v2_status == "blocked":
         log("V2 live sync blocked by unrecovered session; skipping cycle until resolved.", xbmc.LOGERROR)
+        update_local_status_from_v2(error="blocked: unrecovered v2 session")
         return {"busy": True, "blocked": True, "v2": v2_result, "applied_items": 0}
 
     if v2_status not in ("committed", "no_changes", "deferred"):
         log("V2 live sync returned non-ok status '{}'.".format(v2_status), xbmc.LOGERROR)
+        update_local_status_from_v2(error="unexpected v2 status: {}".format(v2_status))
         return {"busy": True, "error": "unexpected_v2_status", "v2": v2_result, "applied_items": 0}
 
     if v2_status == "deferred":
@@ -514,10 +518,15 @@ def _run_service():
                         if poll_due and not monitor.scanning:
                             if v2_runtime is not None:
                                 try:
-                                    v2_runtime.publish_local_snapshot(
+                                    v2_pub = v2_runtime.publish_local_snapshot(
                                         abort_requested=monitor.abortRequested,
                                         suppress_local_changes=False,
                                     )
+                                    if isinstance(v2_pub, dict) and v2_pub.get("published_snapshot_path"):
+                                        update_local_status_from_v2(
+                                            published_snapshot=v2_pub.get("snapshot"),
+                                            v2_result=v2_pub,
+                                        )
                                 except Exception as exc:
                                     log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
                             last_live_poll = time.time()

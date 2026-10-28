@@ -387,3 +387,40 @@ class TestV2BusyBackoff(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLiveCycleRecordsErrorsInStatus(unittest.TestCase):
+    """Every failing LIVE cycle path records the error in status.json (shown in the status window)."""
+
+    def _run(self, v2_runtime):
+        monitor = MagicMock()
+        monitor.abortRequested.return_value = False
+        monitor.scan_refresh_pending = False
+        with patch.object(sudosync_service, "update_local_status_from_v2") as mock_status:
+            res = sudosync_service._execute_integrated_live_cycle(
+                v2_runtime=v2_runtime,
+                monitor=monitor,
+                show_notification=False,
+                suppress_local_changes=False,
+                collect_local=True,
+            )
+        return res, mock_status
+
+    def test_blocked_session_is_recorded(self):
+        mock_v2 = MagicMock()
+        mock_v2.sync_cycle.return_value = {"status": "blocked", "applied_count": 0}
+        res, mock_status = self._run(mock_v2)
+        self.assertTrue(res["blocked"])
+        self.assertIn("blocked", mock_status.call_args[1]["error"])
+
+    def test_unexpected_status_is_recorded(self):
+        mock_v2 = MagicMock()
+        mock_v2.sync_cycle.return_value = {"status": "weird", "applied_count": 0}
+        res, mock_status = self._run(mock_v2)
+        self.assertEqual(res["error"], "unexpected_v2_status")
+        self.assertIn("weird", mock_status.call_args[1]["error"])
+
+    def test_missing_runtime_is_recorded(self):
+        res, mock_status = self._run(None)
+        self.assertEqual(res["error"], "v2_unavailable")
+        self.assertEqual(mock_status.call_args[1]["error"], "v2_unavailable")
