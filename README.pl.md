@@ -43,7 +43,7 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 ## Instalacja i konfiguracja
 
 1. **Źródło instalacji:**
-   - **SudoSync 2.1.3 (Produkcyjna):** Pobierz plik `service.sudosync-2.1.3.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecane wydanie produkcyjne z architekturą v2 i SudoSync ID).
+   - **KodiBridge by Sudoizm 2.1.3 (Produkcyjna):** Pobierz plik `service.sudosync-2.1.3.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecane wydanie produkcyjne z architekturą v2 i SudoSync ID).
    - **SudoSync 1.0.0 (Starsza wersja stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)**.
 
 2. **Instalacja w Kodi:**
