@@ -49,7 +49,7 @@ LIVE_SCHEMA_VERSION = 1
 LIVE_FIELDS = ("playcount", "lastplayed", "userrating", "resume")
 RATING_IMPORT_WHITELIST = {6, 7, 8}
 _LIVE_LOCK_HANDLE = None
-UPDATE_ZIP_RE = re.compile(r"^service[._]sudosync[_-](\d+)[._](\d+)[._](\d+)(?:-([A-Za-z0-9._-]+))?\.zip$", re.IGNORECASE)
+UPDATE_ZIP_RE = re.compile(r"^(?:service[._]sudosync|kodibridge-by-sudoizm)[_-](\d+)[._](\d+)[._](\d+)(?:-([A-Za-z0-9._-]+))?\.zip$", re.IGNORECASE)
 _VFS_CRED_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\s]+@)")
 
 
