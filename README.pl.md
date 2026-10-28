@@ -54,8 +54,6 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
    - Przy pierwszym uruchomieniu kreator KodiBridge poprosi o wskazanie wspólnego katalogu sieciowego (np. `smb://192.168.1.100/Wspoldzielony/`) i automatycznie utworzy w nim folder `.SudoSync/` oraz zainicjuje urządzenie.
    - W ustawieniach dodatku możesz nadać swojemu urządzeniu przyjazną nazwę oraz skonfigurować **Nazwę sieci (prefiks KodiBridge ID)** dla prywatnych wideo.
 
-Szczegółowa instrukcja bezpiecznego ręcznego testu wersji 2.x (Beta) krok po kroku znajduje się w pliku [`docs/TEST_NA_KODI.md`](docs/TEST_NA_KODI.md).
-
 ---
 
 ## Aktualizacja wtyczki

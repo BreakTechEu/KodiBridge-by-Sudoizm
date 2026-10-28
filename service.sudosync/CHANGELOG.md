@@ -1,3 +1,8 @@
+Zmiany niewydane
+================
+
+- Porządki w repozytorium: usunięto nieużywany dokument `docs/TEST_NA_KODI.md`.
+
 KodiBridge by Sudoizm 2.1.4
 ===========================
 

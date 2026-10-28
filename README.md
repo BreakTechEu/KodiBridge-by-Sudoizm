@@ -54,8 +54,6 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
    - On first start, the KodiBridge wizard prompts you to choose a shared network folder (e.g. `smb://192.168.1.100/SharedFolder/`), creates `.SudoSync/` automatically, and enrolls the device.
    - In add-on settings, you can set a friendly device name and configure the **Network Name (KodiBridge ID prefix)** for private videos.
 
-For a step-by-step safe manual testing guide for version 2.x (Beta) on Kodi (in Polish), see [`docs/TEST_NA_KODI.md`](docs/TEST_NA_KODI.md).
-
 ---
 
 ## Updating the Add-on
