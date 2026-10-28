@@ -64,7 +64,7 @@ Szczegółowa instrukcja bezpiecznego ręcznego testu wersji 2.x (Beta) krok po 
 > **Mechanizm bezpiecznej aktualizacji:**
 > Wtyczka KodiBridge posiada wbudowany system aktualizacji chroniący spójność sieci:
 > 1. **Automatyczne sprawdzanie w GitHub Releases (raz na dobę):** Wtyczka KodiBridge sprawdza raz na 24 godziny dostępność nowego wydania w oficjalnym repozytorium GitHub (`BreakTechEu/SudoSync-Kodi-addon`). Nie wykonuje cichych aktualizacji w tle — po wykryciu nowej wersji wyświetla pytanie o zgodę na pobranie i instalację (można też wywołać sprawdzenie ręcznie w ustawieniach wtyczki).
-> 2. **Aktualizacja z lokalnego pliku ZIP:** W ustawieniach wtyczki znajduje się opcja ręcznego wskazania i zainstalowania paczki `service.sudosync-X.X.X.zip` z dysku lokalnego lub udziału sieciowego.
+> 2. **Aktualizacja z lokalnego pliku ZIP:** W ustawieniach wtyczki znajduje się opcja ręcznego wskazania i zainstalowania paczki `kodibridge-by-sudoizm-X.Y.Z.zip` z dysku lokalnego lub udziału sieciowego. Historyczne wydania zachowują dotychczasowe nazwy; wbudowany aktualizator rozpoznaje zarówno nową nazwę KodiBridge, jak i starszy format `service.sudosync-X.Y.Z.zip`.
 > 3. **Strażnik zgodności wersji w sieci (`min_addon_version` w `SudoSync.cfg`):** Gdy którekolwiek urządzenie Kodi w sieci zostanie zaktualizowane do nowszej wersji, zapisuje wymaganą minimalną wersję we wspólnym pliku `SudoSync.cfg`. Jeśli inne urządzenie Kodi uruchomi się ze starszą wersją wtyczki, KodiBridge wymusi aktualizację (z GitHub Releases lub wskazanego pliku ZIP) albo zablokuje działanie usługi do czasu zaktualizowania wtyczki.
 
 ---
