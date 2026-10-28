@@ -61,3 +61,13 @@ Przy sprzeczności z tamtymi dokumentami pierwszeństwo mają zasady z tego plik
     w nazwie paczki (`service.sudosync-X.Y.Z.zip`). Publikacja w GitHub
     Releases oraz tworzenie, przesuwanie i usuwanie tagów — tylko na wyraźne
     polecenie właściciela.
+
+## Identyfikacja repozytorium
+
+12. Każdą odpowiedź dla właściciela zaczynaj od znacznika w nawiasach
+    kwadratowych z nazwą repozytorium, w którym sesja faktycznie pracuje.
+    Nazwę ustal na początku sesji z bieżącego adresu zdalnego
+    (`git remote get-url origin`, część po `BreakTechEu/` bez `.git`),
+    a nie z treści tego pliku ani z pamięci. Jeśli polecenie wygląda na
+    dotyczące innego repozytorium niż to, zatrzymaj się i zapytaj, zamiast
+    je wykonywać.
