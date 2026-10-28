@@ -153,12 +153,12 @@ def show_status():
     ) if settings.get("sudosync_id_enabled") else "WYŁĄCZONE (ostatni użyty numer w sieci: {})".format(last_sudosync_num)
 
     text = (
-        "Tryb: SudoSync {version} — LIVE + powiadomienia zmian i ochrona nowszego odtwarzania\n\n"
+        "Tryb: KodiBridge {version} — LIVE + powiadomienia zmian i ochrona nowszego odtwarzania\n\n"
         "Urządzenie: {name}\n"
         "Client ID: {cid}\n"
         "Kodi: {kodi} ({platform})\n"
         "JSON-RPC: {rpc}\n"
-        "SudoSync ID: {sid_state}\n\n"
+        "KodiBridge ID: {sid_state}\n\n"
         "Urządzenie bazowe inicjalizacji: {base}\n"
         "Pierwsza synchronizacja: {init_state}\n\n"
         "Ostatni snapshot: {when}\n"
@@ -186,14 +186,14 @@ def show_status():
         live=live_text,
         update=update_text,
     )
-    xbmcgui.Dialog().textviewer("SudoSync — status", text)
+    xbmcgui.Dialog().textviewer("KodiBridge — status", text)
 
 
 def apply_initial_dialog():
     guard = initial_write_guard_status()
     if not guard.get("armed"):
         xbmcgui.Dialog().ok(
-            "SudoSync — bezpiecznik",
+            "KodiBridge — bezpiecznik",
             "Najpierw kliknij:\n\n"
             "„Uzbrój jednorazową synchronizację początkową (10 min)”\n\n"
             "Przycisk uzbraja zapis natychmiast — nie trzeba zamykać okna ustawień.",
@@ -201,7 +201,7 @@ def apply_initial_dialog():
         return
 
     xbmcgui.Dialog().notification(
-        "SudoSync — przygotowanie",
+        "KodiBridge — przygotowanie",
         "Przygotowuję bezpieczny plan. Nie klikaj ponownie — za chwilę pojawi się okno potwierdzenia.",
         xbmcgui.NOTIFICATION_INFO,
         8000,
@@ -212,7 +212,7 @@ def apply_initial_dialog():
     if not init.get("base_client_id"):
         disarm_initial_write_guard()
         xbmcgui.Dialog().ok(
-            "SudoSync — synchronizacja początkowa",
+            "KodiBridge — synchronizacja początkowa",
             "Najpierw wybierz urządzenie bazowe pierwszej synchronizacji.",
         )
         return
@@ -229,18 +229,18 @@ def apply_initial_dialog():
     if not plan:
         disarm_initial_write_guard()
         xbmcgui.Dialog().ok(
-            "SudoSync — synchronizacja początkowa",
+            "KodiBridge — synchronizacja początkowa",
             "Na tym Kodi nie ma obecnie żadnych bezpiecznych zmian do zastosowania. Bezpiecznik został rozbrojony.",
         )
         return
 
     base_label = init.get("base_client_name") or init.get("base_client_id")
     if not xbmcgui.Dialog().yesno(
-        "SudoSync — UWAGA: zapis do biblioteki",
+        "KodiBridge — UWAGA: zapis do biblioteki",
         "Urządzenie bazowe: {base}\n\n"
         "Ta operacja ZMIENI lokalną bibliotekę tego Kodi.\n\n"
         "Pozycji: {items}\nplaycount: {pc}\nlastplayed: {lp}\noceny: {ur}\nresume: {rs}\n\n"
-        "Przed zapisem SudoSync utworzy pełny snapshot-backup na NAS. Niejednoznaczne pozycje są pomijane.\n\nKontynuować?".format(
+        "Przed zapisem KodiBridge utworzy pełny snapshot-backup na NAS. Niejednoznaczne pozycje są pomijane.\n\nKontynuować?".format(
             base=base_label, items=len(plan), pc=field_counts["playcount"], lp=field_counts["lastplayed"],
             ur=field_counts["userrating"], rs=field_counts["resume"]
         ),
@@ -250,7 +250,7 @@ def apply_initial_dialog():
         return
 
     if not xbmcgui.Dialog().yesno(
-        "SudoSync — ostatnie potwierdzenie",
+        "KodiBridge — ostatnie potwierdzenie",
         "Synchronizacja bieżąca uruchomi się dopiero, gdy CAŁA inicjalizacja zostanie zakończona.\n\n"
         "Zastosować teraz tylko bezpieczny plan początkowy na TYM Kodi?",
         yeslabel="Zastosuj", nolabel="Anuluj",
@@ -259,7 +259,7 @@ def apply_initial_dialog():
         return
 
     xbmcgui.Dialog().notification(
-        "SudoSync — synchronizacja trwa",
+        "KodiBridge — synchronizacja trwa",
         "Zapis i weryfikacja mogą potrwać kilkadziesiąt sekund. Nie klikaj ponownie — poczekaj na komunikat końcowy.",
         xbmcgui.NOTIFICATION_INFO,
         10000,
@@ -267,13 +267,13 @@ def apply_initial_dialog():
 
     result = apply_initial_sync(show_notification=True)
     if result.get("nothing_to_do"):
-        xbmcgui.Dialog().ok("SudoSync", result.get("message"))
+        xbmcgui.Dialog().ok("KodiBridge", result.get("message"))
         return
 
     post = result.get("post_plan") or {}
     completed = result.get("initialization_completed", False)
     xbmcgui.Dialog().ok(
-        "SudoSync — zakończono",
+        "KodiBridge — zakończono",
         "Zastosowano synchronizację początkową.\n\n"
         "Backup: {backup}\n\n"
         "Pozostały plan na tym Kodi: {left} pozycji.\n"
@@ -287,7 +287,7 @@ def apply_initial_dialog():
 
 def arm_initial_dialog():
     if not xbmcgui.Dialog().yesno(
-        "SudoSync — uzbrojenie zapisu",
+        "KodiBridge — uzbrojenie zapisu",
         "Uzbroić jednorazowy zapis synchronizacji początkowej na 10 minut?\n\n"
         "Samo uzbrojenie NICZEGO jeszcze nie zmienia w bibliotece. Zapis nastąpi dopiero po użyciu przycisku „Zastosuj synchronizację początkową na TYM Kodi” i dwóch kolejnych potwierdzeniach.",
         yeslabel="Uzbrój", nolabel="Anuluj",
@@ -295,7 +295,7 @@ def arm_initial_dialog():
         return
     arm_initial_write_guard()
     xbmcgui.Dialog().ok(
-        "SudoSync — bezpiecznik uzbrojony",
+        "KodiBridge — bezpiecznik uzbrojony",
         "Bezpiecznik jest uzbrojony na 10 minut.\n\n"
         "Możesz od razu, bez zamykania okna ustawień, kliknąć:\n\n"
         "„Zastosuj synchronizację początkową na TYM Kodi”.",
@@ -306,7 +306,7 @@ def select_base_dialog():
     init = shared.get("initialization") or {}
     if init.get("completed"):
         xbmcgui.Dialog().ok(
-            "SudoSync — urządzenie bazowe",
+            "KodiBridge — urządzenie bazowe",
             "Pierwsza synchronizacja jest już zakończona. Zmiana urządzenia bazowego jest zablokowana.",
         )
         return
@@ -317,17 +317,17 @@ def select_base_dialog():
         try:
             result = select_this_as_initial_base()
         except Exception as exc:
-            xbmcgui.Dialog().ok("SudoSync — urządzenie bazowe", str(exc))
+            xbmcgui.Dialog().ok("KodiBridge — urządzenie bazowe", str(exc))
             return
         if result.get("already_selected"):
             xbmcgui.Dialog().ok(
-                "SudoSync — urządzenie bazowe",
+                "KodiBridge — urządzenie bazowe",
                 "To Kodi jest już urządzeniem bazowym: {}.".format(result.get("client_name") or current),
             )
             return
     else:
         if not xbmcgui.Dialog().yesno(
-            "SudoSync — urządzenie bazowe",
+            "KodiBridge — urządzenie bazowe",
             "Ustawić TO Kodi jako urządzenie bazowe pierwszej synchronizacji?",
             yeslabel="Ustaw",
             nolabel="Anuluj",
@@ -335,7 +335,7 @@ def select_base_dialog():
             return
         result = select_this_as_initial_base()
         xbmcgui.Dialog().ok(
-            "SudoSync",
+            "KodiBridge",
             "Urządzenie bazowe ustawione: {}.".format(result.get("client_name") or result.get("client_id")),
         )
 
@@ -345,15 +345,15 @@ def reset_base_dialog():
     init = shared.get("initialization") or {}
     if init.get("completed"):
         xbmcgui.Dialog().ok(
-            "SudoSync — urządzenie bazowe",
+            "KodiBridge — urządzenie bazowe",
             "Pierwsza synchronizacja jest już zakończona. Zwykłe wyczyszczenie wyboru bazowego jest zablokowane.",
         )
         return
     if not init.get("base_client_id"):
-        xbmcgui.Dialog().ok("SudoSync — urządzenie bazowe", "Nie ma obecnie wybranego urządzenia bazowego.")
+        xbmcgui.Dialog().ok("KodiBridge — urządzenie bazowe", "Nie ma obecnie wybranego urządzenia bazowego.")
         return
     if xbmcgui.Dialog().yesno(
-        "SudoSync — urządzenie bazowe",
+        "KodiBridge — urządzenie bazowe",
         "Obecne urządzenie bazowe: {}\n\nWyczyścić wybór, aby można było wskazać inne Kodi?".format(
             init.get("base_client_name") or init.get("base_client_id")
         ),
@@ -362,7 +362,7 @@ def reset_base_dialog():
     ):
         clear_initial_base_selection()
         xbmcgui.Dialog().ok(
-            "SudoSync",
+            "KodiBridge",
             "Wybór urządzenia bazowego został wyczyszczony. Teraz użyj przycisku ustawienia bazy na właściwym Kodi.",
         )
 
@@ -374,42 +374,42 @@ def live_sync_dialog():
     init = shared.get("initialization") or {}
     if not init.get("completed", False):
         xbmcgui.Dialog().ok(
-            "SudoSync — synchronizacja bieżąca",
+            "KodiBridge — synchronizacja bieżąca",
             "Najpierw trzeba zakończyć synchronizację początkową wszystkich Kodi.",
         )
         return
     if not settings.get("live_sync_enabled", True):
         xbmcgui.Dialog().ok(
-            "SudoSync — synchronizacja bieżąca",
+            "KodiBridge — synchronizacja bieżąca",
             "Synchronizacja bieżąca jest wyłączona w ustawieniach. Włącz ją i zatwierdź ustawienia przyciskiem OK.",
         )
         return
     xbmcgui.Dialog().notification(
-        "SudoSync — synchronizacja LIVE",
+        "KodiBridge — synchronizacja LIVE",
         "Sprawdzam zmiany lokalne i pozostałe Kodi. Poczekaj na komunikat końcowy.",
         xbmcgui.NOTIFICATION_INFO,
         7000,
     )
     result = run_live_sync_cycle(show_notification=False, suppress_local_changes=False, notify_local_changes=False, receiver_notification_delay_ms=0)
     if result.get("busy"):
-        xbmcgui.Dialog().ok("SudoSync", "Inny cykl synchronizacji już trwa na tym Kodi. Nie uruchamiaj go ponownie.")
+        xbmcgui.Dialog().ok("KodiBridge", "Inny cykl synchronizacji już trwa na tym Kodi. Nie uruchamiaj go ponownie.")
         return
     if result.get("playing"):
-        xbmcgui.Dialog().ok("SudoSync", "Trwa odtwarzanie wideo. Synchronizacja została odłożona i wykona się automatycznie po zatrzymaniu odtwarzania.")
+        xbmcgui.Dialog().ok("KodiBridge", "Trwa odtwarzanie wideo. Synchronizacja została odłożona i wykona się automatycznie po zatrzymaniu odtwarzania.")
         return
     if not result.get("active", True):
-        xbmcgui.Dialog().ok("SudoSync", "Synchronizacja LIVE nie jest teraz aktywna: {}".format(result.get("reason") or "nieznany powód"))
+        xbmcgui.Dialog().ok("KodiBridge", "Synchronizacja LIVE nie jest teraz aktywna: {}".format(result.get("reason") or "nieznany powód"))
         return
     if result.get("waiting"):
         xbmcgui.Dialog().ok(
-            "SudoSync — oczekiwanie",
+            "KodiBridge — oczekiwanie",
             "Synchronizacja LIVE ruszy automatycznie, gdy wszystkie znane Kodi będą miały wersję 0.4.\n\nOczekiwanie na: {}".format(
                 ", ".join(result.get("waiting_for_clients") or [])
             ),
         )
         return
     xbmcgui.Dialog().ok(
-        "SudoSync — synchronizacja LIVE",
+        "KodiBridge — synchronizacja LIVE",
         "Cykl zakończony.\n\nZastosowano z innych Kodi: {} pozycji.\nPozostały lokalny plan: {} pozycji.".format(
             result.get("applied_items", 0), (result.get("post_plan") or {}).get("items", 0)
         ),
@@ -434,22 +434,22 @@ def update_dialog():
 
     if result.get("error"):
         xbmcgui.Dialog().ok(
-            "SudoSync — aktualizacja (GitHub)",
+            "KodiBridge — aktualizacja (GitHub)",
             "Nie udało się sprawdzić aktualizacji na GitHub Releases:\n{}\n\n"
             "Możesz użyć opcji instalacji ze wskazanego pliku ZIP.".format(result["error"]),
         )
         return
     if not result.get("available"):
         xbmcgui.Dialog().ok(
-            "SudoSync — aktualizacja (GitHub)",
+            "KodiBridge — aktualizacja (GitHub)",
             "Masz najnowszą wersję dostępną w GitHub Releases.\n\nZainstalowana: {}".format(
                 result.get("current_version", "—")
             ),
         )
         return
     if xbmcgui.Dialog().yesno(
-        "SudoSync — dostępna aktualizacja",
-        "Na GitHub Releases dostępna jest nowa wersja SudoSync {} (obecnie zainstalowana: {}).\n\n"
+        "KodiBridge — dostępna aktualizacja",
+        "Na GitHub Releases dostępna jest nowa wersja KodiBridge {} (obecnie zainstalowana: {}).\n\n"
         "Pobrać i zainstalować aktualizację teraz?".format(
             result.get("version"), result.get("current_version", "—")
         ),
@@ -461,7 +461,7 @@ def update_dialog():
 
 def install_local_zip_dialog():
     zip_path = xbmcgui.Dialog().browse(
-        1, "Wybierz pakiet aktualizacji SudoSync (.zip)", "files", ".zip"
+        1, "Wybierz pakiet aktualizacji KodiBridge (.zip)", "files", ".zip"
     )
     if not zip_path:
         return
@@ -474,7 +474,7 @@ def main():
         if action == "bootstrap":
             from resources.lib.sudosync_bootstrap import run_bootstrap
             if run_bootstrap(force_select_path=True):
-                xbmcgui.Dialog().ok("SudoSync", "Konfigurator zakończony pomyślnie. Środowisko gotowe.")
+                xbmcgui.Dialog().ok("KodiBridge", "Konfigurator zakończony pomyślnie. Środowisko gotowe.")
         elif action == "collect":
             collect_and_write(show_notification=True)
         elif action in ("dryrun", "analyse", "analyze"):
@@ -482,7 +482,7 @@ def main():
             summary = report.get("summary") or {}
             init = report.get("initialization") or {}
             xbmcgui.Dialog().ok(
-                "SudoSync — DRY RUN",
+                "KodiBridge — DRY RUN",
                 "Analiza zakończona. Niczego nie zmieniono w bibliotece.\n\n"
                 "Urządzenie bazowe: {base}\n"
                 "Bezpieczne wspólne pozycje: {safe}\n"
@@ -517,9 +517,9 @@ def main():
             if result.get("error"):
                 raise IOError(result["error"])
             if not result.get("available"):
-                xbmcgui.Dialog().ok("SudoSync — aktualizacja", "Brak nowszej wersji na GitHub Releases.")
+                xbmcgui.Dialog().ok("KodiBridge — aktualizacja", "Brak nowszej wersji na GitHub Releases.")
             elif xbmcgui.Dialog().yesno(
-                "SudoSync — aktualizacja",
+                "KodiBridge — aktualizacja",
                 "Zainstalować wersję {} z GitHub Releases?".format(result.get("version")),
                 yeslabel="Zainstaluj",
                 nolabel="Anuluj",
@@ -528,7 +528,7 @@ def main():
         elif action in ("assignids", "assign_ids"):
             if not addon_settings().get("sudosync_id_enabled"):
                 xbmcgui.Dialog().ok(
-                    "SudoSync",
+                    "KodiBridge",
                     "Funkcja jest wyłączona. Najpierw ją włącz i zatwierdź opcje przyciskiem OK."
                 )
                 return
@@ -536,9 +536,9 @@ def main():
             import xbmc
             monitor = xbmc.Monitor()
             dialog = xbmcgui.DialogProgress()
-            dialog_title = _get_localized_string(32076, "SudoSync — SudoSync ID")
-            stage1_desc = _get_localized_string(32080, "Skanowanie biblioteki i sprawdzanie SudoSync ID...")
-            stage2_desc = _get_localized_string(32081, "Przypisywanie SudoSync ID...")
+            dialog_title = _get_localized_string(32076, "KodiBridge — KodiBridge ID")
+            stage1_desc = _get_localized_string(32080, "Skanowanie biblioteki i sprawdzanie KodiBridge ID...")
+            stage2_desc = _get_localized_string(32081, "Przypisywanie KodiBridge ID...")
             auto_close_notice = _get_localized_string(32082, "To okno zamknie się automatycznie po zakończeniu operacji.")
 
             def is_canceled():
@@ -580,9 +580,9 @@ def main():
                     last_num = sync_res.get("last_number", 0) if isinstance(sync_res, dict) else 0
                     dialog.close()
                     xbmcgui.Dialog().ok(
-                        "SudoSync",
+                        "KodiBridge",
                         "Nie znaleziono żadnych nowych plików wymagających przypisania ID.\n"
-                        "Ostatni użyty numer SudoSync ID w sieci: {}".format(last_num),
+                        "Ostatni użyty numer KodiBridge ID w sieci: {}".format(last_num),
                     )
                     return
 
@@ -619,7 +619,7 @@ def main():
                     dialog.close()
                     manifest_name = os.path.basename(result.get("manifest_path", "")) or "assign_ids_manifest.json"
                     xbmcgui.Dialog().ok(
-                        "SudoSync — błąd",
+                        "KodiBridge — błąd",
                         "Błąd zapisu na udziale sieciowym: {}\n"
                         "Zmodyfikowano do błędu: filmy {}, odcinki {}.\n"
                         "Szczegóły w kodi.log oraz w raporcie ({})".format(
@@ -641,9 +641,9 @@ def main():
 
                 manifest_name = os.path.basename(result.get("manifest_path", "")) or "assign_ids_manifest.json"
                 xbmcgui.Dialog().ok(
-                    "SudoSync",
+                    "KodiBridge",
                     "Zmodyfikowano lub utworzono: filmy: {}, odcinki: {}.\n"
-                    "Ostatni numer SudoSync ID w sieci: {}.\n"
+                    "Ostatni numer KodiBridge ID w sieci: {}.\n"
                     "Raport z operacji zapisano w profilu ({})".format(
                         result.get("movies", 0),
                         result.get("episodes", 0),
@@ -659,18 +659,18 @@ def main():
         elif action == "rollbackids":
             from resources.lib.sudosync_core import rollback_sudosync_ids
             if not xbmcgui.Dialog().yesno(
-                "SudoSync - cofnięcie zmian",
+                "KodiBridge - cofnięcie zmian",
                 "Czy wycofać ostatnie zmiany ID przywracając kopie z backupu .bak?",
                 yeslabel="Tak, wycofaj",
                 nolabel="Anuluj"
             ):
                 return
             res = rollback_sudosync_ids()
-            xbmcgui.Dialog().ok("SudoSync", "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0)))
+            xbmcgui.Dialog().ok("KodiBridge", "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0)))
         else:
             show_status()
     except Exception as exc:
-        xbmcgui.Dialog().ok("SudoSync — błąd", mask_vfs_credentials(str(exc)))
+        xbmcgui.Dialog().ok("KodiBridge — błąd", mask_vfs_credentials(str(exc)))
 
 
 if __name__ == "__main__":

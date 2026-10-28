@@ -334,7 +334,7 @@ def _execute_integrated_live_cycle(
             if receiver_notification_delay_ms and receiver_notification_delay_ms > 0:
                 xbmc.sleep(int(receiver_notification_delay_ms))
             xbmcgui.Dialog().notification(
-                "SudoSync LIVE",
+                "KodiBridge LIVE",
                 "Zsynchronizowano zmian z sieci: {}.".format(v2_applied),
                 xbmcgui.NOTIFICATION_INFO,
                 5000,
@@ -510,7 +510,7 @@ def _run_service():
                         else:
                             try:
                                 xbmcgui.Dialog().notification(
-                                    "SudoSync",
+                                    "KodiBridge",
                                     "Inne Kodi przejęło sesję lub wymaga nowszej wersji. Usługa wstrzymana.",
                                     xbmcgui.NOTIFICATION_WARNING,
                                     5000,

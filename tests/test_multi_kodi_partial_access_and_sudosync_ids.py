@@ -722,7 +722,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         # DialogProgress created with title and message containing auto-close note
         mock_progress.create.assert_called_once()
         create_args = mock_progress.create.call_args[0]
-        self.assertIn("SudoSync", create_args[0])
+        self.assertIn("KodiBridge", create_args[0])
         self.assertTrue("zamknie się automatycznie" in create_args[1] or "close automatically" in create_args[1])
 
         # DialogProgress is closed cleanly

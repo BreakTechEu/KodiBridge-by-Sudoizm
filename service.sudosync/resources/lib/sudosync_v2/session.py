@@ -111,7 +111,7 @@ class SharedOperationCoordinator(object):
             if self._backend.exists(self._marker_path):
                 marker = self._read_marker()
                 raise SessionBusyError(
-                    "A previous SudoSync operation is unresolved (client {}, started {}). "
+                    "A previous KodiBridge operation is unresolved (client {}, started {}). "
                     "No age-based takeover is allowed; verify that no operation is running before manual recovery."
                     .format(marker["client_id"], marker["started_at"])
                 )

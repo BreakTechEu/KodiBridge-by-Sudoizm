@@ -49,7 +49,7 @@ LIVE_SCHEMA_VERSION = 1
 LIVE_FIELDS = ("playcount", "lastplayed", "userrating", "resume")
 RATING_IMPORT_WHITELIST = {6, 7, 8}
 _LIVE_LOCK_HANDLE = None
-UPDATE_ZIP_RE = re.compile(r"^service[._]sudosync[_-](\d+)[._](\d+)[._](\d+)(?:-([A-Za-z0-9._-]+))?\.zip$", re.IGNORECASE)
+UPDATE_ZIP_RE = re.compile(r"^(?:service[._]sudosync|kodibridge-by-sudoizm)[_-](\d+)[._](\d+)[._](\d+)(?:-([A-Za-z0-9._-]+))?\.zip$", re.IGNORECASE)
 _VFS_CRED_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\s]+@)")
 
 
@@ -396,7 +396,7 @@ def read_shared_config(base_path=None):
         }
         return data
     except Exception as exc:
-        raise IOError("Nie można odczytać wspólnej konfiguracji SudoSync: {}".format(exc))
+        raise IOError("Nie można odczytać wspólnej konfiguracji KodiBridge: {}".format(exc))
 
 
 def update_shared_config(mutator_func, base_path=None):
@@ -447,7 +447,7 @@ def update_shared_config(mutator_func, base_path=None):
             
         if datetime.now(timezone.utc).timestamp() - start > 15.0:
             raise RuntimeError(
-                "Nie można uzyskać blokady wspólnej konfiguracji SudoSync w ciągu 15 sekund."
+                "Nie można uzyskać blokady wspólnej konfiguracji KodiBridge w ciągu 15 sekund."
             )
         xbmc.sleep(200)
 
@@ -889,7 +889,7 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
     log("Self-update installed from {} -> {}".format(source_desc, package_version))
     if show_dialogs:
         restart = xbmcgui.Dialog().yesno(
-            "SudoSync — aktualizacja zainstalowana",
+            "KodiBridge — aktualizacja zainstalowana",
             "Zainstalowano wersję {}.\n\n"
             "Nowa wersja stanie się w pełni aktywna po ponownym uruchomieniu Kodi. Uruchomić Kodi ponownie teraz?".format(package_version),
             yeslabel="Uruchom ponownie",
@@ -907,7 +907,7 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
     }
 
 
-GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/BreakTechEu/SudoSync-Kodi-addon/releases/latest"
+GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/BreakTechEu/KodiBridge-by-Sudoizm/releases/latest"
 DAILY_UPDATE_CHECK_INTERVAL_SECONDS = 86400
 
 
@@ -1121,8 +1121,8 @@ def install_update_from_zip_path(zip_path, allow_same_or_older=False, show_dialo
 
     if show_dialogs:
         if not xbmcgui.Dialog().yesno(
-            "SudoSync — instalacja z pliku ZIP",
-            "Zweryfikowano pakiet SudoSync w wersji {} (obecnie zainstalowana: {}).\n\n"
+            "KodiBridge — instalacja z pliku ZIP",
+            "Zweryfikowano pakiet KodiBridge w wersji {} (obecnie zainstalowana: {}).\n\n"
             "Czy na pewno chcesz zainstalować tę wersję?".format(package_version, current_text),
             yeslabel="Zainstaluj",
             nolabel="Anuluj",
@@ -1166,8 +1166,8 @@ def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=
             result["declined_previously"] = True
             return result
         if xbmcgui.Dialog().yesno(
-            "SudoSync — dostępna aktualizacja",
-            "Dostępna jest nowa wersja SudoSync {} na GitHub Releases (obecnie zainstalowana: {}).\n\n"
+            "KodiBridge — dostępna aktualizacja",
+            "Dostępna jest nowa wersja KodiBridge {} na GitHub Releases (obecnie zainstalowana: {}).\n\n"
             "Czy chcesz pobrać i zainstalować aktualizację teraz?".format(
                 result.get("version"), result.get("current_version")
             ),
@@ -1180,7 +1180,7 @@ def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=
             except Exception as exc:
                 log("GitHub update installation failed: {}".format(exc), xbmc.LOGERROR)
                 xbmcgui.Dialog().ok(
-                    "SudoSync — błąd aktualizacji",
+                    "KodiBridge — błąd aktualizacji",
                     "Nie udało się zainstalować aktualizacji z GitHub:\n{}".format(exc),
                 )
         elif target_version:
@@ -1650,7 +1650,7 @@ def _collect_initial_snapshot(show_notification=False):
     log("Snapshot written: {} movies, {} episodes -> {}".format(len(movies), len(episodes), remote))
     if show_notification:
         xbmcgui.Dialog().notification(
-            "SudoSync",
+            "KodiBridge",
             "Snapshot: {} filmów, {} odcinków".format(len(movies), len(episodes)),
             xbmcgui.NOTIFICATION_INFO,
             5000,
@@ -2258,14 +2258,14 @@ def collect_live_snapshot(show_notification=False, suppress_local_changes=False,
     _write_local_json(os.path.join(_addon_profile_path(), "status.json"), status)
     if notify_local_changes and settings.get("notifications") and local_changed_items:
         xbmcgui.Dialog().notification(
-            "SudoSync — wysłano zmianę",
+            "KodiBridge — wysłano zmianę",
             "{} poz. ({})".format(local_changed_items, _live_change_labels(local_changed_fields)),
             xbmcgui.NOTIFICATION_INFO,
             6000,
         )
     elif show_notification:
         xbmcgui.Dialog().notification(
-            "SudoSync",
+            "KodiBridge",
             "Snapshot LIVE: {} filmów, {} odcinków".format(len(movies), len(episodes)),
             xbmcgui.NOTIFICATION_INFO,
             4000,
@@ -2510,7 +2510,7 @@ def run_live_sync_cycle(show_notification=False, suppress_local_changes=False, c
         if not changed:
             return {"active": True, "idle": True, "applied_items": 0, "post_plan": {}}
     if not _acquire_live_lock():
-        return {"active": True, "busy": True, "message": "Inny cykl SudoSync już trwa na tym Kodi."}
+        return {"active": True, "busy": True, "message": "Inny cykl KodiBridge już trwa na tym Kodi."}
 
     try:
         report = build_live_report(show_notification=False, collect_first=collect_local, suppress_local_changes=suppress_local_changes, notify_local_changes=notify_local_changes)
@@ -2615,7 +2615,7 @@ def run_live_sync_cycle(show_notification=False, suppress_local_changes=False, c
             if delay_ms:
                 xbmc.sleep(delay_ms)
             xbmcgui.Dialog().notification(
-                "SudoSync — odebrano zmiany",
+                "KodiBridge — odebrano zmiany",
                 "; ".join(parts),
                 xbmcgui.NOTIFICATION_INFO,
                 8000,
@@ -2831,7 +2831,7 @@ def read_remote_snapshots(base_path=None):
     try:
         _dirs, files = _vfs_listdir(clients_path)
     except Exception as exc:
-        raise IOError("Cannot list SudoSync clients: {}".format(exc))
+        raise IOError("Cannot list KodiBridge clients: {}".format(exc))
 
     json_files = [f for f in sorted(files) if (f or "").lower().endswith(".json")]
     if len(json_files) > 50:
@@ -2946,7 +2946,7 @@ def run_dry_run(show_notification=False):
     if show_notification:
         plan = (this_client or {}).get("planned_changes") or {}
         xbmcgui.Dialog().notification(
-            "SudoSync — DRY RUN",
+            "KodiBridge — DRY RUN",
             "Wspólne: {} | niejednoznaczne: {} | zmiany tutaj: {}".format(
                 summary.get("safe_shared_clusters", 0),
                 summary.get("ambiguous_clusters", 0),
@@ -3251,7 +3251,7 @@ def apply_initial_sync(show_notification=False):
 
     if show_notification or settings.get("notifications"):
         xbmcgui.Dialog().notification(
-            "SudoSync — synchronizacja początkowa",
+            "KodiBridge — synchronizacja początkowa",
             "Zastosowano {} pozycji. Pozostały plan na tym Kodi: {}.".format(
                 len(items), (post_plan or {}).get("items", 0)
             ),
@@ -3587,7 +3587,7 @@ def persist_network_sudosync_id_last_number(last_number, base_path=None, s=None)
             update_shared_config(_mutator, base_norm)
         except Exception as exc:
             log("Błąd atomowej synchronizacji licznika SudoSync ID na NAS: {}".format(exc), xbmc.LOGERROR)
-            raise IOError("Nie udało się zapisać licznika SudoSync ID na NAS: {}".format(exc))
+            raise IOError("Nie udało się zapisać licznika KodiBridge ID na NAS: {}".format(exc))
 
     final_saved = actual_persisted[0]
 
@@ -3714,7 +3714,7 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
             return (
                 False,
                 "file_modified",
-                "Utworzony plik .nfo został zmodyfikowany po wygenerowaniu SudoSync ID; zachowano plik.",
+                "Utworzony plik .nfo został zmodyfikowany po wygenerowaniu KodiBridge ID; zachowano plik.",
             )
 
     try:
@@ -3723,7 +3723,7 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
         return (
             False,
             "file_modified",
-            "Utworzony plik .nfo nie jest poprawnym dokumentem XML SudoSync; zachowano plik.",
+            "Utworzony plik .nfo nie jest poprawnym dokumentem XML KodiBridge; zachowano plik.",
         )
 
     kind = entry.get("type")
@@ -3747,16 +3747,16 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
         return (
             False,
             "file_modified",
-            "Znacznik uniqueid w pliku .nfo nie należy do operacji SudoSync; zachowano plik.",
+            "Znacznik uniqueid w pliku .nfo nie należy do operacji KodiBridge; zachowano plik.",
         )
     actual_id = (uid_el.text or "").strip()
     if not actual_id:
-        return False, "file_modified", "Brak wartości SudoSync ID w pliku .nfo; zachowano plik."
+        return False, "file_modified", "Brak wartości KodiBridge ID w pliku .nfo; zachowano plik."
     if expected_id and actual_id != expected_id:
         return (
             False,
             "file_modified",
-            "Wartość SudoSync ID w pliku .nfo nie zgadza się z manifestem operacji; zachowano plik.",
+            "Wartość KodiBridge ID w pliku .nfo nie zgadza się z manifestem operacji; zachowano plik.",
         )
 
     if not expected_hash:
@@ -3767,7 +3767,7 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
             return (
                 False,
                 "file_modified",
-                "Zawartość utworzonego pliku .nfo odbiega od szablonu SudoSync; zachowano plik.",
+                "Zawartość utworzonego pliku .nfo odbiega od szablonu KodiBridge; zachowano plik.",
             )
 
     return True, "ok", ""
@@ -3914,7 +3914,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _record_error(
                     best_path,
                     "file_modified",
-                    "Plik .nfo został zmodyfikowany po przypisaniu SudoSync ID; zachowano plik .nfo i kopię .bak.",
+                    "Plik .nfo został zmodyfikowany po przypisaniu KodiBridge ID; zachowano plik .nfo i kopię .bak.",
                 )
                 continue
 
@@ -3950,7 +3950,7 @@ class _PreviewResult(list):
 def preview_sudosync_ids(progress_callback=None, is_canceled=None):
     settings = addon_settings()
     if not settings.get("sudosync_id_enabled"):
-        raise RuntimeError("Generowanie SudoSync ID jest wylaczone w ustawieniach.")
+        raise RuntimeError("Generowanie KodiBridge ID jest wylaczone w ustawieniach.")
     _NFO_ID_CACHE.clear()
     if is_canceled and is_canceled():
         res = _PreviewResult([])
@@ -4216,7 +4216,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                 "cancelled": False,
                 "fatal_error": "",
             }
-        raise RuntimeError("Generowanie SudoSync ID jest wylaczone w ustawieniach.")
+        raise RuntimeError("Generowanie KodiBridge ID jest wylaczone w ustawieniach.")
 
     base = base_path if base_path is not None else s
     if base is None:
@@ -4230,8 +4230,8 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
             log("Ręczne przypisywanie SudoSync ID zablokowane: inna operacja przypisywania jest w toku.", xbmc.LOGWARNING)
             if not silent and show_notification:
                 try:
-                    msg = _get_localized_string(32079, "Przypisywanie SudoSync ID jest już wykonywane w tle. Poczekaj na zakończenie.")
-                    xbmcgui.Dialog().notification("SudoSync", msg, xbmcgui.NOTIFICATION_WARNING, 5000)
+                    msg = _get_localized_string(32079, "Przypisywanie KodiBridge ID jest już wykonywane w tle. Poczekaj na zakończenie.")
+                    xbmcgui.Dialog().notification("KodiBridge", msg, xbmcgui.NOTIFICATION_WARNING, 5000)
                 except Exception:
                     pass
             return 0

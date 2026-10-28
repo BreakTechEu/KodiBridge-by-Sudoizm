@@ -3,11 +3,11 @@
 ---
 
 > [!NOTE]
-> **Wydanie produkcyjne (SudoSync 2.1.3):**
-> SudoSync 2.1.3 jest **stabilnym wydaniem produkcyjnym** nowej architektury v2 z transakcyjnym dziennikiem zmian, obsługą identyfikatorów SudoSync ID dla prywatnych wideo i sieci lokalnej, strażnikiem pojedynczej aktywnej sesji Kodi oraz wymuszaniem zgodności wersji między urządzeniami. Starsza linia **SudoSync 1.0.0** pozostaje dostępna na zamrożonej gałęzi [v1-stable](https://github.com/BreakTechEu/SudoSync-Kodi-addon/tree/v1-stable).
-> Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)**.
+> **Wydanie produkcyjne (KodiBridge by Sudoizm 2.1.4):**
+> KodiBridge by Sudoizm 2.1.4 jest **stabilnym wydaniem produkcyjnym** nowej architektury v2 z transakcyjnym dziennikiem zmian, obsługą identyfikatorów KodiBridge ID dla prywatnych wideo i sieci lokalnej, strażnikiem pojedynczej aktywnej sesji Kodi oraz wymuszaniem zgodności wersji między urządzeniami. Starsza linia **SudoSync 1.0.0** pozostaje dostępna na zamrożonej gałęzi [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
+> Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)**.
 
-# SudoSync dla Kodi
+# KodiBridge by Sudoizm
 
 Lekka wtyczka usługi działająca w tle dla odtwarzacza Kodi, zapewniająca automatyczną, dwukierunkową synchronizację stanu obejrzenia, punktów wznowienia, ocen użytkownika oraz daty ostatniego odtworzenia pomiędzy wieloma instancjami Kodi w tej samej sieci lokalnej — bez konieczności stawiania zewnętrznego serwera bazy danych MySQL/MariaDB.
 
@@ -19,11 +19,11 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 
 - **Brak dedykowanej bazy danych:** Wykorzystuje współdzielony zasób sieciowy dostępny dla urządzeń (serwer NAS, lokalny komputer lub udział sieciowy).
 - **Bezpieczeństwo i brak destrukcyjnych zmian:** Działa wyłącznie za pośrednictwem oficjalnego API JSON-RPC Kodi. Nigdy nie modyfikuje ani nie blokuje bezpośrednio wewnętrznych plików bazy SQLite (`MyVideos*.db`).
-- **Tylko jedno aktywne Kodi w sieci naraz:** Strażnik aktywnej sesji (`active_kodi_lock.json`) pilnuje, aby w danej chwili w sieci działało tylko jedno urządzenie Kodi z wtyczką SudoSync, eliminując wyścigi i konflikty zapisu.
+- **Tylko jedno aktywne Kodi w sieci naraz:** Strażnik aktywnej sesji (`active_kodi_lock.json`) pilnuje, aby w danej chwili w sieci działało tylko jedno urządzenie Kodi z wtyczką KodiBridge, eliminując wyścigi i konflikty zapisu.
 - **Niezawodny model rozwiązywania konfliktów:** Każde synchronizowane pole zachowuje własny znacznik czasu oraz wersję sekwencji klienta, zapobiegając wyścigom (*race conditions*) i pętlom zwrotnym.
 - **Optymalizacja dla Android TV i przystawek Smart TV:** Lekki silnik badania różnic w tle eliminuje problemy z gubieniem powiadomień systemowych `OnUpdate` i `OnStop` na przystawkach multimedialnych.
 - **Kwarantanna podczas skanowania i plików NFO:** Nowo zeskanowane elementy biblioteki oraz importy NFO otrzymują starsze wersje wewnętrzne, co zapobiega przypadkowemu nadpisaniu istniejącego, współdzielonego postępu oglądania.
-- **SudoSync ID i częściowy dostęp do biblioteki:** Automatycznie generuje i bezpiecznie wstrzykuje kolejne unikalne identyfikatory (`{prefix}-{num:06d}`) do plików `.nfo` dla wszystkich pozycji wideo w bibliotece jako niezależny, równoległy identyfikator sieci lokalnej (niezależnie od obecności ID z IMDb/TMDb/TVDb), z pominięciem wyłącznie plików posiadających już SudoSync ID. Po zakończeniu skanowania biblioteki wideo usługa w tle całkowicie niewidocznie (tryb silent/headless) sprawdza i przypisuje brakujące identyfikatory z zachowaniem blokady sieciowej NAS, a po nadaniu nowych ID natychmiast publikuje zaktualizowany snapshot v2 na NAS. Współdzielony licznik (`sudosync_id_last_number` w `SudoSync.cfg` i `system/config.json`) gwarantuje brak kolizji numerów w całej sieci domowej i płynną współpracę urządzeń o różnym zasięgu zasobów.
+- **KodiBridge ID i częściowy dostęp do biblioteki:** Automatycznie generuje i bezpiecznie wstrzykuje kolejne unikalne identyfikatory (`{prefix}-{num:06d}`) do plików `.nfo` dla wszystkich pozycji wideo w bibliotece jako niezależny, równoległy identyfikator sieci lokalnej (niezależnie od obecności ID z IMDb/TMDb/TVDb), z pominięciem wyłącznie plików posiadających już KodiBridge ID. W plikach `.nfo` KodiBridge ID jest zapisywany jako `<uniqueid type="sudosync">` (techniczny znacznik bez zmian, zgodny z istniejącymi bibliotekami). Po zakończeniu skanowania biblioteki wideo usługa w tle całkowicie niewidocznie (tryb silent/headless) sprawdza i przypisuje brakujące identyfikatory z zachowaniem blokady sieciowej NAS, a po nadaniu nowych ID natychmiast publikuje zaktualizowany snapshot v2 na NAS. Współdzielony licznik (`sudosync_id_last_number` w `SudoSync.cfg` i `system/config.json`) gwarantuje brak kolizji numerów w całej sieci domowej i płynną współpracę urządzeń o różnym zasięgu zasobów.
 - **Rozdzielenie ID sieciowego od Aliasu UI:** Wyraźnie oddziela wewnętrzny identyfikator sieciowy od przyjaznego aliasu wyświetlanego w interfejsie. Zapewnia to stabilność przypisań przy jednoczesnym czytelnym nazewnictwie urządzeń.
 - **Aktualizacje z GitHub Releases i ochrona wersji w sieci:** Wtyczka sprawdza raz na dobę dostępność nowego wydania na GitHub Releases (za jawną zgodą użytkownika), umożliwia ręczną aktualizację ze wskazanego pliku ZIP i pilnuje w `SudoSync.cfg` wymaganej minimalnej wersji (`min_addon_version`), blokując start przestarzałych instancji Kodi.
 - **Dziennik Zdarzeń (Journaling):** Synchronizacja używa mechanizmu transakcyjnego z dziennikiem postępu, pozwalając na bezpieczne wznowienie po nieoczekiwanym błędzie.
@@ -43,16 +43,16 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 ## Instalacja i konfiguracja
 
 1. **Źródło instalacji:**
-   - **SudoSync 2.1.3 (Produkcyjna):** Pobierz plik `service.sudosync-2.1.3.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)** (zalecane wydanie produkcyjne z architekturą v2 i SudoSync ID).
-   - **SudoSync 1.0.0 (Starsza wersja stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases)**.
+   - **KodiBridge by Sudoizm 2.1.4 (Produkcyjna):** Pobierz plik `kodibridge-by-sudoizm-2.1.4.zip` z sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** (zalecane wydanie produkcyjne z architekturą v2 i KodiBridge ID).
+   - **SudoSync 1.0.0 (Starsza wersja stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)**.
 
 2. **Instalacja w Kodi:**
    - W Kodi przejdź do: *Ustawienia -> Dodatki -> Zainstaluj z pliku zip*.
    - Wskaż przygotowane archiwum zip.
 
 3. **Konfiguracja ścieżki sieciowej i identyfikatorów:**
-   - Przy pierwszym uruchomieniu kreator SudoSync poprosi o wskazanie wspólnego katalogu sieciowego (np. `smb://192.168.1.100/Wspoldzielony/`) i automatycznie utworzy w nim folder `.SudoSync/` oraz zainicjuje urządzenie.
-   - W ustawieniach dodatku możesz nadać swojemu urządzeniu przyjazną nazwę oraz skonfigurować **Nazwę sieci (prefiks SudoSync ID)** dla prywatnych wideo.
+   - Przy pierwszym uruchomieniu kreator KodiBridge poprosi o wskazanie wspólnego katalogu sieciowego (np. `smb://192.168.1.100/Wspoldzielony/`) i automatycznie utworzy w nim folder `.SudoSync/` oraz zainicjuje urządzenie.
+   - W ustawieniach dodatku możesz nadać swojemu urządzeniu przyjazną nazwę oraz skonfigurować **Nazwę sieci (prefiks KodiBridge ID)** dla prywatnych wideo.
 
 Szczegółowa instrukcja bezpiecznego ręcznego testu wersji 2.x (Beta) krok po kroku znajduje się w pliku [`docs/TEST_NA_KODI.md`](docs/TEST_NA_KODI.md).
 
@@ -62,10 +62,10 @@ Szczegółowa instrukcja bezpiecznego ręcznego testu wersji 2.x (Beta) krok po 
 
 > [!IMPORTANT]
 > **Mechanizm bezpiecznej aktualizacji:**
-> Wtyczka SudoSync posiada wbudowany system aktualizacji chroniący spójność sieci:
-> 1. **Automatyczne sprawdzanie w GitHub Releases (raz na dobę):** Wtyczka sprawdza raz na 24 godziny dostępność nowego wydania w oficjalnym repozytorium GitHub (`BreakTechEu/SudoSync-Kodi-addon`). Nie wykonuje cichych aktualizacji w tle — po wykryciu nowej wersji wyświetla pytanie o zgodę na pobranie i instalację (można też wywołać sprawdzenie ręcznie w ustawieniach wtyczki).
-> 2. **Aktualizacja z lokalnego pliku ZIP:** W ustawieniach wtyczki znajduje się opcja ręcznego wskazania i zainstalowania paczki `service.sudosync-X.X.X.zip` z dysku lokalnego lub udziału sieciowego.
-> 3. **Strażnik zgodności wersji w sieci (`min_addon_version` w `SudoSync.cfg`):** Gdy którekolwiek urządzenie Kodi w sieci zostanie zaktualizowane do nowszej wersji, zapisuje wymaganą minimalną wersję we wspólnym pliku `SudoSync.cfg`. Jeśli inne urządzenie Kodi uruchomi się ze starszą wersją wtyczki, SudoSync wymusi aktualizację (z GitHub Releases lub wskazanego pliku ZIP) albo zablokuje działanie usługi do czasu zaktualizowania wtyczki.
+> Wtyczka KodiBridge posiada wbudowany system aktualizacji chroniący spójność sieci:
+> 1. **Automatyczne sprawdzanie w GitHub Releases (raz na dobę):** Wtyczka KodiBridge sprawdza raz na 24 godziny dostępność nowego wydania w oficjalnym repozytorium GitHub (`BreakTechEu/KodiBridge-by-Sudoizm`). Nie wykonuje cichych aktualizacji w tle — po wykryciu nowej wersji wyświetla pytanie o zgodę na pobranie i instalację (można też wywołać sprawdzenie ręcznie w ustawieniach wtyczki).
+> 2. **Aktualizacja z lokalnego pliku ZIP:** W ustawieniach wtyczki znajduje się opcja ręcznego wskazania i zainstalowania paczki `kodibridge-by-sudoizm-X.Y.Z.zip` z dysku lokalnego lub udziału sieciowego. Historyczne wydania zachowują dotychczasowe nazwy; wbudowany aktualizator rozpoznaje zarówno nową nazwę KodiBridge, jak i starszy format `service.sudosync-X.Y.Z.zip`.
+> 3. **Strażnik zgodności wersji w sieci (`min_addon_version` w `SudoSync.cfg`):** Gdy którekolwiek urządzenie Kodi w sieci zostanie zaktualizowane do nowszej wersji, zapisuje wymaganą minimalną wersję we wspólnym pliku `SudoSync.cfg`. Jeśli inne urządzenie Kodi uruchomi się ze starszą wersją wtyczki, KodiBridge wymusi aktualizację (z GitHub Releases lub wskazanego pliku ZIP) albo zablokuje działanie usługi do czasu zaktualizowania wtyczki.
 
 ---
 

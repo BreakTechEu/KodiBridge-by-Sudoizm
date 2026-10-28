@@ -444,17 +444,17 @@ def enforce_network_version_guard(base_path, cfg=None):
 
     # local_num < remote_num -> inne Kodi w sieci ma już nowszą wersję!
     log(
-        "Wykryto nowszą wersję w sieci SudoSync ({}) niż zainstalowana lokalnie ({}). Wstrzymuję start.".format(
+        "Wykryto nowszą wersję w sieci KodiBridge ({}) niż zainstalowana lokalnie ({}). Wstrzymuję start.".format(
             remote_min, local_version
         ),
         xbmc.LOGERROR,
     )
     dialog = xbmcgui.Dialog()
     if dialog.yesno(
-        "SudoSync — wymagana aktualizacja",
-        "Na innym urządzeniu Kodi w tej sieci zainstalowano już nowszą wersję SudoSync ({remote}), "
+        "KodiBridge — wymagana aktualizacja",
+        "Na innym urządzeniu Kodi w tej sieci zainstalowano już nowszą wersję KodiBridge ({remote}), "
         "natomiast tutaj działa starsza wersja ({local}).\n\n"
-        "Aby chronić spójność biblioteki, SudoSync jest wyłączony do czasu aktualizacji. "
+        "Aby chronić spójność biblioteki, KodiBridge jest wyłączony do czasu aktualizacji. "
         "Czy chcesz pobrać i zainstalować aktualizację z GitHub teraz?".format(
             remote=remote_min, local=local_version
         ),
@@ -468,30 +468,30 @@ def enforce_network_version_guard(base_path, cfg=None):
         except Exception as exc:
             log("GitHub update during version guard failed: {}".format(exc), xbmc.LOGERROR)
             dialog.ok(
-                "SudoSync — błąd pobierania z GitHub",
+                "KodiBridge — błąd pobierania z GitHub",
                 "Nie udało się pobrać aktualizacji z GitHub:\n{}".format(exc),
             )
 
     if dialog.yesno(
-        "SudoSync — aktualizacja z pliku ZIP",
+        "KodiBridge — aktualizacja z pliku ZIP",
         "Wymagana jest wersja co najmniej {remote} (obecna: {local}).\n\n"
         "Czy chcesz wskazać plik aktualizacji .zip z dysku lokalnego lub udziału sieciowego?".format(
             remote=remote_min, local=local_version
         ),
         yeslabel="Wybierz plik ZIP",
-        nolabel="Wyłącz SudoSync",
+        nolabel="Wyłącz KodiBridge",
     ):
-        zip_path = dialog.browse(1, "Wybierz pakiet aktualizacji SudoSync (.zip)", "files", ".zip")
+        zip_path = dialog.browse(1, "Wybierz pakiet aktualizacji KodiBridge (.zip)", "files", ".zip")
         if zip_path:
             try:
                 install_update_from_zip_path(zip_path, show_dialogs=True)
             except Exception as exc:
-                dialog.ok("SudoSync — błąd aktualizacji", str(exc))
+                dialog.ok("KodiBridge — błąd aktualizacji", str(exc))
             return False
 
     dialog.ok(
-        "SudoSync — usługa wstrzymana",
-        "SudoSync został wyłączony na tym urządzeniu do czasu aktualizacji wtyczki do wersji {}.".format(
+        "KodiBridge — usługa wstrzymana",
+        "KodiBridge został wyłączony na tym urządzeniu do czasu aktualizacji wtyczki do wersji {}.".format(
             remote_min
         ),
     )
@@ -553,8 +553,8 @@ def acquire_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
                 xbmc.LOGWARNING,
             )
             xbmcgui.Dialog().ok(
-                "SudoSync — inne Kodi jest aktywne",
-                "W tej sieci działa już SudoSync na urządzeniu: {}.\n"
+                "KodiBridge — inne Kodi jest aktywne",
+                "W tej sieci działa już KodiBridge na urządzeniu: {}.\n"
                 "Dozwolone jest tylko jedno aktywne Kodi naraz — zamknij tamto Kodi przed uruchomieniem kolejnego.".format(
                     owner_name
                 ),
@@ -589,7 +589,7 @@ def refresh_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
                 from resources.lib.sudosync_core import _numeric_version
                 if _numeric_version(local_version) < _numeric_version(remote_min):
                     log(
-                        "Wykryto nowszą wymaganą wersję SudoSync w sieci ({}) podczas działania usługi (lokalna: {}). Zatrzymuję usługę.".format(
+                        "Wykryto nowszą wymaganą wersję KodiBridge w sieci ({}) podczas działania usługi (lokalna: {}). Zatrzymuję usługę.".format(
                             remote_min, local_version
                         ),
                         xbmc.LOGWARNING,
@@ -697,8 +697,8 @@ def _ensure_client_enrolled_and_initialized(base_path):
 
 def run_migration_wizard(base_path):
     xbmcgui.Dialog().ok(
-        "SudoSync - Migracja",
-        "Wykryto istniejącą instalację starszej wersji SudoSync w wybranym folderze.\n\nTwoje dotychczasowe dane i identyfikatory zostaną zachowane. SudoSync wyodrębni teraz ustawienia sieciowe do nowego pliku SudoSync.cfg."
+        "KodiBridge - Migracja",
+        "Wykryto istniejącą instalację starszej wersji KodiBridge w wybranym folderze.\n\nTwoje dotychczasowe dane i identyfikatory zostaną zachowane. KodiBridge wyodrębni teraz ustawienia sieciowe do nowego pliku SudoSync.cfg."
     )
     
     # Wyciągamy ustawienia sieciowe, jeśli jakieś były w starym system/config.json
@@ -748,7 +748,7 @@ def run_migration_wizard(base_path):
 
 def run_new_config_wizard(base_path):
     dialog = xbmcgui.Dialog()
-    if not dialog.yesno("SudoSync - Konfigurator sieciowy", "Skonfigurujemy teraz nowe środowisko synchronizacji SudoSync dla Twojej domeny.\n\nCzy chcesz domyślnie używać niezawodnego identyfikatora 'SudoSync ID' dla wideo pozbawionych standardowych ID (IMDb/TMDb)?", yeslabel="Tak (Zalecane)", nolabel="Nie, użyj IMDb"):
+    if not dialog.yesno("KodiBridge - Konfigurator sieciowy", "Skonfigurujemy teraz nowe środowisko synchronizacji KodiBridge dla Twojej domeny.\n\nCzy chcesz domyślnie używać niezawodnego identyfikatora 'KodiBridge ID' dla wideo pozbawionych standardowych ID (IMDb/TMDb)?", yeslabel="Tak (Zalecane)", nolabel="Nie, użyj IMDb"):
         sudosync_id_enabled = False
         sudosync_id_prefix = ""
     else:
@@ -825,7 +825,7 @@ def run_bootstrap(force_select_path=False):
     if base_path and force_select_path:
         dialog = xbmcgui.Dialog()
         if dialog.yesno(
-            "SudoSync — Konfigurator",
+            "KodiBridge — Konfigurator",
             "Obecny folder:\n{}\nCzy chcesz wskazać inny folder współdzielony?".format(mask_vfs_credentials(base_path)),
             yeslabel="Zmień folder",
             nolabel="Sprawdź obecny",
@@ -835,7 +835,7 @@ def run_bootstrap(force_select_path=False):
     if choose_new_path:
         dialog = xbmcgui.Dialog()
         if not base_path:
-            dialog.ok("SudoSync", "Musisz wskazać folder sieciowy (np. SMB/NFS), w którym SudoSync będzie przechowywać wspólną konfigurację i bazę dla wszystkich urządzeń Kodi w tej sieci.")
+            dialog.ok("KodiBridge", "Musisz wskazać folder sieciowy (np. SMB/NFS), w którym KodiBridge będzie przechowywać wspólną konfigurację i bazę dla wszystkich urządzeń Kodi w tej sieci.")
         
         selected_path = dialog.browse(3, "Wybierz katalog współdzielony (np. Wideo)", "network")
         if not selected_path:
@@ -863,7 +863,7 @@ def run_bootstrap(force_select_path=False):
     log("Testowanie dostępu R/W do {}".format(base_path))
     success, msg = test_vfs_rw(base_path)
     if not success:
-        xbmcgui.Dialog().ok("SudoSync - Brak Dostępu", "Nie udało się zapisać plików w wybranym folderze:\n{}\n\nSprawdź uprawnienia do zapisu lub wskaż inny udział w ustawieniach.".format(msg))
+        xbmcgui.Dialog().ok("KodiBridge - Brak Dostępu", "Nie udało się zapisać plików w wybranym folderze:\n{}\n\nSprawdź uprawnienia do zapisu lub wskaż inny udział w ustawieniach.".format(msg))
         return False
         
     # 3. SPRAWDZENIE SUDOSYNC.CFG
