@@ -140,10 +140,8 @@ class TestV2BusyBackoff(unittest.TestCase):
                     {"initialization": {"completed": True}},   # loop 1
                     {"initialization": {"completed": True}},   # loop 2
                 ]), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_initial_snapshot_and_analyse"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
-                patch.object(sudosync_service, "live_local_changes_detected", return_value={"changed": False}), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", side_effect=fake_execute_integrated_live_cycle), \
                 patch.object(sudosync_service.time, "time", side_effect=fake_time):
             sudosync_service._run_service()
@@ -214,9 +212,7 @@ class TestV2BusyBackoff(unittest.TestCase):
                 patch.object(sudosync_service, "read_shared_config", return_value={
                     "initialization": {"completed": True},
                 }), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
-                patch.object(sudosync_service, "live_local_changes_detected", return_value={"changed": False}), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", side_effect=fake_execute_integrated_live_cycle), \
                 patch.object(sudosync_service.time, "time", side_effect=fake_time):
             sudosync_service._run_service()
@@ -296,10 +292,8 @@ class TestV2BusyBackoff(unittest.TestCase):
                     {"initialization": {"completed": True}},   # loop 2
                     {"initialization": {"completed": True}},   # loop 3
                 ]), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_initial_snapshot_and_analyse"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
-                patch.object(sudosync_service, "live_local_changes_detected", return_value={"changed": False}), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", side_effect=fake_execute_integrated_live_cycle), \
                 patch.object(sudosync_service.time, "time", side_effect=fake_time):
             sudosync_service._run_service()
@@ -311,14 +305,14 @@ class TestV2BusyBackoff(unittest.TestCase):
         self.assertFalse(mock_monitor.playback_dirty)
         self.assertFalse(mock_monitor.user_update_dirty)
 
-    def test_05_v1_runtime_error_in_integrated_cycle_returns_busy_error_and_preserves_v2_notification(self):
-        """Case 5: When run_live_sync_cycle (v1) raises RuntimeError, _execute_integrated_live_cycle catches it, returns busy+error for backoff, and still emits v2 committed toast."""
+    def test_05_v2_runtime_error_returns_busy_error_for_backoff(self):
+        """Case 5: When v2 sync_cycle raises RuntimeError, _execute_integrated_live_cycle catches it and returns busy+error for backoff without a toast."""
         mock_monitor = MagicMock()
         mock_monitor.abortRequested.return_value = False
         mock_v2 = MagicMock()
-        mock_v2.sync_cycle.return_value = {"status": "committed", "applied_count": 2}
+        mock_v2.sync_cycle.side_effect = RuntimeError("peer snapshot unreadable")
 
-        with patch.object(sudosync_service, "run_live_sync_cycle", side_effect=RuntimeError("peer v1 snapshot unreadable")), \
+        with patch.object(sudosync_service, "update_local_status_from_v2"), \
                 patch.object(sudosync_service.xbmcgui, "Dialog") as mock_dialog_cls:
             res = sudosync_service._execute_integrated_live_cycle(
                 v2_runtime=mock_v2,
@@ -326,14 +320,33 @@ class TestV2BusyBackoff(unittest.TestCase):
                 show_notification=True,
                 suppress_local_changes=False,
                 collect_local=True,
-                skip_if_no_remote_change=False,
-                notify_local_changes=False,
                 receiver_notification_delay_ms=0,
             )
             self.assertTrue(res.get("busy"))
-            self.assertEqual(res.get("error"), "peer v1 snapshot unreadable")
-            self.assertEqual(res.get("applied_items"), 2)
+            self.assertEqual(res.get("error"), "peer snapshot unreadable")
+            self.assertEqual(res.get("applied_items"), 0)
             self.assertEqual(_live_retry_delay_seconds(res, 60), 60)
+            mock_dialog_cls.return_value.notification.assert_not_called()
+
+    def test_05b_v2_committed_cycle_emits_single_toast(self):
+        """Case 5b: A committed v2 cycle is not busy and emits one LIVE toast."""
+        mock_monitor = MagicMock()
+        mock_monitor.abortRequested.return_value = False
+        mock_v2 = MagicMock()
+        mock_v2.sync_cycle.return_value = {"status": "committed", "applied_count": 2}
+
+        with patch.object(sudosync_service, "update_local_status_from_v2"), \
+                patch.object(sudosync_service.xbmcgui, "Dialog") as mock_dialog_cls:
+            res = sudosync_service._execute_integrated_live_cycle(
+                v2_runtime=mock_v2,
+                monitor=mock_monitor,
+                show_notification=True,
+                suppress_local_changes=False,
+                collect_local=True,
+                receiver_notification_delay_ms=0,
+            )
+            self.assertFalse(res.get("busy"))
+            self.assertEqual(res.get("applied_items"), 2)
             mock_dialog_cls.return_value.notification.assert_called_once()
 
     def test_06_runtime_deferred_transaction_still_publishes_changed_local_snapshot(self):

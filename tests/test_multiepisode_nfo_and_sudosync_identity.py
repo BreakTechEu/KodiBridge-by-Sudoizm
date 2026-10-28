@@ -8,15 +8,12 @@
 from __future__ import absolute_import
 
 import unittest
-import sys
-import os
 
 from resources.lib.sudosync_v2.snapshot import SnapshotBuildError, build_snapshot
 from resources.lib.sudosync_v2.identity import match_by_strong_identity
 from resources.lib.sudosync_v2.kodi_rpc import KodiJsonRpcAdapter
 from resources.lib.sudosync_core import (
     _safe_parse_nfo_xml,
-    _nfo_raw_has_strong_id,
     _nfo_raw_has_sudosync_id,
 )
 
@@ -55,10 +52,6 @@ class TestMultiEpisodeNfoAndSudoSyncIdentity(unittest.TestCase):
         self.assertIn("tmdb", types)
 
     def test_nfo_raw_helpers_with_multi_episode(self):
-        has_strong, ids = _nfo_raw_has_strong_id(MULTI_EPISODE_NFO, "episode")
-        self.assertTrue(has_strong)
-        self.assertIn("tmdb", ids)
-
         has_sudo, sudo_ids = _nfo_raw_has_sudosync_id(MULTI_EPISODE_NFO, "episode")
         self.assertTrue(has_sudo)
         self.assertEqual(sudo_ids.get("sudosync"), "MAZURY-000500")

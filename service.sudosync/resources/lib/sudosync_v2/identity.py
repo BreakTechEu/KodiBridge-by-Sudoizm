@@ -68,13 +68,26 @@ def is_valid_serialized_identity(identity):
         seen_kinds.add(kind)
     return True
 
-def strong_aliases(media_type, identifiers):
+SUDOSYNC_ONLY_KINDS = ("sudosync",)
+
+
+def matching_kinds(sudosync_only):
+    """Return identifier kinds used for cross-client matching.
+
+    With the network KodiBridge ID option enabled only the KodiBridge ID
+    (``sudosync``) identifies media; external IDs are a fallback for networks
+    that do not use it.
+    """
+    return SUDOSYNC_ONLY_KINDS if sudosync_only else IDENTIFIER_TYPES
+
+
+def strong_aliases(media_type, identifiers, kinds=None):
     """Build typed aliases; media type is part of identity by design."""
     media_type = str(media_type or "").strip().lower()
     if media_type not in ("movie", "episode") or not isinstance(identifiers, dict):
         return frozenset()
     aliases = set()
-    for kind in IDENTIFIER_TYPES:
+    for kind in (IDENTIFIER_TYPES if kinds is None else kinds):
         value = normalize_identifier(kind, identifiers.get(kind))
         if value is not None:
             aliases.add((media_type, kind, value))

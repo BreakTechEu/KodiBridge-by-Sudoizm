@@ -172,7 +172,6 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             self.assertIn("2.1.0", dialog.ok.call_args[0][1])
 
     def test_find_github_update_parses_latest_release(self):
-        import io
         import json
         fake_payload = json.dumps({
             "tag_name": "v2.1.0",
@@ -363,7 +362,6 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
                     "live_sync_enabled": False,
                 }), \
                 patch.object(sudosync_service, "read_shared_config", return_value={"initialization": {"completed": False}}), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_initial_snapshot_and_analyse"), \
                 patch.object(sudosync_service.time, "time", side_effect=[1000.0, 1070.0]), \
                 patch("resources.lib.sudosync_bootstrap.refresh_network_active_kodi_lease", return_value=False) as mock_refresh, \
@@ -375,10 +373,48 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
         dialog_mock.notification.assert_called_once()
         mock_release.assert_called_once()
 
+    def test_service_loop_defers_version_prompt_until_playback_stops(self):
+        import service as sudosync_service
+        mock_monitor = MagicMock()
+        mock_monitor.dirty = False
+        mock_monitor.scanning = False
+        mock_monitor.abortRequested.return_value = False
+        mock_monitor.waitForAbort.return_value = False
+
+        playing = [True, True, False]
+
+        def fake_playing():
+            return playing.pop(0) if playing else False
+
+        with patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=True), \
+                patch("resources.lib.sudosync_v2.runtime.build_kodi_v2_runtime", return_value=MagicMock()), \
+                patch.object(sudosync_service, "SudoSyncMonitor", return_value=mock_monitor), \
+                patch.object(sudosync_service, "addon_settings", return_value={
+                    "base_path": "smb://nas/video/.SudoSync/",
+                    "client_name": "Salon",
+                    "interval_seconds": 300,
+                    "live_poll_seconds": 60,
+                    "live_sync_enabled": False,
+                }), \
+                patch.object(sudosync_service, "read_shared_config", return_value={"initialization": {"completed": False}}), \
+                patch.object(sudosync_service, "_initial_snapshot_and_analyse"), \
+                patch.object(sudosync_service, "_is_playing_video", side_effect=fake_playing), \
+                patch.object(sudosync_service.time, "time", side_effect=[1000.0, 1070.0]), \
+                patch("resources.lib.sudosync_bootstrap.refresh_network_active_kodi_lease", return_value=False), \
+                patch("resources.lib.sudosync_bootstrap.is_network_addon_version_newer",
+                      return_value=(True, "2.2.0", "2.1.4", {})), \
+                patch("resources.lib.sudosync_bootstrap.enforce_network_version_guard", return_value=False) as mock_guard, \
+                patch("resources.lib.sudosync_bootstrap.release_network_active_kodi_lease"):
+            sudosync_service._run_service()
+
+        # The prompt is shown once, only after playback has stopped.
+        mock_guard.assert_called_once()
+        self.assertEqual(playing, [])
+        self.assertGreaterEqual(mock_monitor.waitForAbort.call_count, 2)
+
 
     def test_ensure_client_enrolled_and_initialized_populates_shared_cfg(self):
         shared_cfg = {}
-        local_reg = {}
 
         def fake_update_shared(mutator, _base_path):
             mutator(shared_cfg)
@@ -386,17 +422,12 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
 
         with patch.object(bootstrap, "_local_client_identity", return_value=("client-1", "Salon")), \
                 patch.object(core, "read_shared_config", return_value=shared_cfg), \
-                patch.object(core, "update_shared_config", side_effect=fake_update_shared), \
-                patch.object(core, "_live_registry_file", return_value="/tmp/live_reg.json"), \
-                patch.object(core, "_read_local_json", return_value=local_reg), \
-                patch.object(core, "_write_local_json", side_effect=lambda _p, data: local_reg.update(data)):
+                patch.object(core, "update_shared_config", side_effect=fake_update_shared):
             bootstrap._ensure_client_enrolled_and_initialized("smb://nas/video/.SudoSync/")
             init = shared_cfg["initialization"]
             self.assertEqual(init["base_client_id"], "client-1")
             self.assertEqual(init["base_client_name"], "Salon")
             self.assertTrue(init["completed"])
-            self.assertTrue(local_reg["bootstrapped"])
-            self.assertEqual(local_reg["client_id"], "client-1")
 
 
 class FakeVfs(object):
@@ -629,30 +660,6 @@ class TestUpdateIntegrityAndZipLimits(unittest.TestCase):
         self.assertEqual(res["sha256"], "")
         self.assertEqual(res["sha256_url"], url + ".sha256")
 
-    def test_ensure_client_enrolled_writes_schema_version_and_core_migrates_legacy_registry(self):
-        reg_store = {}
-        shared_store = {"initialization": {"completed": True, "base_client_id": "client-PC", "completed_at": "2026-10-25T18:00:00Z"}}
-        with patch.object(bootstrap, "_local_client_identity", return_value=("client-PC", "PC")), \
-                patch.object(core, "read_shared_config", return_value=shared_store), \
-                patch.object(core, "_live_registry_file", return_value="/fake/live_registry.json"), \
-                patch.object(core, "_read_local_json", side_effect=lambda _p: dict(reg_store) if reg_store else None), \
-                patch.object(core, "_write_local_json", side_effect=lambda _p, data: reg_store.clear() or reg_store.update(data)):
-            bootstrap._ensure_client_enrolled_and_initialized("smb://nas/video/.SudoSync/")
-            self.assertEqual(reg_store.get("schema_version"), core.LIVE_SCHEMA_VERSION)
-            self.assertTrue(reg_store.get("bootstrapped"))
-
-            # Simulate a registry created by v2.0.12 without schema_version
-            legacy_reg = {
-                "client_id": "client-PC",
-                "bootstrapped": True,
-                "records": {},
-                "updated_at": "2026-10-25T18:30:00Z",
-            }
-            reg_store.clear()
-            reg_store.update(legacy_reg)
-            loaded = core._read_live_registry("client-PC", shared_store["initialization"])
-            self.assertTrue(loaded.get("bootstrapped"))
-            self.assertEqual(loaded.get("schema_version"), core.LIVE_SCHEMA_VERSION)
 
 
 if __name__ == "__main__":

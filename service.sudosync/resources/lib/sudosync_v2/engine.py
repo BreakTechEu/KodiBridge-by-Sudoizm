@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from .kodi_rpc import OperationAborted, invoke_with_abort, is_aborted
 from .planning import build_sync_plan
 from .initialization import build_initialization_plan
+from .identity import matching_kinds
 from .snapshot import build_snapshot
 
 
@@ -47,7 +48,8 @@ class SyncEngine(object):
     """
 
     def __init__(self, kodi, client_id, client_name, load_previous_local,
-                 load_peer_snapshots, max_records=100000, abort_requested=None):
+                 load_peer_snapshots, max_records=100000, abort_requested=None,
+                 sudosync_only=False):
         if kodi is None:
             raise ValueError("kodi adapter is required")
         if not callable(load_previous_local) or not callable(load_peer_snapshots):
@@ -59,6 +61,12 @@ class SyncEngine(object):
         self._load_peer_snapshots = load_peer_snapshots
         self._max_records = max_records
         self._abort_requested = abort_requested
+        # bool or zero-argument callable (the network setting may change at runtime)
+        self._sudosync_only = sudosync_only
+
+    def _identity_kinds(self):
+        flag = self._sudosync_only() if callable(self._sudosync_only) else self._sudosync_only
+        return matching_kinds(bool(flag))
 
     def preview(self, abort_requested=None, suppress_local_changes=False):
         """Return a candidate snapshot and plan without publishing or writing."""
@@ -136,6 +144,7 @@ class SyncEngine(object):
                 peers,
                 local_kodi_ids,
                 max_records=self._max_records,
+                identity_kinds=self._identity_kinds(),
             )
             skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
             return {
@@ -314,6 +323,7 @@ class SyncEngine(object):
                 candidate,
                 local_kodi_ids,
                 max_records=self._max_records,
+                identity_kinds=self._identity_kinds(),
             )
             skipped_nfos = list(getattr(self._kodi, "skipped_nfos", []))
             return {

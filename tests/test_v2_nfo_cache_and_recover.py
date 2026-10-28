@@ -250,9 +250,7 @@ class RecoverTests(unittest.TestCase):
 
 
 class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
-    @patch.object(sudosync_service, "collect_and_write")
-    @patch.object(sudosync_service, "run_dry_run")
-    def test_initial_snapshot_skipped_when_v2_blocked(self, mock_dry_run, mock_collect):
+    def test_initial_snapshot_skipped_when_v2_blocked(self):
         mock_v2 = MagicMock()
         mock_v2.recover.return_value = {"status": "blocked", "recovery": {"status": "blocked", "reason": "unrecovered_journal"}}
 
@@ -263,12 +261,9 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
         )
 
         self.assertEqual(res.get("status"), "blocked")
-        mock_collect.assert_not_called()
-        mock_dry_run.assert_not_called()
+        mock_v2.publish_local_snapshot.assert_not_called()
 
-    @patch.object(sudosync_service, "collect_and_write")
-    @patch.object(sudosync_service, "run_dry_run")
-    def test_initial_snapshot_skipped_when_v2_deferred(self, mock_dry_run, mock_collect):
+    def test_initial_snapshot_skipped_when_v2_deferred(self):
         mock_v2 = MagicMock()
         mock_v2.recover.return_value = {"status": "deferred", "recovery": {"status": "deferred", "reason": "video_playing"}}
 
@@ -279,12 +274,9 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
         )
 
         self.assertEqual(res.get("status"), "deferred")
-        mock_collect.assert_not_called()
-        mock_dry_run.assert_not_called()
+        mock_v2.publish_local_snapshot.assert_not_called()
 
-    @patch.object(sudosync_service, "collect_and_write")
-    @patch.object(sudosync_service, "run_dry_run")
-    def test_initial_snapshot_skipped_when_v2_aborted(self, mock_dry_run, mock_collect):
+    def test_initial_snapshot_skipped_when_v2_aborted(self):
         mock_v2 = MagicMock()
         mock_v2.recover.return_value = {"status": "aborted", "recovery": {"status": "aborted"}}
 
@@ -295,12 +287,9 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
         )
 
         self.assertEqual(res.get("status"), "aborted")
-        mock_collect.assert_not_called()
-        mock_dry_run.assert_not_called()
+        mock_v2.publish_local_snapshot.assert_not_called()
 
-    @patch.object(sudosync_service, "collect_and_write")
-    @patch.object(sudosync_service, "run_dry_run")
-    def test_initial_snapshot_skipped_when_v2_recover_raises_exception_fail_closed(self, mock_dry_run, mock_collect):
+    def test_initial_snapshot_skipped_when_v2_recover_raises_exception_fail_closed(self):
         mock_v2 = MagicMock()
         mock_v2.recover.side_effect = RuntimeError("VFS storage offline")
 
@@ -312,12 +301,9 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
 
         self.assertEqual(res.get("status"), "error")
         self.assertIn("VFS storage offline", res.get("error", ""))
-        mock_collect.assert_not_called()
-        mock_dry_run.assert_not_called()
+        mock_v2.publish_local_snapshot.assert_not_called()
 
-    @patch.object(sudosync_service, "collect_and_write")
-    @patch.object(sudosync_service, "run_dry_run")
-    def test_initial_snapshot_skipped_when_v2_recover_returns_unexpected_status_fail_closed(self, mock_dry_run, mock_collect):
+    def test_initial_snapshot_skipped_when_v2_recover_returns_unexpected_status_fail_closed(self):
         mock_v2 = MagicMock()
         mock_v2.recover.return_value = {"status": "unknown_corruption_state"}
 
@@ -328,12 +314,9 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
         )
 
         self.assertEqual(res.get("status"), "unknown_corruption_state")
-        mock_collect.assert_not_called()
-        mock_dry_run.assert_not_called()
+        mock_v2.publish_local_snapshot.assert_not_called()
 
-    @patch.object(sudosync_service, "collect_and_write")
-    @patch.object(sudosync_service, "run_dry_run")
-    def test_initial_snapshot_skipped_when_v2_recover_returns_non_dict_fail_closed(self, mock_dry_run, mock_collect):
+    def test_initial_snapshot_skipped_when_v2_recover_returns_non_dict_fail_closed(self):
         mock_v2 = MagicMock()
         mock_v2.recover.return_value = "invalid_string_result"
 
@@ -345,12 +328,9 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
 
         self.assertEqual(res.get("status"), "error")
         self.assertEqual(res.get("error"), "invalid_recovery_result")
-        mock_collect.assert_not_called()
-        mock_dry_run.assert_not_called()
+        mock_v2.publish_local_snapshot.assert_not_called()
 
-    @patch.object(sudosync_service, "collect_and_write")
-    @patch.object(sudosync_service, "run_dry_run")
-    def test_initial_snapshot_skipped_when_v2_recover_returns_mock_fail_closed(self, mock_dry_run, mock_collect):
+    def test_initial_snapshot_skipped_when_v2_recover_returns_mock_fail_closed(self):
         mock_v2 = MagicMock()
         # An unconfigured mock returning another MagicMock instead of a dict must fail-closed
         res = sudosync_service._initial_snapshot_and_analyse(
@@ -361,23 +341,33 @@ class InitialSnapshotAndAnalyseGateTests(unittest.TestCase):
 
         self.assertEqual(res.get("status"), "error")
         self.assertEqual(res.get("error"), "invalid_recovery_result")
-        mock_collect.assert_not_called()
-        mock_dry_run.assert_not_called()
+        mock_v2.publish_local_snapshot.assert_not_called()
 
-    @patch.object(sudosync_service, "collect_and_write")
-    @patch.object(sudosync_service, "run_dry_run")
-    def test_initial_snapshot_proceeds_when_v2_recover_ready(self, mock_dry_run, mock_collect):
+    def test_initial_snapshot_proceeds_when_v2_recover_ready(self):
         mock_v2 = MagicMock()
         mock_v2.recover.return_value = {"status": "ready"}
 
+        mock_v2.publish_local_snapshot.return_value = {"status": "published", "snapshot": None}
+
+        with patch.object(sudosync_service, "update_local_status_from_v2") as mock_status:
+            res = sudosync_service._initial_snapshot_and_analyse(
+                v2_runtime=mock_v2,
+                abort_requested=lambda: False,
+                init_completed=True,
+            )
+
+        mock_v2.publish_local_snapshot.assert_called_once()
+        mock_status.assert_called_once()
+        self.assertEqual(res.get("status"), "published")
+
+    def test_initial_snapshot_without_v2_runtime_fails_closed(self):
         res = sudosync_service._initial_snapshot_and_analyse(
-            v2_runtime=mock_v2,
+            v2_runtime=None,
             abort_requested=lambda: False,
             init_completed=False,
         )
-
-        mock_collect.assert_called_once_with(show_notification=False)
-        mock_dry_run.assert_called_once_with(show_notification=False)
+        self.assertEqual(res.get("status"), "error")
+        self.assertEqual(res.get("error"), "v2_unavailable")
 
 
 class V2LocalStatusAndVfsTests(unittest.TestCase):
@@ -435,24 +425,3 @@ class V2LocalStatusAndVfsTests(unittest.TestCase):
         backend = KodiVFSBackend(fake_vfs, allow_win_unc=False)
         self.assertTrue(backend.mkdirs("smb://nas/wideo/.SudoSync/clients"))
         fake_vfs.exists.assert_called_with("smb://nas/wideo/.SudoSync/clients")
-
-    def test_build_live_report_single_or_no_snapshot_returns_idle_without_error(self):
-        import resources.lib.sudosync_core as sudosync_core
-
-        with patch.object(sudosync_core, "addon_settings", return_value={"base_path": "smb://nas/.SudoSync/", "client_name": "Salon"}), \
-                patch.object(sudosync_core, "collect_live_snapshot"), \
-                patch.object(sudosync_core, "read_remote_snapshots", return_value=([], [])), \
-                patch.object(sudosync_core, "get_or_create_client_id", return_value="cid-1"), \
-                patch.object(sudosync_core, "read_shared_config", return_value={}), \
-                patch.object(sudosync_core, "_observe_remote_lamport"), \
-                patch.object(sudosync_core, "_write_vfs_json"), \
-                patch.object(sudosync_core, "read_local_status", return_value={}), \
-                patch.object(sudosync_core, "_write_local_json"):
-            report = sudosync_core.build_live_report(show_notification=False, collect_first=False)
-            self.assertEqual(report.get("mode"), "live_idle")
-            self.assertTrue(report.get("summary", {}).get("no_peers"))
-            self.assertEqual(report.get("planned_changes"), {})
-
-
-if __name__ == "__main__":
-    unittest.main()
