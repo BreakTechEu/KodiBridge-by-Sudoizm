@@ -1,3 +1,13 @@
+KodiBridge by Sudoizm (zmiany niewydane)
+========================================
+
+- Dokończenie zmiany nazwy widocznej dla użytkownika na KodiBridge by Sudoizm:
+  - Teksty ustawień (`strings.po` pl/en), tytuły okien dialogowych i powiadomienia w Kodi używają nazwy KodiBridge; identyfikator SudoSync ID nazywa się w interfejsie KodiBridge ID.
+  - `addon.xml`: `provider-name` zmieniony na Sudoizm.
+  - Adres API aktualizacji GitHub Releases wskazuje repozytorium `BreakTechEu/KodiBridge-by-Sudoizm`.
+  - Bez zmian technicznych: identyfikator dodatku `service.sudosync`, katalog `.SudoSync` i plik `SudoSync.cfg` na NAS, znacznik `<uniqueid type="sudosync">` w plikach `.nfo`, formaty plików synchronizacji oraz nazwy modułów i klas.
+- Testy: aktualizacja oczekiwań tytułu okna postępu i adresów w danych testowych aktualizatora.
+
 SudoSync 2.1.3
 ==============
 

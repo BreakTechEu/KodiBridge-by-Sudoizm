@@ -176,11 +176,11 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
         import json
         fake_payload = json.dumps({
             "tag_name": "v2.1.0",
-            "html_url": "https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases/tag/v2.1.0",
+            "html_url": "https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases/tag/v2.1.0",
             "assets": [
                 {
                     "name": "service.sudosync-2.1.0.zip",
-                    "browser_download_url": "https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases/download/v2.1.0/service.sudosync-2.1.0.zip",
+                    "browser_download_url": "https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases/download/v2.1.0/service.sudosync-2.1.0.zip",
                 }
             ],
         }).encode("utf-8")
@@ -205,10 +205,10 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
         filename = "kodibridge-by-sudoizm-2.1.4.zip"
         fake_payload = json.dumps({
             "tag_name": "v2.1.4",
-            "html_url": "https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases/tag/v2.1.4",
+            "html_url": "https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases/tag/v2.1.4",
             "assets": [{
                 "name": filename,
-                "browser_download_url": "https://github.com/BreakTechEu/SudoSync-Kodi-addon/releases/download/v2.1.4/" + filename,
+                "browser_download_url": "https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases/download/v2.1.4/" + filename,
             }],
         }).encode("utf-8")
 

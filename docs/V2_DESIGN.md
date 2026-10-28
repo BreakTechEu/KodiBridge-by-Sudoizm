@@ -15,7 +15,7 @@ pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
 - Bez MySQL/MariaDB, bez serwera centralnego i bez chmury. Wspólnym transportem danych jest katalog dostępny dla wszystkich urządzeń Kodi: SMB, NFS lub lokalny udział.
 - Współdzielony katalog nie może zawierać danych, które należą wyłącznie do jednej instancji Kodi.
 - Zmiany biblioteki Kodi wyłącznie przez oficjalne JSON-RPC. Nie otwierać ani nie modyfikować plików `MyVideos*.db`.
-- Aktualizacje są pobierane z oficjalnego GitHub Releases (`BreakTechEu/SudoSync-Kodi-addon`, sprawdzane najwyżej raz na dobę i instalowane wyłącznie za jawną zgodą użytkownika) lub instalowane ręcznie ze wskazanego przez użytkownika pliku `.zip`.
+- Aktualizacje są pobierane z oficjalnego GitHub Releases (`BreakTechEu/KodiBridge-by-Sudoizm`, sprawdzane najwyżej raz na dobę i instalowane wyłącznie za jawną zgodą użytkownika) lub instalowane ręcznie ze wskazanego przez użytkownika pliku `.zip`.
 - W pliku `SudoSync.cfg` utrzymywana jest minimalna wymagana wersja wtyczki w sieci (`min_addon_version`). Urządzenie ze starszą wersją wtyczki jest zatrzymywane na etapie bootstrapu lub odświeżenia dzierżawy do czasu aktualizacji.
 - Wspierane są dwie najnowsze główne wersje Kodi. Zmianę zakresu wsparcia dokumentować w każdym wydaniu.
 
