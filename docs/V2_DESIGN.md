@@ -2,9 +2,6 @@
 
 SudoSync 2.x jest kolejną, rozszerzoną wersją tego samego dodatku SudoSync, rozwijaną na bazie wersji 1.x. Nie jest odrębnym programem ani przebudową od zera. Dokument opisuje docelowe usprawnienia architektury i dodatkowe możliwości; nie oznacza to, że istniejące, sprawdzone elementy v1 należy odrzucić.
 
-Uzgodniony przepływ widoczny dla użytkownika, w tym wybór folderu i kreator
-pierwszego uruchomienia, jest zapisany w [V2_USER_FLOW.md](V2_USER_FLOW.md).
-
 ## Nienaruszalne granice
 
 - `master` jest aktywną gałęzią główną, na której bezpośrednio rozwija się SudoSync 2.x jako kontynuację dodatku v1. `v1-stable` pozostaje zamrożoną gałęzią wydania 1.0.0.
