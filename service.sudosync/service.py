@@ -20,16 +20,10 @@ from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_g
 from resources.lib.sudosync_core import (
     addon_settings,
     assign_sudosync_ids,
-    collect_and_write,
-    collect_live_snapshot,
     get_or_create_client_id,
     log,
     maybe_check_github_update_daily,
     read_shared_config,
-    run_dry_run,
-    run_live_sync_cycle,
-    live_local_changes_detected,
-    sync_initial_base_selection,
     update_local_status_from_v2,
 )
 
@@ -134,58 +128,58 @@ class SudoSyncMonitor(_MonitorBase):
 
 
 def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_client_id=None, init_completed=False):
-    if v2_runtime is not None:
-        try:
-            rec = v2_runtime.recover(abort_requested=abort_requested)
-        except Exception as exc:
-            log("V2 recovery check before initial snapshot failed (fail-closed): {}".format(exc), xbmc.LOGERROR)
-            return {"status": "error", "error": str(exc)}
+    """Run the v2 startup snapshot step when LIVE sync is not active (v2 engine only)."""
+    if v2_runtime is None:
+        log("V2 runtime unavailable; local snapshot not published.", xbmc.LOGERROR)
+        return {"status": "error", "error": "v2_unavailable"}
+    try:
+        rec = v2_runtime.recover(abort_requested=abort_requested)
+    except Exception as exc:
+        log("V2 recovery check before initial snapshot failed (fail-closed): {}".format(exc), xbmc.LOGERROR)
+        return {"status": "error", "error": str(exc)}
 
-        if not isinstance(rec, dict):
-            log("V2 recovery check returned non-dict result (fail-closed)", xbmc.LOGERROR)
-            return {"status": "error", "error": "invalid_recovery_result"}
+    if not isinstance(rec, dict):
+        log("V2 recovery check returned non-dict result (fail-closed)", xbmc.LOGERROR)
+        return {"status": "error", "error": "invalid_recovery_result"}
 
-        rec_status = rec.get("status")
+    rec_status = rec.get("status")
+    if rec_status != "ready":
+        reason = (rec.get("recovery") or {}).get("reason", rec_status) if isinstance(rec.get("recovery"), dict) else rec_status
+        log("Initial snapshot skipped: v2 session recovery status is '{}' (reason={}, fail-closed).".format(
+            rec_status, reason
+        ), xbmc.LOGWARNING)
+        return {"status": str(rec_status or "error"), "recovery": (rec.get("recovery") if isinstance(rec, dict) else None)}
 
-        if rec_status != "ready":
-            reason = (rec.get("recovery") or {}).get("reason", rec_status) if isinstance(rec.get("recovery"), dict) else rec_status
-            log("Initial snapshot/analysis skipped: v2 session recovery status is '{}' (reason={}, fail-closed).".format(
-                rec_status, reason
-            ), xbmc.LOGWARNING)
-            return {"status": str(rec_status or "error"), "recovery": (rec.get("recovery") if isinstance(rec, dict) else None)}
-
-        if init_completed:
-            try:
-                v2_pub = v2_runtime.publish_local_snapshot(
-                    abort_requested=abort_requested,
-                    suppress_local_changes=False,
-                )
-                log("V2 initial snapshot status={}".format(v2_pub.get("status")), xbmc.LOGINFO)
-                update_local_status_from_v2(
-                    published_snapshot=(v2_pub.get("snapshot") if isinstance(v2_pub, dict) else None),
-                    v2_result=v2_pub,
-                )
-            except Exception as exc:
-                log("V2 initial snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
+    if not init_completed:
+        # Before initialization is completed the cycle stays read-only: no local
+        # snapshot is published and Kodi is never modified.
         if base_client_id:
             try:
                 if v2_runtime.catalog.load(base_client_id, abort_requested=abort_requested) is not None:
-                    v2_init = v2_runtime.initialization_preview(
-                        base_client_id,
-                        abort_requested=abort_requested,
-                    )
+                    v2_init = v2_runtime.initialization_preview(base_client_id, abort_requested=abort_requested)
                     log("V2 initialization preview status={}".format(v2_init.get("status")), xbmc.LOGINFO)
+                    return v2_init
             except Exception as exc:
                 log("V2 initialization preview skipped: {}".format(exc), xbmc.LOGWARNING)
+        return {"status": "not_initialized"}
 
-    collect_and_write(show_notification=False)
     try:
-        run_dry_run(show_notification=False)
+        v2_pub = v2_runtime.publish_local_snapshot(
+            abort_requested=abort_requested,
+            suppress_local_changes=False,
+        )
+        log("V2 initial snapshot status={}".format(v2_pub.get("status")), xbmc.LOGINFO)
+        update_local_status_from_v2(
+            published_snapshot=(v2_pub.get("snapshot") if isinstance(v2_pub, dict) else None),
+            v2_result=v2_pub,
+        )
+        return v2_pub
     except Exception as exc:
-        log("DRY RUN skipped/failed: {}".format(exc), xbmc.LOGWARNING)
+        log("V2 initial snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
+        return {"status": "error", "error": str(exc)}
 
 
-# Short retry delay when the local v1 live lock is busy without an error or block.
+# Short retry delay when a sync cycle is busy without an error or block.
 LIVE_BUSY_RETRY_SECONDS = 10
 
 
@@ -210,126 +204,54 @@ def _execute_integrated_live_cycle(
     show_notification,
     suppress_local_changes,
     collect_local,
-    skip_if_no_remote_change,
-    notify_local_changes,
-    receiver_notification_delay_ms,
+    receiver_notification_delay_ms=0,
 ):
-    """Run the v2 live sync cycle first, coordinating safely with the legacy v1 live cycle."""
-    v2_result = None
-    v2_committed = False
-    v2_applied = 0
+    """Run one LIVE sync cycle with the v2 engine (the only synchronization engine)."""
+    if v2_runtime is None:
+        log("V2 runtime unavailable; LIVE sync cycle skipped.", xbmc.LOGERROR)
+        return {"busy": True, "error": "v2_unavailable", "v2": None, "applied_items": 0}
 
-    if v2_runtime is not None:
-        # NFO identifiers are cached between cycles; a finished library scan/clean
-        # may have changed sidecar files, so drop the cache before re-reading.
-        if getattr(monitor, "scan_refresh_pending", False) is True:
-            try:
-                kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
-                if hasattr(kodi_adapter, "clear_nfo_cache"):
-                    kodi_adapter.clear_nfo_cache()
-            except Exception as exc:
-                log("V2 NFO cache invalidation failed: {}".format(exc), xbmc.LOGWARNING)
+    # NFO identifiers are cached between cycles; a finished library scan/clean
+    # may have changed sidecar files, so drop the cache before re-reading.
+    if getattr(monitor, "scan_refresh_pending", False) is True:
         try:
-            v2_result = v2_runtime.sync_cycle(
-                abort_requested=monitor.abortRequested,
-                suppress_local_changes=suppress_local_changes,
-                publish_local=collect_local,
-            )
+            kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
+            if hasattr(kodi_adapter, "clear_nfo_cache"):
+                kodi_adapter.clear_nfo_cache()
         except Exception as exc:
-            log("V2 live sync cycle error: {}".format(exc), xbmc.LOGERROR)
-            return {
-                "busy": True,
-                "error": str(exc),
-                "v2": None,
-                "applied_items": 0,
-            }
-
-        if not isinstance(v2_result, dict):
-            log("V2 live sync returned invalid result: {}".format(v2_result), xbmc.LOGERROR)
-            return {
-                "busy": True,
-                "error": "invalid_v2_result",
-                "v2": v2_result,
-                "applied_items": 0,
-            }
-
-        v2_status = v2_result.get("status")
-        v2_applied = int(v2_result.get("applied_count") or 0)
-        if v2_status == "blocked":
-            log(
-                "V2 live sync blocked by unrecovered session; skipping cycle until resolved.",
-                xbmc.LOGERROR,
-            )
-            return {
-                "busy": True,
-                "blocked": True,
-                "v2": v2_result,
-                "applied_items": 0,
-            }
-
-        if v2_status not in ("committed", "no_changes", "deferred"):
-            log(
-                "V2 live sync returned non-ok status '{}'; stopping cycle without running v1.".format(v2_status),
-                xbmc.LOGERROR,
-            )
-            return {
-                "busy": True,
-                "error": "unexpected_v2_status",
-                "v2": v2_result,
-                "applied_items": 0,
-            }
-
-        if v2_status == "deferred":
-            log(
-                "V2 live sync deferred (reason={}).".format(v2_result.get("reason", "unknown")),
-                xbmc.LOGINFO,
-            )
-        elif v2_status == "committed":
-            v2_committed = True
-            log(
-                "V2 live sync committed {} item(s).".format(v2_applied),
-                xbmc.LOGINFO,
-            )
-        update_local_status_from_v2(v2_result=v2_result)
-
-    # If v2 committed remote changes to Kodi, update the v1 live snapshot with
-    # suppress_local_changes=True so v1 records the newly applied state with
-    # ZERO_VERSION instead of re-broadcasting v2's writes as new local edits.
-    v1_suppress = True if v2_committed else suppress_local_changes
-    v1_collect = True if v2_committed else collect_local
-    v1_skip = False if v2_committed else skip_if_no_remote_change
-
+            log("V2 NFO cache invalidation failed: {}".format(exc), xbmc.LOGWARNING)
     try:
-        result = run_live_sync_cycle(
-            show_notification=show_notification and not v2_committed,
-            suppress_local_changes=v1_suppress,
-            collect_local=v1_collect,
-            skip_if_no_remote_change=v1_skip,
-            notify_local_changes=notify_local_changes,
-            receiver_notification_delay_ms=receiver_notification_delay_ms,
+        v2_result = v2_runtime.sync_cycle(
+            abort_requested=monitor.abortRequested,
+            suppress_local_changes=suppress_local_changes,
+            publish_local=collect_local,
         )
     except Exception as exc:
-        log("V1 live sync cycle error: {}".format(exc), xbmc.LOGERROR)
-        result = {
-            "busy": True,
-            "error": str(exc),
-            "applied_items": 0,
-        }
-    if not isinstance(result, dict):
-        result = {}
+        log("V2 live sync cycle error: {}".format(exc), xbmc.LOGERROR)
+        update_local_status_from_v2(error=exc)
+        return {"busy": True, "error": str(exc), "v2": None, "applied_items": 0}
 
-    # If a legacy v1-only peer applied changes through v1, publish the resulting
-    # Kodi library state into the v2 catalog with suppress_local_changes=True.
-    if v2_runtime is not None and not v2_committed and int(result.get("applied_items") or 0) > 0:
-        try:
-            v2_runtime.publish_local_snapshot(
-                abort_requested=monitor.abortRequested,
-                suppress_local_changes=True,
-            )
-        except Exception as exc:
-            log("V2 post-v1 snapshot sync failed: {}".format(exc), xbmc.LOGWARNING)
+    if not isinstance(v2_result, dict):
+        log("V2 live sync returned invalid result: {}".format(v2_result), xbmc.LOGERROR)
+        return {"busy": True, "error": "invalid_v2_result", "v2": v2_result, "applied_items": 0}
 
-    if v2_committed and show_notification and v2_applied > 0:
+    v2_status = v2_result.get("status")
+    v2_applied = int(v2_result.get("applied_count") or 0)
+    if v2_status == "blocked":
+        log("V2 live sync blocked by unrecovered session; skipping cycle until resolved.", xbmc.LOGERROR)
+        return {"busy": True, "blocked": True, "v2": v2_result, "applied_items": 0}
+
+    if v2_status not in ("committed", "no_changes", "deferred"):
+        log("V2 live sync returned non-ok status '{}'.".format(v2_status), xbmc.LOGERROR)
+        return {"busy": True, "error": "unexpected_v2_status", "v2": v2_result, "applied_items": 0}
+
+    if v2_status == "deferred":
+        log("V2 live sync deferred (reason={}).".format(v2_result.get("reason", "unknown")), xbmc.LOGINFO)
+    elif v2_status == "committed":
+        log("V2 live sync committed {} item(s).".format(v2_applied), xbmc.LOGINFO)
+    update_local_status_from_v2(v2_result=v2_result)
+
+    if v2_status == "committed" and show_notification and v2_applied > 0:
         try:
             if receiver_notification_delay_ms and receiver_notification_delay_ms > 0:
                 xbmc.sleep(int(receiver_notification_delay_ms))
@@ -342,9 +264,7 @@ def _execute_integrated_live_cycle(
         except Exception:
             pass
 
-    result["v2"] = v2_result
-    result["applied_items"] = int(result.get("applied_items") or 0) + v2_applied
-    return result
+    return {"busy": False, "v2": v2_result, "applied_items": v2_applied}
 
 
 def _is_playing_video():
@@ -417,6 +337,9 @@ def _run_service():
                 abort_requested=monitor.abortRequested,
                 cache_path=cache_file,
                 on_nfo_cached=_seed_core_cache,
+                # With the network KodiBridge ID option enabled, media are matched
+                # only by KodiBridge ID; external IDs are a fallback otherwise.
+                sudosync_only=lambda: bool(addon_settings().get("sudosync_id_enabled")),
             )
             # Recovery only: the library scan is done once, by the first sync cycle.
             # A second full NFO scan here delayed the first snapshot by 1-2 minutes.
@@ -445,7 +368,6 @@ def _run_service():
         live_retry_not_before = 0.0
 
         try:
-            sync_initial_base_selection(show_notification=False)
             shared = read_shared_config(settings["base_path"])
             init = shared.get("initialization") or {}
             if v2_blocked:
@@ -460,8 +382,6 @@ def _run_service():
                     show_notification=False,
                     suppress_local_changes=False,
                     collect_local=True,
-                    skip_if_no_remote_change=False,
-                    notify_local_changes=False,
                     receiver_notification_delay_ms=12000,
                 )
                 if result.get("waiting"):
@@ -498,7 +418,12 @@ def _run_service():
                             outdated, _, _, net_cfg = is_network_addon_version_newer(base_for_lease)
                         except Exception:
                             outdated, net_cfg = False, {}
-                        if outdated and not _is_playing_video():
+                        if outdated:
+                            # Never interrupt playback with the update prompt: wait
+                            # until the video stops, then ask immediately.
+                            while _is_playing_video() and not monitor.waitForAbort(5):
+                                pass
+                        if outdated and not monitor.abortRequested():
                             try:
                                 release_network_active_kodi_lease(base_for_lease)
                             except Exception:
@@ -573,14 +498,6 @@ def _run_service():
                                             log("Przebudowano i opublikowano snapshot v2 po nadaniu nowych SudoSync ID (status={}).".format(pub_res.get("status")), xbmc.LOGINFO)
                                         except Exception as exc:
                                             log("Błąd publikacji snapshotu v2 po nadaniu ID: {}".format(exc), xbmc.LOGWARNING)
-                                    try:
-                                        collect_live_snapshot(
-                                            show_notification=False,
-                                            suppress_local_changes=False,
-                                            notify_local_changes=False,
-                                        )
-                                    except Exception as exc:
-                                        log("Błąd aktualizacji snapshotu v1 po nadaniu ID: {}".format(exc), xbmc.LOGWARNING)
                         except Exception as exc:
                             log("Błąd automatycznego nadawania SudoSync ID w usłudze: {}".format(exc), xbmc.LOGERROR)
 
@@ -590,17 +507,11 @@ def _run_service():
                     playing = _is_playing_video()
                     event_due = monitor.dirty and monitor.dirty_since and (now - monitor.dirty_since) >= 2
                     poll_due = (now - last_live_poll) >= live_poll
-                    local_probe = {"changed": False}
-                    if poll_due and not monitor.scanning:
-                        # Notifications are the fast path; this lightweight probe is
-                        # the periodic safety net required for Android/Google TV.
-                        local_probe = live_local_changes_detected()
-
                     if playing:
-                        # Never APPLY remote changes during playback. If the safety
-                        # probe sees a local change, however, publish our snapshot so
-                        # an abrupt Android kill cannot strand it only in this Kodi.
-                        if poll_due and local_probe.get("changed") and not monitor.scanning:
+                        # Never APPLY remote changes during playback, but publish
+                        # local playback progress so an abrupt Android kill cannot
+                        # strand it only in this Kodi (written only when changed).
+                        if poll_due and not monitor.scanning:
                             if v2_runtime is not None:
                                 try:
                                     v2_runtime.publish_local_snapshot(
@@ -609,14 +520,6 @@ def _run_service():
                                     )
                                 except Exception as exc:
                                     log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
-                            collect_live_snapshot(
-                                show_notification=False,
-                                # While video is actively playing this state is a
-                                # genuine playback change, not an NFO/scan import.
-                                suppress_local_changes=False,
-                                notify_local_changes=False,
-                            )
-                        if poll_due:
                             last_live_poll = time.time()
                     elif (event_due or poll_due) and not monitor.scanning and time.time() >= live_retry_not_before:
                         cycle_dirty_seq = getattr(monitor, "dirty_seq", 0)
@@ -626,7 +529,9 @@ def _run_service():
                             and not monitor.playback_dirty
                             and not monitor.user_update_dirty
                         )
-                        collect_local = bool(event_due or suppress or local_probe.get("changed"))
+                        # v2 publishes the local snapshot only when it differs from the last one,
+                        # so every cycle may collect: this is also the safety net for missed notifications.
+                        collect_local = True
                         result = _execute_integrated_live_cycle(
                             v2_runtime=v2_runtime,
                             monitor=monitor,
@@ -636,8 +541,6 @@ def _run_service():
                             show_notification=True,
                             suppress_local_changes=suppress,
                             collect_local=collect_local,
-                            skip_if_no_remote_change=bool(poll_due and not collect_local),
-                            notify_local_changes=False,
                             receiver_notification_delay_ms=0,
                         )
                         last_live_poll = time.time()
@@ -686,7 +589,6 @@ def _run_service():
                     except Exception as exc:
                         log("Daily GitHub update check in loop skipped: {}".format(exc), xbmc.LOGWARNING)
 
-                sync_initial_base_selection(show_notification=False)
             except Exception as exc:
                 log("Service cycle failed: {}".format(exc), xbmc.LOGERROR)
                 # Avoid a hot failure loop on broken NAS/network.

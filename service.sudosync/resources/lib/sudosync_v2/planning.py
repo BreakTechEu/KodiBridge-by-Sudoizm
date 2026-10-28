@@ -43,8 +43,12 @@ def _validate_local_ids(snapshot, local_kodi_ids):
     return result
 
 
-def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=100000):
+def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=100000,
+                    identity_kinds=None):
     """Build a dry-run plan to update only already-existing local library items.
+
+    ``identity_kinds`` limits the identifier kinds used to match records across
+    clients (``None`` means every supported strong identifier).
 
     Each local_kodi_ids collection must be in the same order as the corresponding
     Kodi arrays passed to snapshot.build_snapshot. Remote-only records are never
@@ -94,7 +98,7 @@ def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=
 
         for snapshot in all_snapshots:
             for index, record in enumerate(snapshot[key]):
-                aliases = strong_aliases(media_type, record["ids"])
+                aliases = strong_aliases(media_type, record["ids"], kinds=identity_kinds)
                 if not aliases:
                     records_without_ids += 1
                 node_index = len(nodes)
@@ -140,6 +144,8 @@ def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=
             alias_values = {}
             for member in members:
                 for kind, value in member["record"]["ids"].items():
+                    if identity_kinds is not None and kind not in identity_kinds:
+                        continue
                     alias_values.setdefault(kind, set()).add(value)
             reasons = []
             if len(client_set) != len(members):

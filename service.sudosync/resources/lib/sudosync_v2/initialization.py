@@ -44,8 +44,12 @@ def _initial_field_decision(field, base_value, target_value):
     return None, True
 
 
-def build_initialization_plan(base_snapshot, target_snapshot, target_kodi_ids, max_records=100000):
+def build_initialization_plan(base_snapshot, target_snapshot, target_kodi_ids, max_records=100000,
+                              identity_kinds=None):
     """Plan a one-time import from the chosen base to a target Kodi.
+
+    ``identity_kinds`` limits the identifier kinds used for matching
+    (``None`` means every supported strong identifier).
 
     Existing target data is preserved when it is more informative. Conflicting
     non-empty lastplayed/resume/userrating values are reported, not overwritten.
@@ -70,10 +74,10 @@ def build_initialization_plan(base_snapshot, target_snapshot, target_kodi_ids, m
         target_records = target_snapshot[key]
         base_by_alias = {}
         for index, record in enumerate(base_records):
-            for alias in strong_aliases(media_type, record["ids"]):
+            for alias in strong_aliases(media_type, record["ids"], kinds=identity_kinds):
                 base_by_alias.setdefault(alias, []).append((index, record))
         for target_index, target in enumerate(target_records):
-            aliases = strong_aliases(media_type, target["ids"])
+            aliases = strong_aliases(media_type, target["ids"], kinds=identity_kinds)
             if not aliases:
                 unmatched += 1
                 continue
@@ -96,6 +100,8 @@ def build_initialization_plan(base_snapshot, target_snapshot, target_kodi_ids, m
             # alias may have joined two distinct media identities.
             conflict_kinds = []
             for kind in set(base_record["ids"]).intersection(target["ids"]):
+                if identity_kinds is not None and kind not in identity_kinds:
+                    continue
                 if base_record["ids"][kind] != target["ids"][kind]:
                     conflict_kinds.append(kind)
             if conflict_kinds:

@@ -33,7 +33,6 @@ if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 
 import service as sudosync_service
-import sudosync_core
 from resources.lib.sudosync_v2.snapshot import build_snapshot
 from resources.lib.sudosync_v2.planning import build_sync_plan
 from service import _live_retry_delay_seconds
@@ -219,8 +218,7 @@ class TestV2FirstPublishAndBackoff(unittest.TestCase):
         mock_v2.recover.return_value = {"status": "ready"}
         mock_v2.publish_local_snapshot.return_value = {"status": "published"}
 
-        with patch.object(sudosync_service, "collect_and_write"), \
-                patch.object(sudosync_service, "run_dry_run"):
+        with patch.object(sudosync_service, "update_local_status_from_v2"):
             # With init_completed=False
             sudosync_service._initial_snapshot_and_analyse(
                 v2_runtime=mock_v2,
@@ -240,19 +238,6 @@ class TestV2FirstPublishAndBackoff(unittest.TestCase):
                 suppress_local_changes=False,
             )
 
-    def test_06_sync_v2_after_initial_apply_suppresses_local_changes(self):
-        """Case 6: _sync_v2_after_initial_apply calls publish_local_snapshot with suppress_local_changes=True."""
-        mock_v2 = MagicMock()
-        mock_v2.publish_local_snapshot.return_value = {"status": "published"}
-
-        with patch("resources.lib.sudosync_v2.runtime.build_kodi_v2_runtime", return_value=mock_v2):
-            sudosync_core._sync_v2_after_initial_apply(
-                settings={"base_path": "smb://nas/sudosync", "client_name": "Salon"},
-                client_id=self.client_a,
-            )
-            mock_v2.publish_local_snapshot.assert_called_once_with(
-                suppress_local_changes=True,
-            )
 
     def test_07_live_retry_delay_seconds(self):
         """Case 7: _live_retry_delay_seconds returns >= 30 and >= live_poll for error or blocked, and 0 for normal busy or empty."""
@@ -346,9 +331,7 @@ class TestV2FirstPublishAndBackoff(unittest.TestCase):
                     {"initialization": {"completed": True}},   # loop 2: init completed
                     {"initialization": {"completed": True}},
                 ]), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
-                patch.object(sudosync_service, "live_local_changes_detected", return_value={"changed": False}), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", side_effect=fake_execute_integrated_live_cycle), \
                 patch.object(sudosync_service.time, "time", side_effect=fake_time):
             sudosync_service._run_service()
@@ -396,9 +379,7 @@ class TestV2FirstPublishAndBackoff(unittest.TestCase):
                     {"initialization": {"completed": False}},
                     {"initialization": {"completed": True}},
                 ]), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
-                patch.object(sudosync_service, "live_local_changes_detected", return_value={"changed": False}), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", side_effect=fake_execute_integrated_live_cycle), \
                 patch.object(sudosync_service.time, "time", return_value=1010.0):
             sudosync_service._run_service()

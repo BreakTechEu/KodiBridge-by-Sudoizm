@@ -33,9 +33,7 @@ if LIB_DIR not in sys.path:
 
 import resources.lib.sudosync_bootstrap as sudosync_bootstrap
 import resources.lib.sudosync_core as sudosync_core
-from resources.lib.sudosync_merge import build_live_plan
 from resources.lib.sudosync_v2.kodi_rpc import KodiJsonRpcAdapter
-from resources.lib.sudosync_v2.merge import plan_field_merge
 from resources.lib.sudosync_v2.runtime import ProcessLocalLockFactory, build_v2_runtime
 from tests.test_audit_v2_service_and_rollback import VirtualXbmcVfs
 from tests.test_sudosync_v2_runtime import InMemorySharedBackend
@@ -171,9 +169,9 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
             patch.object(sudosync_core.xbmcvfs, "exists", side_effect=self.vfs.exists),
             patch.object(sudosync_core.xbmcvfs, "delete", side_effect=self.vfs.delete),
             patch.object(sudosync_core.xbmcvfs, "rename", side_effect=self.vfs.rename),
-            patch.object(sudosync_core.xbmcvfs, "copy", side_effect=self.vfs.copy, create=True),
+            patch.object(sudosync_core.xbmcvfs, "copy", side_effect=self.vfs.copy),
             patch.object(sudosync_core.xbmcvfs, "mkdirs", side_effect=self.vfs.mkdirs),
-            patch.object(sudosync_core.xbmcvfs, "rmdir", side_effect=self.vfs.rmdir, create=True),
+            patch.object(sudosync_core.xbmcvfs, "rmdir", side_effect=self.vfs.rmdir),
             patch.object(sudosync_core.xbmcvfs, "listdir", side_effect=self.vfs.listdir),
             patch.object(sudosync_core.xbmcvfs, "File", side_effect=self.vfs.make_file),
             patch.object(sudosync_core.xbmcaddon, "Addon", return_value=addon_obj),
@@ -357,56 +355,6 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
             sudosync_bootstrap.apply_network_settings(cfg_after_kodi2)
         self.assertEqual(addon_kodi1.getSetting("sudosync_id_last_number"), "5")
 
-    def test_02_auto_assign_sudosync_id_for_local_only_resource_during_snapshot_collection(self):
-        """Collecting a snapshot when sudosync_id_enabled=True automatically assigns the next sequential SudoSync ID to new local-only items."""
-        addon_kodi1 = FakeAddon({
-            "base_path": self.base_path,
-            "client_name": "Kodi1",
-            "sudosync_id_enabled": "true",
-            "sudosync_id_prefix": "DOM",
-            "sudosync_id_prefix_last_synced": "DOM",
-            "sudosync_id_last_number": "10",
-        })
-        # Update NAS counter to 10
-        cfg = json.loads(self.vfs.files[self.base_path + "SudoSync.cfg"].decode("utf-8"))
-        cfg["network_settings"]["sudosync_id_last_number"] = 10
-        self.vfs.files[self.base_path + "SudoSync.cfg"] = json.dumps(cfg).encode("utf-8")
-
-        rpc_movies = [
-            {
-                "movieid": 50,
-                "title": " Prywatne Nagranie Lokalnego Kodi ",
-                "file": "special://profile/videos/PrywatneNagranie.mp4",
-                "uniqueid": {},
-                "playcount": 1,
-                "lastplayed": "2026-10-18 12:00:00",
-                "resume": {"position": 0, "total": 0},
-                "userrating": 0,
-            }
-        ]
-
-        def fake_rpc(method, params=None):
-            if method == "VideoLibrary.GetMovies":
-                return {"movies": rpc_movies}
-            if method == "VideoLibrary.GetEpisodes":
-                return {"episodes": []}
-            return {}
-
-        self.active_profile = "/profile_kodi1"
-        p = self._patch_env(addon_kodi1)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
-                patch.object(sudosync_core, "rpc", side_effect=fake_rpc), \
-                patch.object(sudosync_core.xbmc, "Player") as mock_player:
-            mock_player.return_value.isPlayingVideo.return_value = False
-            status = sudosync_core.collect_live_snapshot(show_notification=False)
-
-        self.assertEqual(status["sudosync_id_last_number"], 11)
-        self.assertTrue(self.vfs.exists("special://profile/videos/PrywatneNagranie.nfo"))
-        self.assertIn(b"DOM-000011", self.vfs.files["special://profile/videos/PrywatneNagranie.nfo"])
-
-        # Snapshot written to NAS already contains the newly assigned sudosync ID
-        snap_data = json.loads(self.vfs.files[status["remote_path"]].decode("utf-8"))
-        self.assertEqual(snap_data["movies"][0]["ids"]["sudosync"], "DOM-000011")
 
     def test_03_v2_kodi_rpc_enriches_details_with_nfo_ids_preventing_transaction_error(self):
         """KodiJsonRpcAdapter.get_movie_details and get_episode_details enrich uniqueid from NFO so v2 TransactionRunner succeeds even when Kodi SQLite lacks the NFO ID."""
@@ -499,96 +447,6 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.assertEqual(movie_state["playcount"], 2)
         self.assertEqual(movie_state["lastplayed"], "2026-10-18 15:00:00")
 
-    def test_04_initial_lc0_watched_vs_newly_indexed_unwatched_merges_without_conflict(self):
-        """When one Kodi has watched state at lc=0 and a second Kodi newly indexes the item with unwatched state at lc=0, both v2 and v1 merge planners adopt the watched state."""
-        records_v2 = [
-            {
-                "state": {
-                    "playcount": 3,
-                    "lastplayed": "2026-10-18 14:00:00",
-                    "resume": {"position": 180.0, "total": 1200.0},
-                    "userrating": 8,
-                },
-                "versions": {
-                    "playcount": {"lc": 0, "seq": 0, "client_id": "kodi-1"},
-                    "lastplayed": {"lc": 0, "seq": 0, "client_id": "kodi-1"},
-                    "resume": {"lc": 0, "seq": 0, "client_id": "kodi-1"},
-                    "userrating": {"lc": 0, "seq": 0, "client_id": "kodi-1"},
-                },
-            },
-            {
-                "state": {
-                    "playcount": 0,
-                    "lastplayed": "",
-                    "resume": {"position": 0.0, "total": 0.0},
-                    "userrating": None,
-                },
-                "versions": {
-                    "playcount": {"lc": 0, "seq": 0, "client_id": "kodi-2"},
-                    "lastplayed": {"lc": 0, "seq": 0, "client_id": "kodi-2"},
-                    "resume": {"lc": 0, "seq": 0, "client_id": "kodi-2"},
-                    "userrating": {"lc": 0, "seq": 0, "client_id": "kodi-2"},
-                },
-            },
-        ]
-        merged_v2 = plan_field_merge(records_v2)
-        self.assertEqual(merged_v2["conflicts"], [])
-        self.assertEqual(merged_v2["target_state"]["playcount"], 3)
-        self.assertEqual(merged_v2["target_state"]["lastplayed"], "2026-10-18 14:00:00")
-        self.assertEqual(merged_v2["target_state"]["resume"], {"position": 180.0, "total": 1200.0})
-        self.assertEqual(merged_v2["target_state"]["userrating"], 8)
-
-        # Verify v1 build_live_plan with identical baseline versions (lc=0, seq=0)
-        baseline_ver = {"lc": 0, "ts": "2026-10-18T08:00:00.000Z", "client_id": "baseline", "seq": 0}
-        snapshots_v1 = [
-            {
-                "client": {"id": "kodi-1", "name": "Kodi 1"},
-                "movies": [
-                    {
-                        "type": "movie",
-                        "title": "Bajka 1",
-                        "file": "smb://nas/Bajka1.mkv",
-                        "ids": {"sudosync": "DOM-000001"},
-                        "local": {"movieid": 1},
-                        "state": {
-                            "playcount": 3,
-                            "lastplayed": "2026-10-18 14:00:00",
-                            "resume": {"position": 0.0, "total": 0.0},
-                            "userrating": 8,
-                        },
-                        "field_versions": {f: dict(baseline_ver) for f in ("playcount", "lastplayed", "resume", "userrating")},
-                    }
-                ],
-                "episodes": [],
-            },
-            {
-                "client": {"id": "kodi-2", "name": "Kodi 2"},
-                "movies": [
-                    {
-                        "type": "movie",
-                        "title": "Bajka 1",
-                        "file": "smb://nas/Bajka1.mkv",
-                        "ids": {"sudosync": "DOM-000001"},
-                        "local": {"movieid": 10},
-                        "state": {
-                            "playcount": 0,
-                            "lastplayed": "",
-                            "resume": {"position": 0.0, "total": 0.0},
-                            "userrating": 0,
-                        },
-                        "field_versions": {f: dict(baseline_ver) for f in ("playcount", "lastplayed", "resume", "userrating")},
-                    }
-                ],
-                "episodes": [],
-            },
-        ]
-        plan_v1 = build_live_plan(snapshots_v1)
-        self.assertEqual(plan_v1["field_conflicts"], [])
-        kodi2_changes = plan_v1["planned_changes"]["kodi-2"]
-        self.assertEqual(len(kodi2_changes), 1)
-        self.assertEqual(kodi2_changes[0]["changes"]["playcount"]["to"], 3)
-        self.assertEqual(kodi2_changes[0]["changes"]["lastplayed"]["to"], "2026-10-18 14:00:00")
-        self.assertEqual(kodi2_changes[0]["changes"]["userrating"]["to"], 8)
 
     def test_05_assign_sudosync_id_to_items_with_existing_external_ids_and_skip_existing_sudosync(self):
         """SudoSync ID is assigned unconditionally to all items missing sudosync ID (preserving external IDs), and skips items already possessing sudosync ID."""

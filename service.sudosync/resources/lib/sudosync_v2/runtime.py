@@ -419,8 +419,11 @@ def build_mapped_native_lock_factory(shared_base_path, native_shared_path,
 
 def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
                      client_id, client_name, max_records=100000,
-                     abort_requested=None):
+                     abort_requested=None, sudosync_only=False):
     """Wire v2 adapters and runners without enabling any library writes.
+
+    ``sudosync_only`` (bool or callable) restricts cross-client matching to the
+    KodiBridge ID when the network option is enabled.
 
     ``lock_factory`` must serialize access according to the configured operating
     model. For the current single-active-Kodi model, ProcessLocalLockFactory is
@@ -453,6 +456,7 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
         lambda: catalog.load_peers(exclude_client_id=client_id, abort_requested=abort_requested),
         max_records=max_records,
         abort_requested=abort_requested,
+        sudosync_only=sudosync_only,
     )
     service_runtime = V2ServiceRuntime(client_id, recovery, engine, abort_requested=abort_requested)
     transaction_runner = TransactionRunner(
@@ -476,7 +480,7 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
 def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
                           lock_factory, client_id, client_name, vfs_module=None,
                           max_records=100000, abort_requested=None,
-                          cache_path=None, on_nfo_cached=None):
+                          cache_path=None, on_nfo_cached=None, sudosync_only=False):
     """Compose a Kodi runtime with JSON-RPC and NFO reads provided by Kodi VFS.
 
     A process-local lock follows the project's single-active-Kodi operating
@@ -500,4 +504,5 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
         client_name,
         max_records=max_records,
         abort_requested=abort_requested,
+        sudosync_only=sudosync_only,
     )

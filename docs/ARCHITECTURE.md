@@ -4,21 +4,20 @@ SudoSync 2.x to rozwinięcie tego samego dodatku z wersji 1.x o dodatkowe możli
 
 ---
 
-## 1. Dwuwarstwowa architektura systemu
+## 1. Architektura systemu
 
-SudoSync łączy elastyczny silnik synchronizacji czasu rzeczywistego (LIVE) z modułową warstwą wykonawczą v2, gwarantując pełną integralność biblioteki Kodi i odporność na awarie sieciowe.
+Cała synchronizacja działa w jednym silniku: modułowym podsystemie v2 (`sudosync_v2`). Dawny silnik 1.x (`sudosync_merge.py` i cykl LIVE v1 w `sudosync_core.py`) został usunięty; jego pliki na NAS nie są ani czytane, ani zapisywane, ani kasowane.
 
 ### 1.1. Punkty wejściowe usługi
 - **`service.py` (Usługa w tle):** Główna pętla działająca w procesie Kodi jako usługa (`xbmc.service`). Monitoruje zdarzenia odtwarzacza (`Player.OnPlay`, `Player.OnStop`), biblioteki wideo (`VideoLibrary.OnUpdate`, `VideoLibrary.OnScanFinished`) oraz cyklicznie wyzwala synchronizację stanów (LIVE).
 - **`default.py` (Interfejs użytkownika i akcje):** Obsługuje wywołania z menu dodatków, konfigurator pierwszego uruchomienia (Bootstrap Wizard), okno podglądu statusu, ręczne nadawanie SudoSync ID oraz sprawdzanie i instalację aktualizacji.
 
 ### 1.2. Moduły rdzenne (Core / Bootstrap)
-- **`sudosync_core.py`:** Odpowiada za cykle zbierania snapshotów, mapowanie tożsamości mediów, procedury nadawania i wstrzykiwania SudoSync ID do plików `.nfo` (`assign_sudosync_ids`), synchronizację konfiguracji sieciowej oraz walidację i instalację paczek aktualizacji.
+- **`sudosync_core.py`:** Funkcje wspólne: ustawienia, dostęp VFS, wspólna konfiguracja sieci, plik `status.json`, nadawanie i wstrzykiwanie KodiBridge ID do plików `.nfo` (`assign_sudosync_ids`) oraz walidacja i instalacja paczek aktualizacji. Nie zawiera już logiki synchronizacji.
 - **`sudosync_bootstrap.py`:** Realizuje kreator pierwszego uruchomienia, weryfikację dostępu do udziału sieciowego, rejestrację klienta w sieci oraz zarządzanie sieciową dzierżawą aktywnego Kodi (`active_kodi_lock.json`).
-- **`sudosync_merge.py`:** Zapewnia trójstronne uzgadnianie snapshotów peerów w oparciu o zegary logiczne Lamporta (LWW per-field).
 
 ### 1.3. Podsystem SudoSync v2 (`sudosync_v2`)
-- **`SudoSyncRuntime` (`runtime.py`):** Centralny komponent orkiestrujący cykle synchronizacji, planowanie zmian (`planning.py`), generowanie i weryfikację snapshotów (`snapshot.py`) oraz uzgadnianie stanów początkowych (`initialization.py`).
+- **`SudoSyncRuntime` (`runtime.py`):** Centralny komponent orkiestrujący cykle synchronizacji, planowanie zmian (`planning.py`), generowanie i weryfikację snapshotów (`snapshot.py`) oraz uzgadnianie stanów początkowych (`initialization.py`). Przy włączonej w sieci opcji KodiBridge ID planowanie dopasowuje pozycje wyłącznie po KodiBridge ID (`sudosync`); przy wyłączonej po IMDb/TMDb/TVDb/Trakt.
 - **`TransactionRunner` (`transaction.py`):** Wykonuje atomowe modyfikacje bazy danych Kodi za pośrednictwem JSON-RPC. Każda wieloetapowa operacja rejestrowana jest w dzienniku transakcji (`.journal`) z możliwością natychmiastowego wycofania (rollback) w przypadku błędu.
 - **`recover_incomplete_transactions`:** Mechanizm automatycznego odzyskiwania spójności po awarii (crash recovery). Przy starcie usługi skanuje profil w poszukiwaniu przerwanych dzienników transakcji i doprowadza je do stanu spójnego lub bezpiecznie wycofuje zmiany.
 - **`KodiJsonRpcAdapter` (`kodi_rpc.py`):** Izoluje komunikację z oficjalnym API JSON-RPC Kodi. Zawiera zabezpieczenia specyficzne dla wersji (np. eliminacja błędu `-32602: Invalid params` w Kodi 21 poprzez pominięcie parametru `sort` w zapytaniu `VideoLibrary.GetEpisodes` i deterministyczne sortowanie w Pythonie) oraz wzbogacanie metadanych o identyfikatory z plików `.nfo`.
@@ -33,7 +32,7 @@ W celu uniknięcia konfliktów zapisu w środowisku współdzielonego zasobu sie
 - **Dzierżawa czasowa (TTL):** Ważność dzierżawy wynosi 180 sekund.
 - **Odświeżanie pulsu (Heartbeat):** Aktywna usługa odświeża dzierżawę co 60 sekund (`refresh_network_active_kodi_lease`).
 - Jeśli inne urządzenie Kodi posiada aktywną dzierżawę, nowo uruchomione Kodi wstrzymuje wykonywanie operacji sieciowych. Po wygaśnięciu TTL (np. po nagłym zaniku zasilania poprzedniego urządzenia) dzierżawa może zostać bezpiecznie przejęta.
-- Podczas każdego odświeżenia sprawdzana jest także minimalna wersja wtyczki (`min_addon_version`). Jeśli wersja na NAS jest wyższa niż lokalna, dzierżawa zostaje przerwana, a usługa zatrzymana do czasu aktualizacji.
+- Podczas każdego odświeżenia sprawdzana jest także minimalna wersja wtyczki (`min_addon_version`). Jeśli wersja na NAS jest wyższa niż lokalna, dzierżawa zostaje przerwana i od razu pojawia się propozycja aktualizacji (podczas odtwarzania po zatrzymaniu filmu). Po odmowie usługa nie synchronizuje do następnego uruchomienia Kodi.
 - Przy normalnym zamykaniu Kodi lub zatrzymaniu wtyczki dzierżawa jest natychmiast zwalniana w bloku `finally`.
 
 ### 2.2. Lokalna blokada usługi (`local_service_guard.py`)

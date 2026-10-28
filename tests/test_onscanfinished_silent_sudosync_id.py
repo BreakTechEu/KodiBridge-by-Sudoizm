@@ -166,7 +166,6 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
         mock_v2_runtime.publish_local_snapshot.return_value = {"status": "published"}
 
         assign_mock = MagicMock(return_value={"movies": 1, "episodes": 0, "last_number": 105})
-        collect_live_mock = MagicMock()
 
         with patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=True), \
                 patch("resources.lib.sudosync_bootstrap.refresh_network_active_kodi_lease", return_value=True), \
@@ -183,12 +182,10 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
                 }), \
                 patch.object(sudosync_service, "get_or_create_client_id", return_value="client-123"), \
                 patch.object(sudosync_service, "read_shared_config", return_value={"initialization": {"completed": True}}), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_initial_snapshot_and_analyse"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", return_value={"busy": False, "applied_items": 0}), \
                 patch.object(sudosync_service, "assign_sudosync_ids", assign_mock), \
-                patch.object(sudosync_service, "collect_live_snapshot", collect_live_mock), \
                 patch.object(sudosync_service.time, "time", return_value=1004.0):
             sudosync_service._run_service()
 
@@ -203,9 +200,6 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
         mock_v2_runtime.publish_local_snapshot.assert_called_once()
         _, pub_kwargs = mock_v2_runtime.publish_local_snapshot.call_args
         self.assertFalse(pub_kwargs.get("suppress_local_changes"))
-
-        # Verify v1 snapshot was also refreshed
-        collect_live_mock.assert_called_once()
 
         # Verify flag was reset
         self.assertFalse(monitor.scan_assign_pending)
@@ -245,7 +239,6 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
                 }), \
                 patch.object(sudosync_service, "get_or_create_client_id", return_value="client-123"), \
                 patch.object(sudosync_service, "read_shared_config", return_value={"initialization": {"completed": True}}), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_initial_snapshot_and_analyse"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", return_value={"busy": False}), \
@@ -273,7 +266,6 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
                 }), \
                 patch.object(sudosync_service, "get_or_create_client_id", return_value="client-123"), \
                 patch.object(sudosync_service, "read_shared_config", return_value={"initialization": {"completed": True}}), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_initial_snapshot_and_analyse"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=True), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", return_value={"busy": False}), \
@@ -303,13 +295,13 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
             "local": {"movieid": 1},
         }
 
-        with patch.object(sudosync_core.xbmcvfs, "exists", side_effect=self.vfs.exists, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "delete", side_effect=self.vfs.delete, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "rename", side_effect=self.vfs.rename, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "File", side_effect=self.vfs.make_file, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "copy", side_effect=self.vfs.copy, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "mkdirs", side_effect=self.vfs.mkdirs, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "rmdir", side_effect=self.vfs.rmdir, create=True), \
+        with patch.object(sudosync_core.xbmcvfs, "exists", side_effect=self.vfs.exists), \
+                patch.object(sudosync_core.xbmcvfs, "delete", side_effect=self.vfs.delete), \
+                patch.object(sudosync_core.xbmcvfs, "rename", side_effect=self.vfs.rename), \
+                patch.object(sudosync_core.xbmcvfs, "File", side_effect=self.vfs.make_file), \
+                patch.object(sudosync_core.xbmcvfs, "copy", side_effect=self.vfs.copy), \
+                patch.object(sudosync_core.xbmcvfs, "mkdirs", side_effect=self.vfs.mkdirs), \
+                patch.object(sudosync_core.xbmcvfs, "rmdir", side_effect=self.vfs.rmdir), \
                 patch.object(sudosync_core, "addon_settings", return_value={
                     "base_path": self.nas_dir,
                     "client_name": "Salon",
@@ -362,13 +354,13 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
             "local": {"movieid": 2},
         }
 
-        with patch.object(sudosync_core.xbmcvfs, "exists", side_effect=self.vfs.exists, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "delete", side_effect=self.vfs.delete, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "rename", side_effect=self.vfs.rename, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "File", side_effect=self.vfs.make_file, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "copy", side_effect=self.vfs.copy, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "mkdirs", side_effect=self.vfs.mkdirs, create=True), \
-                patch.object(sudosync_core.xbmcvfs, "rmdir", side_effect=self.vfs.rmdir, create=True), \
+        with patch.object(sudosync_core.xbmcvfs, "exists", side_effect=self.vfs.exists), \
+                patch.object(sudosync_core.xbmcvfs, "delete", side_effect=self.vfs.delete), \
+                patch.object(sudosync_core.xbmcvfs, "rename", side_effect=self.vfs.rename), \
+                patch.object(sudosync_core.xbmcvfs, "File", side_effect=self.vfs.make_file), \
+                patch.object(sudosync_core.xbmcvfs, "copy", side_effect=self.vfs.copy), \
+                patch.object(sudosync_core.xbmcvfs, "mkdirs", side_effect=self.vfs.mkdirs), \
+                patch.object(sudosync_core.xbmcvfs, "rmdir", side_effect=self.vfs.rmdir), \
                 patch.object(sudosync_core, "addon_settings", return_value={
                     "base_path": self.nas_dir,
                     "client_name": "Salon",
@@ -447,7 +439,6 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
                 }), \
                 patch.object(sudosync_service, "get_or_create_client_id", return_value="client-123"), \
                 patch.object(sudosync_service, "read_shared_config", return_value={"initialization": {"completed": True}}), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "_initial_snapshot_and_analyse"), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", return_value={"busy": False}), \

@@ -604,7 +604,7 @@ class TestServiceV2Integration(unittest.TestCase):
         self.peer_id = "22222222-2222-4222-8222-222222222222"
 
     def test_01_service_loop_executes_v2_sync_cycle_and_commits_peer_changes(self):
-        """Verify normal _run_service loop executes v2 sync_cycle, applies remote changes via transaction runner with backup/journal/verification, and coordinates with v1."""
+        """Verify normal _run_service loop executes v2 sync_cycle, applies remote changes via transaction runner with backup/journal/verification (v2 is the only engine)."""
         lock_factory = ProcessLocalLockFactory()
         kodi_local = MutableFakeKodi(movie_id=10, playcount=0)
         kodi_peer = MutableFakeKodi(movie_id=99, playcount=0)
@@ -633,12 +633,6 @@ class TestServiceV2Integration(unittest.TestCase):
         # 3. Device B updates playcount to 4 and publishes to catalog
         kodi_peer.playcount = 4
         v2_peer.sync_cycle()
-
-        v1_calls = []
-
-        def fake_v1_live_cycle(**kwargs):
-            v1_calls.append(kwargs)
-            return {"applied_items": 0, "busy": False}
 
         mock_monitor = MagicMock()
         mock_monitor.aborted = False
@@ -669,11 +663,9 @@ class TestServiceV2Integration(unittest.TestCase):
                     "sudosync_id_prefix": "DOM",
                 }), \
                 patch.object(sudosync_service, "get_or_create_client_id", return_value=self.client_id), \
-                patch.object(sudosync_service, "sync_initial_base_selection"), \
                 patch.object(sudosync_service, "read_shared_config", return_value={
                     "initialization": {"completed": True, "base_client_id": self.client_id}
                 }), \
-                patch.object(sudosync_service, "run_live_sync_cycle", side_effect=fake_v1_live_cycle), \
                 patch.object(sudosync_service, "_is_playing_video", return_value=False):
             sudosync_service._run_service()
 
@@ -684,12 +676,6 @@ class TestServiceV2Integration(unittest.TestCase):
         # Verify updated local v2 snapshot was published into the catalog
         updated_snap = v2_local.catalog.load(self.client_id)
         self.assertEqual(updated_snap["movies"][0]["state"]["playcount"], 4)
-
-        # Verify v1 live cycle was invoked with suppress_local_changes=True after v2 commit
-        # so v1 does not treat v2's writes as new local user edits.
-        self.assertGreaterEqual(len(v1_calls), 1)
-        self.assertTrue(v1_calls[0]["suppress_local_changes"])
-        self.assertTrue(v1_calls[0]["collect_local"])
 
     def test_02_service_defers_remote_writes_during_playback_and_publishes_local_snapshot(self):
         """During active playback, remote changes are deferred while local progress is published to v2 catalog."""
@@ -726,15 +712,13 @@ class TestServiceV2Integration(unittest.TestCase):
         monitor.playback_dirty = False
         monitor.user_update_dirty = False
 
-        with patch.object(sudosync_service, "run_live_sync_cycle", return_value={"applied_items": 0}):
+        with patch.object(sudosync_service, "update_local_status_from_v2"):
             res = sudosync_service._execute_integrated_live_cycle(
                 v2_runtime=v2_local,
                 monitor=monitor,
                 show_notification=False,
                 suppress_local_changes=False,
                 collect_local=True,
-                skip_if_no_remote_change=False,
-                notify_local_changes=False,
                 receiver_notification_delay_ms=0,
             )
 
@@ -750,7 +734,7 @@ class TestServiceV2Integration(unittest.TestCase):
         self.assertEqual(kodi_local.writes, 0)
 
     def test_03_blocked_v2_session_prevents_live_cycle_writes(self):
-        """If v2 recovery reports a blocked session marker, _execute_integrated_live_cycle halts before v1 writes."""
+        """If v2 recovery reports a blocked session marker, _execute_integrated_live_cycle halts without writes."""
         mock_v2 = MagicMock()
         mock_v2.sync_cycle.return_value = {
             "status": "blocked",
@@ -760,21 +744,18 @@ class TestServiceV2Integration(unittest.TestCase):
         monitor = MagicMock()
         monitor.abortRequested.return_value = False
 
-        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+        with patch.object(sudosync_service, "update_local_status_from_v2"):
             res = sudosync_service._execute_integrated_live_cycle(
                 v2_runtime=mock_v2,
                 monitor=monitor,
                 show_notification=True,
                 suppress_local_changes=False,
                 collect_local=True,
-                skip_if_no_remote_change=False,
-                notify_local_changes=False,
                 receiver_notification_delay_ms=0,
             )
             self.assertTrue(res["blocked"])
             self.assertTrue(res["busy"])
             self.assertEqual(res["applied_items"], 0)
-            mock_v1.assert_not_called()
 
     def test_04_pre_initialization_runs_readonly_preview_without_publishing(self):
         """Before initial sync is completed, _initial_snapshot_and_analyse runs read-only initialization_preview without publishing v2 snapshot or modifying Kodi."""
@@ -800,8 +781,7 @@ class TestServiceV2Integration(unittest.TestCase):
         )
         v2_base.publish_local_snapshot()
 
-        with patch.object(sudosync_service, "collect_and_write"), \
-                patch.object(sudosync_service, "run_dry_run"):
+        with patch.object(sudosync_service, "update_local_status_from_v2"):
             sudosync_service._initial_snapshot_and_analyse(
                 v2_runtime=v2_local,
                 abort_requested=lambda: False,
@@ -814,86 +794,74 @@ class TestServiceV2Integration(unittest.TestCase):
         self.assertEqual(kodi_local.writes, 0)
         self.assertEqual(kodi_local.playcount, 0)
 
-    def test_05_v2_exception_prevents_v1_call(self):
-        """If v2_runtime.sync_cycle() raises any exception, v1 sync MUST NOT be called."""
+    def test_05_v2_exception_returns_busy_error(self):
+        """If v2_runtime.sync_cycle() raises any exception, the cycle reports busy with the error."""
         mock_v2 = MagicMock()
         mock_v2.sync_cycle.side_effect = RuntimeError("V2 storage corrupted")
         monitor = MagicMock()
         monitor.abortRequested.return_value = False
 
-        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+        with patch.object(sudosync_service, "update_local_status_from_v2"):
             res = sudosync_service._execute_integrated_live_cycle(
                 v2_runtime=mock_v2,
                 monitor=monitor,
                 show_notification=True,
                 suppress_local_changes=False,
                 collect_local=True,
-                skip_if_no_remote_change=False,
-                notify_local_changes=False,
                 receiver_notification_delay_ms=0,
             )
 
             self.assertTrue(res["busy"])
             self.assertEqual(res["error"], "V2 storage corrupted")
             self.assertEqual(res["applied_items"], 0)
-            mock_v1.assert_not_called()
 
-    def test_06_invalid_or_unknown_v2_result_prevents_v1_call(self):
-        """If v2_runtime.sync_cycle() returns None, non-dict, or unknown status, v1 sync MUST NOT be called."""
+    def test_06_invalid_or_unknown_v2_result_returns_busy(self):
+        """If v2_runtime.sync_cycle() returns None, non-dict, or unknown status, the cycle reports busy."""
         monitor = MagicMock()
         monitor.abortRequested.return_value = False
 
         # Case A: returns None
         mock_v2 = MagicMock()
         mock_v2.sync_cycle.return_value = None
-        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+        with patch.object(sudosync_service, "update_local_status_from_v2"):
             res = sudosync_service._execute_integrated_live_cycle(
                 v2_runtime=mock_v2,
                 monitor=monitor,
                 show_notification=True,
                 suppress_local_changes=False,
                 collect_local=True,
-                skip_if_no_remote_change=False,
-                notify_local_changes=False,
                 receiver_notification_delay_ms=0,
             )
             self.assertTrue(res["busy"])
             self.assertEqual(res["error"], "invalid_v2_result")
-            mock_v1.assert_not_called()
 
         # Case B: returns non-dict
         mock_v2.sync_cycle.return_value = "invalid_string_result"
-        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+        with patch.object(sudosync_service, "update_local_status_from_v2"):
             res = sudosync_service._execute_integrated_live_cycle(
                 v2_runtime=mock_v2,
                 monitor=monitor,
                 show_notification=True,
                 suppress_local_changes=False,
                 collect_local=True,
-                skip_if_no_remote_change=False,
-                notify_local_changes=False,
                 receiver_notification_delay_ms=0,
             )
             self.assertTrue(res["busy"])
             self.assertEqual(res["error"], "invalid_v2_result")
-            mock_v1.assert_not_called()
 
         # Case C: returns unexpected status
         mock_v2.sync_cycle.return_value = {"status": "corrupt_state", "applied_count": 0}
-        with patch.object(sudosync_service, "run_live_sync_cycle") as mock_v1:
+        with patch.object(sudosync_service, "update_local_status_from_v2"):
             res = sudosync_service._execute_integrated_live_cycle(
                 v2_runtime=mock_v2,
                 monitor=monitor,
                 show_notification=True,
                 suppress_local_changes=False,
                 collect_local=True,
-                skip_if_no_remote_change=False,
-                notify_local_changes=False,
                 receiver_notification_delay_ms=0,
             )
             self.assertTrue(res["busy"])
             self.assertEqual(res["error"], "unexpected_v2_status")
-            mock_v1.assert_not_called()
 
 
 if __name__ == "__main__":

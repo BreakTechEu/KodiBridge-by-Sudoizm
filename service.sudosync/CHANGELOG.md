@@ -1,6 +1,9 @@
 Zmiany niewydane
 ================
 
+- Jeden silnik synchronizacji: usunięto silnik 1.x (cykl LIVE v1, analiza dry-run, synchronizacja początkowa v1, `sudosync_merge.py`). Usługa synchronizuje wyłącznie przez v2; stare pliki 1.x na NAS nie są czytane, zapisywane ani kasowane. Usunięto nieużywane akcje menu skryptu (dryrun, arminitial, applyinitial, selectbase, resetbase, livesync, collect); okno statusu pokazuje dane v2.
+- Dopasowanie pozycji: przy włączonej w sieci opcji KodiBridge ID planowanie synchronizacji i inicjalizacji dopasowuje pozycje wyłącznie po KodiBridge ID; IMDb/TMDb/TVDb/Trakt są używane tylko przy wyłączonej opcji.
+- Strażnik wersji: gdy w trakcie odtwarzania wykryta zostanie nowsza wersja w sieci, pytanie o aktualizację pojawia się po zatrzymaniu filmu (wcześniej usługa zatrzymywała się bez pytania). Komunikaty informują, że bez aktualizacji KodiBridge nie synchronizuje tego Kodi i zapyta ponownie po następnym uruchomieniu Kodi.
 - Porządki w repozytorium: usunięto nieużywany dokument `docs/TEST_NA_KODI.md`.
 - CI: dwa równoległe workflowy połączono w jeden (`.github/workflows/ci.yml`: compileall dla `service.sudosync`, `tests` i `tools` oraz unittest na Pythonie 3.8, 3.10, 3.11 i 3.12, z możliwością ręcznego uruchomienia).
 

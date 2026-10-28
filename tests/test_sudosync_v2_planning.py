@@ -109,3 +109,42 @@ class TestDryRunPlanner(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKodiBridgeIdOnlyMatching(unittest.TestCase):
+    """With the network KodiBridge ID option on, only the KodiBridge ID matches records."""
+
+    KINDS = ("sudosync",)
+
+    def test_same_kodibridge_id_matches_even_when_external_ids_differ(self):
+        local = make_snapshot(A, "Living Room", [{
+            "imdb": "tt1234567", "uniqueid": {"imdb": "tt1234567", "sudosync": "dom-000001"}, "playcount": 0
+        }])
+        remote_base = make_snapshot(B, "Bedroom", [{
+            "imdb": "tt7654321", "uniqueid": {"imdb": "tt7654321", "sudosync": "dom-000001"}, "playcount": 0
+        }])
+        remote = make_snapshot(B, "Bedroom", [{
+            "imdb": "tt7654321", "uniqueid": {"imdb": "tt7654321", "sudosync": "dom-000001"}, "playcount": 2
+        }], previous=remote_base)
+        plan = build_sync_plan(local, [remote], {"movie": [7], "episode": []}, identity_kinds=self.KINDS)
+        self.assertEqual(plan["ambiguous_clusters"], 0)
+        self.assertEqual(plan["change_count"], 1)
+        self.assertEqual(plan["changes"][0]["changes"], {"playcount": 2})
+
+    def test_external_id_alone_does_not_match(self):
+        local = make_snapshot(A, "Living Room", [{
+            "imdb": "tt1234567", "uniqueid": {"imdb": "tt1234567", "sudosync": "dom-000001"}, "playcount": 0
+        }])
+        remote_base = make_snapshot(B, "Bedroom", [{"imdb": "tt1234567", "playcount": 0}])
+        remote = make_snapshot(B, "Bedroom", [{"imdb": "tt1234567", "playcount": 2}], previous=remote_base)
+        plan = build_sync_plan(local, [remote], {"movie": [7], "episode": []}, identity_kinds=self.KINDS)
+        self.assertEqual(plan["change_count"], 0)
+
+    def test_without_restriction_external_id_still_matches(self):
+        local = make_snapshot(A, "Living Room", [{
+            "imdb": "tt1234567", "uniqueid": {"imdb": "tt1234567", "sudosync": "dom-000001"}, "playcount": 0
+        }])
+        remote_base = make_snapshot(B, "Bedroom", [{"imdb": "tt1234567", "playcount": 0}])
+        remote = make_snapshot(B, "Bedroom", [{"imdb": "tt1234567", "playcount": 2}], previous=remote_base)
+        plan = build_sync_plan(local, [remote], {"movie": [7], "episode": []})
+        self.assertEqual(plan["change_count"], 1)

@@ -455,6 +455,8 @@ def enforce_network_version_guard(base_path, cfg=None):
         "Na innym urządzeniu Kodi w tej sieci zainstalowano już nowszą wersję KodiBridge ({remote}), "
         "natomiast tutaj działa starsza wersja ({local}).\n\n"
         "Aby chronić spójność biblioteki, KodiBridge jest wyłączony do czasu aktualizacji. "
+        "Bez aktualizacji KodiBridge nie będzie synchronizował tego Kodi, a pytanie pojawi się "
+        "ponownie dopiero po następnym uruchomieniu Kodi.\n\n"
         "Czy chcesz pobrać i zainstalować aktualizację z GitHub teraz?".format(
             remote=remote_min, local=local_version
         ),
@@ -491,7 +493,9 @@ def enforce_network_version_guard(base_path, cfg=None):
 
     dialog.ok(
         "KodiBridge — usługa wstrzymana",
-        "KodiBridge został wyłączony na tym urządzeniu do czasu aktualizacji wtyczki do wersji {}.".format(
+        "KodiBridge nie będzie synchronizował tego Kodi do czasu aktualizacji wtyczki do wersji {}.\n\n"
+        "Ponownie zapytam o aktualizację po następnym uruchomieniu Kodi. Możesz też w każdej chwili "
+        "zaktualizować wtyczkę ręcznie w jej ustawieniach.".format(
             remote_min
         ),
     )
@@ -650,13 +654,9 @@ def release_network_active_kodi_lease(base_path=None):
 
 
 def _ensure_client_enrolled_and_initialized(base_path):
-    """Automatically mark shared config initialized and enroll this client after wizard/bootstrap."""
+    """Automatically mark shared config initialized after wizard/bootstrap."""
     try:
         from resources.lib.sudosync_core import (
-            LIVE_SCHEMA_VERSION,
-            _live_registry_file,
-            _read_local_json,
-            _write_local_json,
             read_shared_config,
             update_shared_config,
             utc_now,
@@ -676,21 +676,6 @@ def _ensure_client_enrolled_and_initialized(base_path):
                 return True
             update_shared_config(mutator, base_path)
 
-        reg_path = _live_registry_file()
-        reg_data = _read_local_json(reg_path) or {}
-        if (
-            not reg_data.get("bootstrapped")
-            or reg_data.get("client_id") != client_id
-            or reg_data.get("schema_version") != LIVE_SCHEMA_VERSION
-        ):
-            reg_data["format"] = "SudoSync local live registry"
-            reg_data["schema_version"] = LIVE_SCHEMA_VERSION
-            reg_data["client_id"] = client_id
-            reg_data["bootstrapped"] = True
-            reg_data.setdefault("seq", 0)
-            reg_data.setdefault("records", {})
-            reg_data["updated_at"] = utc_now()
-            _write_local_json(reg_path, reg_data)
     except Exception as exc:
         log("Pominięto automatyczną inicjalizację rejestru klienta: {}".format(exc), xbmc.LOGWARNING)
 

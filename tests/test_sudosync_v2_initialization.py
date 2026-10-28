@@ -77,3 +77,22 @@ class TestInitializationPlan(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestInitializationKodiBridgeIdOnly(unittest.TestCase):
+    KINDS = ("sudosync",)
+
+    def test_kodibridge_id_match_ignores_differing_external_ids(self):
+        base = snapshot(BASE, "Base", [item(1, playcount=3, imdb="tt1111111",
+                                            uniqueid={"imdb": "tt1111111", "sudosync": "dom-000002"})])
+        target = snapshot(TARGET, "Target", [item(9, playcount=0, imdb="tt2222222",
+                                                  uniqueid={"imdb": "tt2222222", "sudosync": "dom-000002"})])
+        plan = build_initialization_plan(base, target, {"movie": [9], "episode": []}, identity_kinds=self.KINDS)
+        self.assertEqual(len(plan["changes"]), 1)
+
+    def test_external_id_alone_is_not_matched(self):
+        base = snapshot(BASE, "Base", [item(1, playcount=3, imdb="tt1111111")])
+        target = snapshot(TARGET, "Target", [item(9, playcount=0, imdb="tt1111111",
+                                                  uniqueid={"imdb": "tt1111111", "sudosync": "dom-000002"})])
+        plan = build_initialization_plan(base, target, {"movie": [9], "episode": []}, identity_kinds=self.KINDS)
+        self.assertEqual(len(plan["changes"]), 0)
