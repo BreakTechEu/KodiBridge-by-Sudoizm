@@ -2,6 +2,7 @@ Zmiany niewydane
 ================
 
 - Porządki w repozytorium: usunięto nieużywany dokument `docs/TEST_NA_KODI.md`.
+- CI: dwa równoległe workflowy połączono w jeden (`.github/workflows/ci.yml`: compileall dla `service.sudosync`, `tests` i `tools` oraz unittest na Pythonie 3.8, 3.10, 3.11 i 3.12, z możliwością ręcznego uruchomienia).
 
 KodiBridge by Sudoizm 2.1.4
 ===========================
