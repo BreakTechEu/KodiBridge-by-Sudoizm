@@ -61,3 +61,10 @@ Przy sprzeczności z tamtymi dokumentami pierwszeństwo mają zasady z tego plik
     w nazwie paczki (`service.sudosync-X.Y.Z.zip`). Publikacja w GitHub
     Releases oraz tworzenie, przesuwanie i usuwanie tagów — tylko na wyraźne
     polecenie właściciela.
+
+## Identyfikacja repozytorium
+
+12. Każdą odpowiedź dla właściciela zaczynaj od znacznika
+    `[SudoSync-Kodi-addon]`, żeby było jasne, w którym repozytorium trwa
+    praca. Jeśli polecenie wygląda na dotyczące innego repozytorium
+    (np. SudoScript), zatrzymaj się i zapytaj, zamiast je wykonywać.
