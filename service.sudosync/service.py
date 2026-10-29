@@ -376,6 +376,8 @@ def _run_service():
         last_live_poll = 0.0
         last_lease_refresh = 0.0
         live_retry_not_before = 0.0
+        # dirty_seq already covered by a snapshot published during playback.
+        playback_published_seq = -1
 
         try:
             shared = read_shared_config(settings["base_path"])
@@ -519,9 +521,18 @@ def _run_service():
                     poll_due = (now - last_live_poll) >= live_poll
                     if playing:
                         # Never APPLY remote changes during playback, but publish
-                        # local playback progress so an abrupt Android kill cannot
-                        # strand it only in this Kodi (written only when changed).
-                        if poll_due and not monitor.scanning:
+                        # local state so an abrupt Android kill cannot strand it
+                        # only in this Kodi (written only when changed). Playback
+                        # progress is published every live_poll seconds; an explicit
+                        # library update (watched status, rating) is published as
+                        # soon as its notification settles, without waiting.
+                        current_seq = getattr(monitor, "dirty_seq", 0)
+                        user_event_due = bool(
+                            getattr(monitor, "user_update_dirty", False) is True
+                            and event_due
+                            and current_seq != playback_published_seq
+                        )
+                        if (poll_due or user_event_due) and not monitor.scanning:
                             if v2_runtime is not None:
                                 try:
                                     v2_pub = v2_runtime.publish_local_snapshot(
@@ -533,8 +544,13 @@ def _run_service():
                                             published_snapshot=v2_pub.get("snapshot"),
                                             v2_result=v2_pub,
                                         )
+                                        if user_event_due:
+                                            log("V2 published local library change during playback.", xbmc.LOGINFO)
                                 except Exception as exc:
                                     log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
+                            # Dirty flags stay set: remote changes are still applied
+                            # by the regular cycle after playback stops.
+                            playback_published_seq = current_seq
                             last_live_poll = time.time()
                     elif (event_due or poll_due) and not monitor.scanning and time.time() >= live_retry_not_before:
                         cycle_dirty_seq = getattr(monitor, "dirty_seq", 0)

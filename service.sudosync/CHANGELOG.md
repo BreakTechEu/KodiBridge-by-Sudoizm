@@ -3,6 +3,7 @@ KodiBridge by Sudoizm 2.2.3
 
 - Dziennik Kodi: komunikaty silnika v2 trafiają do kodi.log z właściwym poziomem (DEBUG, INFO, WARNING, ERROR) i prefiksem `[SudoSync] v2.<moduł>:`. Wcześniej ostrzeżenia v2 były zapisywane jako ERROR, a komunikaty INFO i DEBUG ginęły.
 - Pozycje ze wspólnymi zewnętrznymi ID i różnymi KodiBridge ID (np. odcinek emitowany w kilku częściach) nie generują już w każdym cyklu osobnego komunikatu dla każdej pary. Zamiast tego jeden zbiorczy wpis INFO z liczbą takich par, powtarzany tylko po zmianie tej liczby; szczegóły na poziomie DEBUG. Zachowanie synchronizacji bez zmian.
+- Zmiana statusu obejrzenia lub oceny wprowadzona podczas odtwarzania filmu jest publikowana na NAS po około 2 sekundach, bez czekania na okresowy zapis (wcześniej do `live_poll_seconds`, domyślnie 60 s). Postęp odtwarzania nadal co `live_poll_seconds`; zmiany z innych Kodi są nadal stosowane dopiero po zatrzymaniu filmu.
 
 KodiBridge by Sudoizm 2.2.2
 ===========================
