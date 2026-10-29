@@ -952,7 +952,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
                 "/profile_kodi_old/status.json",
                 {"last_github_update_check_epoch": 1000.0},
             )
-            # 1) Routine check before 24h returns not_due without reading NAS files
+            # 1) Routine check on the same day returns not_due without reading NAS files
             nas_reads = []
             orig_exists = self.vfs.exists
             def tracking_exists(path):
@@ -965,7 +965,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
             self.assertEqual(res_blocked.get("reason"), "not_due")
             self.assertEqual(nas_reads, [])
 
-            # 2) When 24h elapses and user selects "Później" (declines version 2.1.0),
+            # 2) On the next day, when the user selects "Później" (declines version 2.1.0),
             # status.json records last_declined_github_version and does not re-prompt for 2.1.0
             with patch.object(sudosync_core, "find_github_update", return_value={
                 "available": True,

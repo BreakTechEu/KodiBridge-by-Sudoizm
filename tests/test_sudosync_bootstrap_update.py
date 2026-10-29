@@ -259,7 +259,7 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             self.assertEqual(res["version"], "2.1.4")
             self.assertEqual(res["filename"], filename)
 
-    def test_maybe_check_github_update_daily_respects_24h_interval_and_consent(self):
+    def test_maybe_check_github_update_daily_respects_day_and_consent(self):
         status_store = {"last_github_update_check_epoch": 1000.0}
         dialog = MagicMock()
         dialog.yesno.return_value = False  # Użytkownik klika "Później"
@@ -274,18 +274,51 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
                 }) as mock_find, \
                 patch.object(core, "install_github_update") as mock_install, \
                 patch.object(core.xbmcgui, "Dialog", return_value=dialog):
-            # Przed upływem 24h (np. 1h później) -> nie odpytuje GitHuba
+            # Ten sam dzień (1h później) -> nie odpytuje GitHuba
             early = core.maybe_check_github_update_daily(now_epoch=4600.0, ask_and_install=True)
             self.assertFalse(early.get("checked", True))
             self.assertEqual(early.get("reason"), "not_due")
             mock_find.assert_not_called()
 
-            # Po upływie >24h (86400s) -> odpytuje GitHuba i pyta o zgodę
+            # Następny dzień -> odpytuje GitHuba i pyta o zgodę
             due = core.maybe_check_github_update_daily(now_epoch=1000.0 + 86401.0, ask_and_install=True)
             self.assertTrue(due.get("available"))
             mock_find.assert_called_once()
             dialog.yesno.assert_called_once()
             mock_install.assert_not_called()
+
+    def _daily_check_at(self, last_check, now):
+        status_store = {"last_github_update_check_epoch": last_check}
+        with patch.object(core, "addon_settings", return_value={"check_updates": True}), \
+                patch.object(core, "read_local_status", side_effect=lambda: dict(status_store)), \
+                patch.object(core, "_write_local_json", side_effect=lambda _p, data: status_store.update(data)), \
+                patch.object(core, "find_github_update", return_value={"available": False}) as mock_find:
+            result = core.maybe_check_github_update_daily(now_epoch=now, ask_and_install=False)
+        return result, mock_find.call_count, status_store
+
+    def test_daily_update_check_follows_local_calendar_day(self):
+        from datetime import datetime
+        late_evening = datetime(2026, 10, 28, 23, 58).timestamp()
+        after_midnight = datetime(2026, 10, 29, 0, 2).timestamp()
+        morning = datetime(2026, 10, 29, 7, 0).timestamp()
+        next_evening = datetime(2026, 10, 29, 23, 59).timestamp()
+
+        # A new calendar day is due even 4 minutes after the previous check.
+        _, calls, store = self._daily_check_at(late_evening, after_midnight)
+        self.assertEqual(calls, 1)
+        self.assertEqual(store["last_github_update_check_epoch"], after_midnight)
+
+        # Later the same day: not due, even almost 24 hours later.
+        result, calls, _ = self._daily_check_at(morning - 3600, next_evening)
+        self.assertEqual(calls, 0)
+        self.assertEqual(result.get("reason"), "not_due")
+
+    def test_daily_update_check_runs_after_clock_moved_back_a_day(self):
+        from datetime import datetime
+        last = datetime(2026, 10, 30, 9, 0).timestamp()
+        now = datetime(2026, 10, 29, 9, 0).timestamp()
+        _, calls, _ = self._daily_check_at(last, now)
+        self.assertEqual(calls, 1)
 
     def test_mask_vfs_credentials_strips_login_and_password(self):
         raw_url = "smb://user:Secret%24Pass@192.168.69.100/Wideo/.SudoSync/"

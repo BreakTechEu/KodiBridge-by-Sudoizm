@@ -74,7 +74,7 @@ Aby zapobiec kolizjom numeracji pomiędzy różnymi urządzeniami Kodi w tej sam
 
 ### 4.2. Bezpieczny mechanizm aktualizacji
 Wycofano przestarzały mechanizm aktualizacji z niesprawdzonych plików wrzucanych do folderu NAS. Wdrożono nowoczesny, bezpieczny proces dwutorowy:
-1. **GitHub Releases API:** Usługa sprawdza dostępność nowych oficjalnych wydań (`BreakTechEu/KodiBridge-by-Sudoizm`) najwyżej raz na 24 godziny (lub na żądanie z poziomu ustawień). Wtyczka nigdy nie dokonuje cichej aktualizacji w tle — każdorazowo wymaga jawnej akceptacji użytkownika w oknie dialogowym.
+1. **GitHub Releases API:** Usługa sprawdza dostępność nowych oficjalnych wydań (`BreakTechEu/KodiBridge-by-Sudoizm`) raz na dobę kalendarzową, przy pierwszym uruchomieniu Kodi danego dnia (lub na żądanie z poziomu ustawień). Wtyczka nigdy nie dokonuje cichej aktualizacji w tle — każdorazowo wymaga jawnej akceptacji użytkownika w oknie dialogowym.
 2. **Aktualizacja z lokalnego pliku ZIP:** Użytkownik może w ustawieniach wskazać paczkę `service.sudosync-X.X.X.zip` z dysku lokalnego lub udziału sieciowego.
 3. **Walidacja integralności paczki:** Przed podmianą plików każda paczka ZIP przechodzi rygorystyczną walidację (`_validate_addon_zip_package`): badana jest integralność archiwum, kanoniczna struktura katalogów wtyczki Kodi, poprawność manifestu `addon.xml` oraz monotoniczność numeru wersji.
 4. **Atomowa podmiana z kopią bezpieczeństwa:** Instalacja odbywa się poprzez rozpakowanie do katalogu tymczasowego, utworzenie kopii zapasowej dotychczasowej wtyczki i atomową podmianę katalogów.

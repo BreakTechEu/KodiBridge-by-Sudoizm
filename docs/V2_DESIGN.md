@@ -32,7 +32,7 @@ KodiBridge by Sudoizm 2.x (dawniej SudoSync) jest kolejną wersją tego samego d
 - **Domena** — czyste funkcje do normalizacji identyfikatorów, walidacji rekordów, budowania planów i rozstrzygania konfliktów. Bez I/O i bez skutków ubocznych.
 - **Repozytorium współdzielone** — schematy JSON wersjonowane, walidacja danych wejściowych, zapis przez plik tymczasowy i bezpieczną podmianę, kopie odzyskiwania oraz jawna obsługa równoczesnego dostępu.
 - **Silnik synchronizacji** — osobne fazy: odkrywanie klientów, snapshot, analiza, podgląd, zatwierdzenie, zapis przez JSON-RPC, weryfikacja wyniku i dziennik operacji.
-- **Aktualizator** — sprawdzanie wydań GitHub Releases (raz na 24 h za zgodą użytkownika), ręczna instalacja z pliku ZIP, pełna walidacja struktury paczki i manifestu `addon.xml`, atomowa podmiana katalogu z kopią zapasową oraz egzekwowanie `min_addon_version` w `SudoSync.cfg`.
+- **Aktualizator** — sprawdzanie wydań GitHub Releases (raz na dobę kalendarzową, przy pierwszym uruchomieniu Kodi danego dnia, za zgodą użytkownika), ręczna instalacja z pliku ZIP, pełna walidacja struktury paczki i manifestu `addon.xml`, atomowa podmiana katalogu z kopią zapasową oraz egzekwowanie `min_addon_version` w `SudoSync.cfg`.
 - **Interfejs** — ustawienia i operacje administracyjne; każda operacja mogąca zmienić stan biblioteki musi wyświetlać zakres zmian i wymagać jawnego potwierdzenia.
 
 ## Model synchronizacji i bezpieczeństwo danych
@@ -48,7 +48,7 @@ KodiBridge by Sudoizm 2.x (dawniej SudoSync) jest kolejną wersją tego samego d
 
 ## Wymagania dla aktualizatora i strażnika wersji
 
-- Sprawdzanie aktualizacji na GitHub Releases odbywa się najwyżej raz na dobę (lub na żądanie w ustawieniach) i wymaga jawnej zgody użytkownika przed pobraniem i instalacją.
+- Sprawdzanie aktualizacji na GitHub Releases odbywa się raz na dobę kalendarzową, przy pierwszym uruchomieniu Kodi danego dnia (lub na żądanie w ustawieniach) i wymaga jawnej zgody użytkownika przed pobraniem i instalacją.
 - Ręczna instalacja z lokalnego lub sieciowego pliku ZIP jest dostępna z poziomu ustawień wtyczki.
 - Przed rozpakowaniem weryfikować całe archiwum ZIP i jego zawartość (`_validate_addon_zip_package`): odrzucać uszkodzone archiwa, obcy identyfikator dodatku, niezgodną wersję w `addon.xml`, ścieżki absolutne, `..` oraz pliki spoza prefiksu `service.sudosync/`.
 - Rozpakowywać paczkę do katalogu tymczasowego obok dodatku i podmieniać katalog dodatku z zachowaniem kopii zapasowej poprzedniej wersji na wypadek błędu (`_extract_and_swap_addon`).

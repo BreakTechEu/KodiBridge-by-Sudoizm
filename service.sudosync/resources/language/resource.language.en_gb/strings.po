@@ -85,8 +85,8 @@ msgid "Automatically check for updates on GitHub (once a day)"
 msgstr "Automatically check for updates on GitHub (once a day)"
 
 msgctxt "#32032"
-msgid "Checks GitHub Releases at most once every 24 hours and asks for your consent before installing."
-msgstr "Checks GitHub Releases at most once every 24 hours and asks for your consent before installing."
+msgid "Checks GitHub Releases once a day, at the first Kodi start of the day, and asks for your consent before installing."
+msgstr "Checks GitHub Releases once a day, at the first Kodi start of the day, and asks for your consent before installing."
 
 msgctxt "#32033"
 msgid "Check for updates on GitHub now"

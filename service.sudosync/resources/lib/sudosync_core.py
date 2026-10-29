@@ -722,7 +722,9 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
 
 
 GITHUB_RELEASES_LATEST_URL = "https://api.github.com/repos/BreakTechEu/KodiBridge-by-Sudoizm/releases/latest"
-DAILY_UPDATE_CHECK_INTERVAL_SECONDS = 86400
+def _local_day(epoch):
+    """Return the local calendar date (YYYY-MM-DD) of a Unix timestamp."""
+    return datetime.fromtimestamp(float(epoch)).strftime("%Y-%m-%d")
 
 
 def find_github_update(timeout=10, api_url=None):
@@ -946,7 +948,11 @@ def install_update_from_zip_path(zip_path, allow_same_or_older=False, show_dialo
 
 
 def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=False):
-    """Check GitHub Releases at most once per 24 hours (unless force=True) and ask user consent before installing."""
+    """Check GitHub Releases once per local calendar day (unless force=True) and ask consent before installing.
+
+    The first call on a new day (normally the first Kodi start that day, or the
+    running service just after midnight) checks; later calls that day do not.
+    """
     settings = addon_settings()
     if not settings.get("check_updates", True) and not force:
         return {"checked": False, "reason": "disabled"}
@@ -958,8 +964,13 @@ def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=
     except Exception:
         last_check = 0.0
 
-    if not force and last_check > 0.0 and (now - last_check) < DAILY_UPDATE_CHECK_INTERVAL_SECONDS:
-        return {"checked": False, "reason": "not_due", "last_check_epoch": last_check}
+    if not force and last_check > 0.0:
+        try:
+            checked_today = _local_day(last_check) == _local_day(now)
+        except (ValueError, OverflowError, OSError):
+            checked_today = False
+        if checked_today:
+            return {"checked": False, "reason": "not_due", "last_check_epoch": last_check}
 
     result = find_github_update()
     target_version = str(result.get("version") or "").strip()
