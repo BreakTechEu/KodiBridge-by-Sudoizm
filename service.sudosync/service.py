@@ -16,6 +16,11 @@ import xbmc
 import xbmcgui
 
 from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_guard, ServiceGuardError
+from resources.lib.sudosync_conflicts import (
+    prompt_and_resolve,
+    resolvable_conflicts,
+    take_resolution_request,
+)
 
 from resources.lib.sudosync_core import (
     addon_settings,
@@ -378,6 +383,12 @@ def _run_service():
         live_retry_not_before = 0.0
         # dirty_seq already covered by a snapshot published during playback.
         playback_published_seq = -1
+        # Concurrent-edit conflicts from the last cycle, waiting for the user;
+        # conflicts postponed by the user are not asked again until Kodi restarts.
+        pending_conflicts = []
+        conflict_dismissed = set()
+        report_no_conflicts = False
+        local_client_id = getattr(v2_runtime, "client_id", None)
 
         try:
             shared = read_shared_config(settings["base_path"])
@@ -398,6 +409,7 @@ def _run_service():
                 )
                 if result.get("waiting"):
                     log("LIVE waiting for clients: {}".format(", ".join(result.get("waiting_for_clients") or [])))
+                pending_conflicts = resolvable_conflicts(result.get("v2"))
                 last_live_poll = time.time()
                 startup_delay = _live_retry_delay_seconds(result, live_poll)
                 if startup_delay > 0:
@@ -460,6 +472,12 @@ def _run_service():
                 shared = read_shared_config(settings["base_path"])
                 init = shared.get("initialization") or {}
                 live_active = bool(init.get("completed", False) and settings.get("live_sync_enabled", True))
+                if take_resolution_request():
+                    # Settings action: ask again about postponed conflicts and
+                    # run a sync cycle right away to find current ones.
+                    conflict_dismissed.clear()
+                    last_live_poll = 0.0
+                    report_no_conflicts = True
 
                 # Check for pending post-scan SudoSync ID assignment (debounce 3-5s)
                 scan_pending = getattr(monitor, "scan_assign_pending", False) is True
@@ -579,6 +597,18 @@ def _run_service():
                         if retry_delay > 0:
                             live_retry_not_before = time.time() + retry_delay
                         if not result.get("busy"):
+                            pending_conflicts = resolvable_conflicts(result.get("v2"))
+                            if report_no_conflicts:
+                                report_no_conflicts = False
+                                if not pending_conflicts:
+                                    try:
+                                        xbmcgui.Dialog().notification(
+                                            "KodiBridge", "Brak konfliktów do rozwiązania.",
+                                            xbmcgui.NOTIFICATION_INFO, 5000,
+                                        )
+                                    except Exception:
+                                        pass
+                        if not result.get("busy"):
                             if (
                                 getattr(monitor, "dirty_seq", 0) == cycle_dirty_seq
                                 and monitor.dirty_since == cycle_dirty_since
@@ -588,6 +618,14 @@ def _run_service():
                                 monitor.scan_refresh_pending = False
                                 monitor.playback_dirty = False
                                 monitor.user_update_dirty = False
+                    if pending_conflicts and v2_runtime is not None and not monitor.scanning and not _is_playing_video():
+                        to_ask, pending_conflicts = pending_conflicts, []
+                        if prompt_and_resolve(
+                            v2_runtime, to_ask, conflict_dismissed, local_client_id,
+                            is_playing=_is_playing_video, abort_requested=monitor.abortRequested,
+                        ):
+                            # Apply/publish the rest of the state right away.
+                            last_live_poll = 0.0
                 else:
                     periodic_due = (now - last_snapshot) >= snapshot_interval
                     dirty_due = monitor.dirty and monitor.dirty_since and (now - monitor.dirty_since) >= 20 and (now - last_snapshot) >= 60

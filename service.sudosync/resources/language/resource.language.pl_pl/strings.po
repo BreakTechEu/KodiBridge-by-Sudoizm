@@ -252,3 +252,11 @@ msgctxt "#32083"
 msgid "Operation was cancelled by the user."
 msgstr "Operacja została anulowana przez użytkownika."
 
+
+msgctxt "#32084"
+msgid "Resolve conflicts"
+msgstr "Rozwiąż konflikty"
+
+msgctxt "#32085"
+msgid "Shows changes made on two Kodi devices at the same time (e.g. different play counts) and lets you choose the correct value. Conflicts postponed with \"Later\" are asked about again."
+msgstr "Pokazuje zmiany wprowadzone jednocześnie na dwóch Kodi (np. różna liczba odtworzeń) i pozwala wybrać właściwą wartość. Konflikty odłożone przyciskiem „Później” są pokazywane ponownie."

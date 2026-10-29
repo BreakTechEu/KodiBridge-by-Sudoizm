@@ -163,19 +163,34 @@ def build_sync_plan(local_snapshot, peer_snapshots, local_kodi_ids, max_records=
                 continue
 
             merged = plan_field_merge([member["record"] for member in members])
+            local_members = [member for member in members if member["client_id"] == local_client_id]
+            local_member = local_members[0] if len(local_members) == 1 else None
+            client_names = {member["client_id"]: member["client_name"] for member in members}
             for conflict in merged["conflicts"]:
-                conflicts.append({
+                entry = {
                     "type": media_type,
                     "clients": sorted(client_set),
                     "field": conflict["field"],
                     "version": conflict["version"],
-                    "values": conflict["values"],
-                })
+                    "values": [
+                        dict(value, client_name=client_names.get(value["client_id"], ""))
+                        for value in conflict["values"]
+                    ],
+                    # Filled only when this Kodi holds the item and can resolve it.
+                    "kodi_id": None,
+                    "identity": [],
+                    "local_value": None,
+                }
+                if local_member is not None:
+                    entry["kodi_id"] = local_ids[media_type][local_member["local_index"]]
+                    entry["identity"] = sorted(
+                        "{}:{}".format(kind, value) for kind, value in local_member["record"]["ids"].items()
+                    )
+                    entry["local_value"] = deepcopy(local_member["record"]["state"].get(conflict["field"]))
+                conflicts.append(entry)
 
-            local_members = [member for member in members if member["client_id"] == local_client_id]
-            if len(local_members) != 1:
+            if local_member is None:
                 continue
-            local_member = local_members[0]
             local_index = local_member["local_index"]
             kodi_id = local_ids[media_type][local_index]
             field_changes = {}

@@ -6,6 +6,7 @@ KodiBridge by Sudoizm 2.2.3
 - Zmiana statusu obejrzenia lub oceny wprowadzona podczas odtwarzania filmu jest publikowana na NAS po około 2 sekundach, bez czekania na okresowy zapis (wcześniej do `live_poll_seconds`, domyślnie 60 s). Postęp odtwarzania nadal co `live_poll_seconds`; zmiany z innych Kodi są nadal stosowane dopiero po zatrzymaniu filmu.
 - Sprawdzanie aktualizacji na GitHub Releases odbywa się raz na dobę kalendarzową, przy pierwszym uruchomieniu Kodi danego dnia (albo tuż po północy, jeśli Kodi działa dalej). Wcześniej najwcześniej 24 godziny po poprzednim sprawdzeniu, przez co pora sprawdzania przesuwała się z dnia na dzień i bywała pomijana.
 - Okno statusu: „Ostatnio odebrano” pokazuje liczbę zmian i czas ostatniego cyklu, który rzeczywiście odebrał zmiany z innych Kodi (wcześniej kolejny cykl bez zmian nadpisywał tę liczbę zerem). Z pliku `status.json` w profilu Kodi są usuwane nieużywane pola po silniku 1.x (np. `last_local_probe_*`).
+- Rozwiązywanie konfliktów: gdy to samo pole zmieniono na dwóch Kodi bez wskazania, która zmiana jest nowsza (np. liczba odtworzeń 1 i 2), pojawia się okno wyboru z wartościami z poszczególnych urządzeń. Wybrana wartość trafia na wszystkie Kodi. Podczas odtwarzania okno czeka na zatrzymanie filmu; „Później” odkłada pytanie do następnego uruchomienia Kodi. Nowa akcja „Rozwiąż konflikty” w ustawieniach (grupa ze statusem) wywołuje sprawdzenie od razu. Wcześniej takie pole pozostawało rozbieżne bez żadnej informacji.
 
 KodiBridge by Sudoizm 2.2.2
 ===========================

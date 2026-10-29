@@ -102,6 +102,11 @@
           <data>RunScript(service.sudosync,status)</data>
           <control type="button" format="action"><close>false</close></control>
         </setting>
+        <setting id="resolve_conflicts" type="action" label="32084" help="32085">
+          <level>0</level>
+          <data>RunScript(service.sudosync,resolveconflicts)</data>
+          <control type="button" format="action"><close>false</close></control>
+        </setting>
       </group>
     </category>
   </section>

@@ -246,6 +246,71 @@ class V2RuntimeComponents(object):
             "applied_count": len(changes),
         }
 
+    def resolve_conflict(self, media_type, kodi_id, field, value, abort_requested=None):
+        """Apply the user's choice for one concurrent-edit conflict and publish it.
+
+        The chosen value is written to this Kodi (when it differs from the local
+        value) through the guarded transaction runner and published with a
+        version newer than every conflicting one, so the regular sync carries it
+        to all other Kodi devices. The conflict is re-read from a fresh preview;
+        if it no longer exists, nothing is written.
+        """
+        startup = self.start(abort_requested=abort_requested)
+        if startup["status"] != "ready":
+            return {"status": startup["status"], "recovery": startup.get("recovery"), "published_snapshot_path": None}
+        preview = startup["preview"]
+        if not preview or not preview.get("active"):
+            return {"status": "deferred", "reason": (preview or {}).get("reason", "inactive"), "published_snapshot_path": None}
+
+        candidate = preview["snapshot"]
+        plan = preview["plan"] or {}
+        conflict = None
+        for item in plan.get("conflicts") or []:
+            if item.get("type") == media_type and item.get("kodi_id") == kodi_id and item.get("field") == field:
+                conflict = item
+                break
+        if conflict is None:
+            return {"status": "not_found", "published_snapshot_path": None}
+        if value not in [option.get("value") for option in conflict.get("values") or []]:
+            raise V2RuntimeError("Chosen value is not one of the conflicting values")
+
+        client_id = self.client_id or candidate["client"]["id"]
+        winning_version = {
+            "lc": int(conflict["version"]["lc"]) + 1,
+            "seq": int(conflict["version"]["seq"]) + 1,
+            "client_id": client_id,
+        }
+        resolution_plan = {
+            "local_client_id": client_id,
+            "changes": [{
+                "type": media_type,
+                "kodi_id": kodi_id,
+                "identity": list(conflict["identity"]),
+                "before": {field: conflict["local_value"]},
+                "changes": {field: value},
+                "target_versions": {field: winning_version},
+            }],
+        }
+        tx_result = None
+        if value != conflict["local_value"]:
+            tx_result = self.transaction_runner.run(resolution_plan, client_id, candidate, abort_requested=abort_requested)
+            if tx_result.get("status") == "deferred":
+                return {
+                    "status": "deferred",
+                    "reason": tx_result.get("reason", "deferred"),
+                    "transaction": tx_result,
+                    "published_snapshot_path": None,
+                }
+        post_snapshot = apply_plan_to_snapshot(candidate, resolution_plan, max_records=self.max_records)
+        published_path = self.catalog.publish(post_snapshot)
+        return {
+            "status": "resolved",
+            "transaction": tx_result,
+            "snapshot": post_snapshot,
+            "published_snapshot_path": published_path,
+            "version": winning_version,
+        }
+
     def publish_local_snapshot(self, abort_requested=None, suppress_local_changes=False):
         """Publish this Kodi client's snapshot without applying any remote changes."""
         if self.sync_engine is None:

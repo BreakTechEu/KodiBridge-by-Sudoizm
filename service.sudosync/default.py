@@ -197,6 +197,12 @@ def main():
                 nolabel="Anuluj",
             ):
                 install_github_update(update_info=result, show_dialogs=True)
+        elif action in ("resolveconflicts", "conflicts"):
+            from resources.lib.sudosync_conflicts import request_resolution
+            request_resolution()
+            xbmcgui.Dialog().notification(
+                "KodiBridge", "Sprawdzam konflikty zmian…", xbmcgui.NOTIFICATION_INFO, 4000,
+            )
         elif action in ("assignids", "assign_ids"):
             if not addon_settings().get("sudosync_id_enabled"):
                 xbmcgui.Dialog().ok(
