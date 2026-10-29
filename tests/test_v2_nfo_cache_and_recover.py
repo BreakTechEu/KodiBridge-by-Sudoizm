@@ -414,6 +414,42 @@ class V2LocalStatusAndVfsTests(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_status_json_drops_v1_fields_and_keeps_last_received_changes(self):
+        import resources.lib.sudosync_core as sudosync_core
+        import os
+        import tempfile
+        import shutil
+        temp_dir = tempfile.mkdtemp(prefix="sudosync_status_test_")
+        try:
+            with patch.object(sudosync_core, "_addon_profile_path", return_value=temp_dir), \
+                    patch.object(sudosync_core, "addon_settings", return_value={
+                        "base_path": "smb://nas/.SudoSync/",
+                        "client_name": "Salon",
+                    }), \
+                    patch.object(sudosync_core, "get_or_create_client_id", return_value="cid-12345"), \
+                    patch.object(sudosync_core, "get_kodi_info", return_value={"version": "21.0"}), \
+                    patch.object(sudosync_core, "get_network_sudosync_id_last_number", return_value=1):
+                sudosync_core._write_local_json(os.path.join(temp_dir, "status.json"), {
+                    "last_local_probe_at": "2026-10-01T00:00:00Z",
+                    "last_local_probe_changed_items": 3,
+                    "live_waiting_clients": ["x"],
+                    "last_github_update_check_epoch": 1.0,
+                })
+                sudosync_core.update_local_status_from_v2(v2_result={"status": "committed", "applied_count": 3})
+                status = sudosync_core.update_local_status_from_v2(v2_result={"status": "no_changes", "applied_count": 0})
+
+                for key in ("last_local_probe_at", "last_local_probe_changed_items", "live_waiting_clients"):
+                    self.assertNotIn(key, status)
+                self.assertEqual(status["last_github_update_check_epoch"], 1.0)
+                self.assertEqual(status["last_live_applied_items"], 0)
+                self.assertEqual(status["last_live_received_items"], 3)
+                self.assertTrue(status["last_live_received_at"])
+                disk_status = sudosync_core.read_local_status()
+                self.assertNotIn("last_local_probe_at", disk_status)
+                self.assertEqual(disk_status["last_live_received_items"], 3)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
     def test_kodi_vfs_mkdirs_returns_true_if_already_exists(self):
         from resources.lib.sudosync_v2.kodi_vfs import KodiVFSBackend
 

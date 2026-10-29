@@ -63,13 +63,16 @@ def show_status():
         "Synchronizacja bieżąca: {state}\n"
         "Odpytywanie innych Kodi: co {poll} s\n"
         "Ostatni cykl: {when}\n"
-        "Ostatnio odebrano: {applied} pozycji\n"
+        "Ostatnio odebrano: {received}\n"
         "Ostatni błąd: {error}"
     ).format(
         state="WŁĄCZONA" if live_enabled else "WYŁĄCZONA",
         poll=settings.get("live_poll_seconds", 60),
         when=status.get("last_live_sync_at") or "—",
-        applied=status.get("last_live_applied_items", 0),
+        received=(
+            "{} pozycji ({})".format(status.get("last_live_received_items"), status.get("last_live_received_at") or "—")
+            if status.get("last_live_received_items") else "—"
+        ),
         error=mask_vfs_credentials(status.get("last_live_error") or "brak"),
     )
 

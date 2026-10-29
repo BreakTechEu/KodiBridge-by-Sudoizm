@@ -1384,6 +1384,19 @@ def read_local_status():
     return data
 
 
+# status.json keys written only by the removed 1.x engine; dropped on the next v2 update.
+OBSOLETE_V1_STATUS_KEYS = (
+    "dry_run_local_plan", "dry_run_report_path", "dry_run_snapshot_errors", "dry_run_summary",
+    "last_dry_run_at", "last_initial_apply_at", "last_initial_apply_backup",
+    "last_initial_apply_completed", "last_initial_apply_post_plan", "last_initial_apply_report",
+    "last_live_apply_report", "last_live_guarded_items", "last_live_plan_at",
+    "last_live_published_at", "last_live_published_fields", "last_live_published_items",
+    "last_live_report_path", "last_local_probe_at", "last_local_probe_changed",
+    "last_local_probe_changed_items", "last_local_probe_reason", "live_local_plan",
+    "live_waiting_clients",
+)
+
+
 def update_local_status_from_v2(v2_result=None, published_snapshot=None, candidate_snapshot=None, error=None):
     """Update status.json immediately from v2 runtime results."""
     try:
@@ -1425,6 +1438,11 @@ def update_local_status_from_v2(v2_result=None, published_snapshot=None, candida
                 status["last_live_sync_at"] = utc_now_precise()
                 status["last_live_applied_items"] = int(v2_result.get("applied_count") or 0)
                 status["last_live_error"] = ""
+                if status_val == "committed" and status["last_live_applied_items"] > 0:
+                    # Kept until the next cycle that actually receives changes, so
+                    # the status window does not show 0 after a quiet cycle.
+                    status["last_live_received_items"] = status["last_live_applied_items"]
+                    status["last_live_received_at"] = status["last_live_sync_at"]
             elif status_val == "deferred":
                 status["last_live_deferred_reason"] = v2_result.get("reason", "deferred")
 
@@ -1435,6 +1453,9 @@ def update_local_status_from_v2(v2_result=None, published_snapshot=None, candida
             status["sudosync_id_last_number"] = get_network_sudosync_id_last_number(settings.get("base_path"))
         except Exception:
             pass
+
+        for key in OBSOLETE_V1_STATUS_KEYS:
+            status.pop(key, None)
 
         _write_local_json(os.path.join(_addon_profile_path(), "status.json"), status)
         return status
