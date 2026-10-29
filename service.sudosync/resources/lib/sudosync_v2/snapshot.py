@@ -167,6 +167,7 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                         previous_by_identity[media_type].setdefault(alias, []).append(record)
 
     seen = {"movie": {} , "episode": {}}
+    shared_external = {"movie": 0, "episode": 0}
     output = {"movie": [], "episode": []}
     kept_ids = {"movie": [], "episode": []}
     for media_type, source in (("movie", movies), ("episode", episodes)):
@@ -193,7 +194,7 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                                     except (ValueError, TypeError):
                                         qual = "{}:s{}e{}".format(s_id, season, episode)
                                     u["sudosync"] = qual
-                                    logger.info(
+                                    logger.debug(
                                         "Disambiguated shared sudosync ID for multi-episode item '%s' -> %s",
                                         item.get("file") or item.get("label") or "episode",
                                         qual,
@@ -222,8 +223,13 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                     elif not (has_sudosync and prev_has_sudosync):
                         raise SnapshotBuildError("duplicate/overlapping strong identity in {} library: {}".format(media_type, identity))
                     else:
-                        logger.warning(
-                            "duplicate/overlapping external identity in %s library: %s "
+                        # Expected for one external episode split into several
+                        # parts (e.g. a finale aired in parts): each part has its
+                        # own SudoSync ID. Logged per pair at DEBUG and summarized
+                        # once below.
+                        shared_external[media_type] += 1
+                        logger.debug(
+                            "shared external identity in %s library: %s "
                             "(differentiated by unique SudoSync IDs: %s vs %s; treating SudoSync ID as authoritative)",
                             media_type, identity,
                             source[prev_index].get("uniqueid", {}).get("sudosync") if isinstance(source[prev_index], dict) else "",
@@ -293,6 +299,8 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
             id_key = "movieid" if media_type == "movie" else "episodeid"
             kept_ids[media_type].append(item.get(id_key))
 
+    _report_shared_external_identities(canonical_client, shared_external)
+
     if isinstance(kept_kodi_ids_out, dict):
         kept_kodi_ids_out["movie"] = kept_ids["movie"]
         kept_kodi_ids_out["episode"] = kept_ids["episode"]
@@ -310,6 +318,28 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
     except (ValueError, TypeError) as exc:
         raise SnapshotBuildError("generated snapshot failed validation: {}".format(exc))
     return snapshot
+
+
+_LAST_SHARED_EXTERNAL_REPORT = {}
+
+
+def _report_shared_external_identities(client_id, counts):
+    """Log one summary of external IDs shared by items with distinct SudoSync IDs.
+
+    The summary is logged at INFO only when the numbers change for this client,
+    so a periodic sync cycle does not repeat it; otherwise it goes to DEBUG.
+    """
+    summary = (int(counts.get("movie", 0)), int(counts.get("episode", 0)))
+    if not any(summary):
+        _LAST_SHARED_EXTERNAL_REPORT.pop(client_id, None)
+        return
+    changed = _LAST_SHARED_EXTERNAL_REPORT.get(client_id) != summary
+    _LAST_SHARED_EXTERNAL_REPORT[client_id] = summary
+    (logger.info if changed else logger.debug)(
+        "items sharing external identifiers but distinguished by SudoSync IDs: "
+        "%d movie pair(s), %d episode pair(s); SudoSync ID is authoritative (expected for multi-part items)",
+        summary[0], summary[1],
+    )
 
 
 def _identity_keys(media_type, ids):

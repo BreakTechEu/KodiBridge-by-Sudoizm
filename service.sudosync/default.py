@@ -18,6 +18,7 @@ from resources.lib.sudosync_core import (
     find_github_update,
     install_github_update,
     install_update_from_zip_path,
+    install_v2_log_bridge,
     log,
     mask_vfs_credentials,
     preview_sudosync_ids,
@@ -169,6 +170,7 @@ def install_local_zip_dialog():
 
 
 def main():
+    install_v2_log_bridge()
     action = sys.argv[1].lower() if len(sys.argv) > 1 else "status"
     try:
         if action == "bootstrap":

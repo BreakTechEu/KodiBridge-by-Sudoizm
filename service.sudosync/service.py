@@ -21,6 +21,7 @@ from resources.lib.sudosync_core import (
     addon_settings,
     assign_sudosync_ids,
     get_or_create_client_id,
+    install_v2_log_bridge,
     log,
     maybe_check_github_update_daily,
     read_shared_config,
@@ -635,6 +636,7 @@ def main(guard_factory=acquire_kodi_service_guard, runner=None):
         return
     atexit.register(service_guard.release)
 
+    install_v2_log_bridge()
     target_runner = runner if runner is not None else _run_service
     try:
         return target_runner()

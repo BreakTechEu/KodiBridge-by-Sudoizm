@@ -7,6 +7,7 @@
 # -------------------------------------------------------------------------
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -157,6 +158,46 @@ def _vfs_listdir(path):
 
 def log(message, level=xbmc.LOGINFO):
     xbmc.log("[SudoSync] {}".format(mask_vfs_credentials(str(message))), level)
+
+
+V2_LOGGER_NAME = "resources.lib.sudosync_v2"
+
+
+class KodiLogHandler(logging.Handler):
+    """Route Python ``logging`` records from the v2 engine to the Kodi log.
+
+    Without a handler, Python's last-resort handler prints WARNING and above to
+    stderr, which Kodi records as ERROR, and drops INFO/DEBUG entirely.
+    """
+
+    def emit(self, record):
+        try:
+            message = self.format(record)
+        except Exception:
+            return
+        if record.levelno >= logging.ERROR:
+            level = xbmc.LOGERROR
+        elif record.levelno >= logging.WARNING:
+            level = xbmc.LOGWARNING
+        elif record.levelno >= logging.INFO:
+            level = xbmc.LOGINFO
+        else:
+            level = xbmc.LOGDEBUG
+        log(message, level)
+
+
+def install_v2_log_bridge(logger_name=V2_LOGGER_NAME):
+    """Attach one KodiLogHandler to the v2 logger hierarchy (idempotent)."""
+    target = logging.getLogger(logger_name)
+    for handler in target.handlers:
+        if isinstance(handler, KodiLogHandler):
+            return handler
+    handler = KodiLogHandler()
+    handler.setFormatter(logging.Formatter("v2.%(module)s: %(message)s"))
+    target.addHandler(handler)
+    target.setLevel(logging.DEBUG)
+    target.propagate = False
+    return handler
 
 
 def utc_now():
