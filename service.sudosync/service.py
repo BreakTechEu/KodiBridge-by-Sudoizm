@@ -210,11 +210,56 @@ def _live_retry_delay_seconds(result, live_poll):
     return 0
 
 
+# Problem summary already shown in a notification during this service run.
+_COVERAGE_NOTIFIED = {"key": None}
+
+
+def coverage_problem_summary(coverage):
+    """Return (key, message) for coverage problems, or (None, None) when complete."""
+    if not isinstance(coverage, dict):
+        return None, None
+    totals = {}
+    for key in ("missing", "duplicates", "ambiguous"):
+        totals[key] = sum(int((coverage.get(t) or {}).get(key) or 0) for t in ("movie", "episode"))
+    unreadable = int(coverage.get("unreadable_nfo") or 0)
+    parts = []
+    if totals["missing"]:
+        parts.append("bez KodiBridge ID: {}".format(totals["missing"]))
+    if totals["duplicates"]:
+        parts.append("zdublowane ID: {}".format(totals["duplicates"]))
+    if totals["ambiguous"]:
+        parts.append("blokujące synchronizację: {}".format(totals["ambiguous"]))
+    if unreadable:
+        parts.append("nieczytelne .nfo: {}".format(unreadable))
+    if not parts:
+        return None, None
+    key = (totals["missing"], totals["duplicates"], totals["ambiguous"], unreadable)
+    return key, "Pozycje biblioteki: " + ", ".join(parts) + ". Szczegóły w oknie statusu KodiBridge."
+
+
 def _record_coverage(v2_runtime):
-    """Store the KodiBridge ID coverage of the last library read in status.json."""
+    """Store the KodiBridge ID coverage of the last library read and tell the user about problems.
+
+    A notification is shown at the first check after the service starts and
+    again whenever the problem counts change; never during video playback
+    (it is shown after the next check once playback has stopped).
+    """
     coverage = getattr(getattr(v2_runtime, "sync_engine", None), "last_coverage", None)
-    if isinstance(coverage, dict):
-        record_kodibridge_id_coverage(coverage)
+    if not isinstance(coverage, dict):
+        return
+    record_kodibridge_id_coverage(coverage)
+    key, message = coverage_problem_summary(coverage)
+    if key is None:
+        _COVERAGE_NOTIFIED["key"] = None
+        return
+    if key == _COVERAGE_NOTIFIED["key"] or _is_playing_video():
+        return
+    _COVERAGE_NOTIFIED["key"] = key
+    log("KodiBridge ID coverage problems: {}".format(message), xbmc.LOGWARNING)
+    try:
+        xbmcgui.Dialog().notification("KodiBridge — KodiBridge ID", message, xbmcgui.NOTIFICATION_WARNING, 10000)
+    except Exception:
+        pass
 
 
 def _execute_integrated_live_cycle(

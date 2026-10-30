@@ -1,3 +1,8 @@
+KodiBridge by Sudoizm 2.2.7
+===========================
+
+- Gdy w bibliotece tego Kodi są pozycje bez KodiBridge ID, zdublowane ID, pozycje blokujące synchronizację albo nieczytelne pliki .nfo, KodiBridge pokazuje powiadomienie w rogu ekranu, np. „Pozycje biblioteki: bez KodiBridge ID: 5, blokujące synchronizację: 2. Szczegóły w oknie statusu KodiBridge.”. Powiadomienie pojawia się przy pierwszym sprawdzeniu po uruchomieniu Kodi i ponownie, gdy liczby się zmienią; nigdy w trakcie odtwarzania filmu (wtedy po jego zatrzymaniu).
+
 KodiBridge by Sudoizm 2.2.6
 ===========================
 

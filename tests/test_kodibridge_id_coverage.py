@@ -178,5 +178,64 @@ class StatusCoverageTests(unittest.TestCase):
         self.assertIn("pojawi się po pierwszym cyklu", default_module._coverage_text(None))
 
 
+
+class CoverageNotificationTests(unittest.TestCase):
+    def setUp(self):
+        sudosync_service._COVERAGE_NOTIFIED["key"] = None
+        self.runtime = MagicMock()
+        self.playing = [False]
+        self.dialog = MagicMock()
+        for patcher in (
+            patch.object(sudosync_service, "record_kodibridge_id_coverage"),
+            patch.object(sudosync_service, "_is_playing_video", side_effect=lambda: self.playing[0]),
+            patch.object(sudosync_service.xbmcgui, "Dialog", return_value=self.dialog),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def check(self, coverage):
+        self.runtime.sync_engine.last_coverage = coverage
+        sudosync_service._record_coverage(self.runtime)
+
+    @staticmethod
+    def coverage(missing=0, ambiguous=0, duplicates=0, unreadable=0):
+        return {"movie": {"missing": 0}, "episode": {"missing": missing, "ambiguous": ambiguous,
+                                                     "duplicates": duplicates},
+                "unreadable_nfo": unreadable}
+
+    def test_summary_message(self):
+        key, message = sudosync_service.coverage_problem_summary(self.coverage(5, 2, 1, 1))
+        self.assertEqual(key, (5, 1, 2, 1))
+        self.assertEqual(message, "Pozycje biblioteki: bez KodiBridge ID: 5, zdublowane ID: 1, "
+                                  "blokujące synchronizację: 2, nieczytelne .nfo: 1. "
+                                  "Szczegóły w oknie statusu KodiBridge.")
+        self.assertEqual(sudosync_service.coverage_problem_summary(self.coverage()), (None, None))
+
+    def test_notified_at_first_check_and_again_only_when_counts_change(self):
+        self.check(self.coverage(5, 2))
+        self.check(self.coverage(5, 2))
+        self.assertEqual(self.dialog.notification.call_count, 1)
+        self.assertIn("bez KodiBridge ID: 5", self.dialog.notification.call_args[0][1])
+        self.check(self.coverage(3, 2))
+        self.assertEqual(self.dialog.notification.call_count, 2)
+
+    def test_no_notification_when_complete(self):
+        self.check(self.coverage())
+        self.dialog.notification.assert_not_called()
+
+    def test_problem_after_complete_library_is_notified_again(self):
+        self.check(self.coverage(1))
+        self.check(self.coverage())
+        self.check(self.coverage(1))
+        self.assertEqual(self.dialog.notification.call_count, 2)
+
+    def test_postponed_during_playback(self):
+        self.playing[0] = True
+        self.check(self.coverage(5))
+        self.dialog.notification.assert_not_called()
+        self.playing[0] = False
+        self.check(self.coverage(5))
+        self.assertEqual(self.dialog.notification.call_count, 1)
+
 if __name__ == "__main__":
     unittest.main()
