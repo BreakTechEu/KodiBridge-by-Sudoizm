@@ -3,8 +3,8 @@
 ---
 
 > [!NOTE]
-> **Production Release (KodiBridge by Sudoizm 2.2.5):**
-> KodiBridge by Sudoizm 2.2.5 is the **production release** of the v2 architecture featuring journaled synchronization, KodiBridge ID for private videos and local networks, single-active-Kodi session guard, and cross-device version enforcement. The legacy **SudoSync 1.0.0** line remains available on the read-only branch [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
+> **Production Release (KodiBridge by Sudoizm 2.2.6):**
+> KodiBridge by Sudoizm 2.2.6 is the **production release** of the v2 architecture featuring journaled synchronization, KodiBridge ID for private videos and local networks, single-active-Kodi session guard, and cross-device version enforcement. The legacy **SudoSync 1.0.0** line remains available on the read-only branch [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
 > Both releases are available in the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section.
 
 # KodiBridge by Sudoizm
@@ -47,7 +47,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **KodiBridge by Sudoizm 2.2.5 (Production):** Download `kodibridge-by-sudoizm-2.2.5.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section (recommended production release with v2 architecture and KodiBridge ID).
+   - **KodiBridge by Sudoizm 2.2.6 (Production):** Download `kodibridge-by-sudoizm-2.2.6.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section (recommended production release with v2 architecture and KodiBridge ID).
    - **SudoSync 1.0.0 (Legacy Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section.
 
 2. **Install in Kodi:**
