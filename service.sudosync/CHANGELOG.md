@@ -8,6 +8,9 @@ KodiBridge by Sudoizm 2.2.4
   - Przed każdym kolejnym oknem konfliktu sprawdzane jest także skanowanie biblioteki, nie tylko odtwarzanie.
   - Nieudana publikacja zmiany statusu lub oceny w trakcie odtwarzania jest ponawiana po 10 s; wcześniej czekała do kolejnego okresowego zapisu.
   - Błąd zapisu do dziennika Kodi nie może przerwać pracy silnika synchronizacji.
+- Konflikty: jedno okno w postaci tabeli na każdą pozycję. Wiersze to pola, które się różnią (liczba odtworzeń, ostatnie odtworzenie, punkt wznowienia, ocena), kolumny to urządzenia; w każdym wierszu wybiera się wartość (można łączyć wartości z różnych urządzeń), a potem „Zapisz” albo „Później”. Domyślnie zaznaczona jest nowsza data ostatniego odtworzenia, a w pozostałych wierszach wartość z tego Kodi. Obsługa myszą, klawiaturą i pilotem; prawy przycisk myszy albo Wstecz działa jak „Później”. Wszystkie pola pozycji są zapisywane jednym przebiegiem (wcześniej osobno dla każdego pola, z długą przerwą między oknami), a w trakcie zapisu widać komunikat „Zapisuję wybór…”. Gdy tabeli nie da się wyświetlić, używane są dotychczasowe okna wyboru dla każdego pola.
+- Po nadaniu albo wycofaniu KodiBridge ID z ustawień usługa od razu odczytuje identyfikatory z plików .nfo na nowo (wcześniej korzystała z zapamiętanych do najbliższego skanowania biblioteki).
+- Dokumentacja: limity paczki ZIP aktualizatora w `docs/V2_DESIGN.md`.
 - Testy: odzyskiwanie po awarii w trakcie pomijania jednej z kilku pozycji, konflikt dla odcinka w dwóch częściach ze wspólnym zewnętrznym ID, podtrzymanie dzierżawy podczas okna, zmiana konfliktu w trakcie wyboru, ponowienie nieudanej publikacji.
 
 KodiBridge by Sudoizm 2.2.3

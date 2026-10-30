@@ -30,6 +30,7 @@ from resources.lib.sudosync_core import (
     log,
     maybe_check_github_update_daily,
     read_shared_config,
+    take_nfo_cache_refresh_request,
     update_local_status_from_v2,
 )
 
@@ -475,6 +476,17 @@ def _run_service():
                 shared = read_shared_config(settings["base_path"])
                 init = shared.get("initialization") or {}
                 live_active = bool(init.get("completed", False) and settings.get("live_sync_enabled", True))
+                if take_nfo_cache_refresh_request() and v2_runtime is not None:
+                    # KodiBridge IDs were assigned or rolled back from the settings
+                    # script: drop cached NFO identifiers and re-read them now.
+                    try:
+                        kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
+                        if hasattr(kodi_adapter, "clear_nfo_cache"):
+                            kodi_adapter.clear_nfo_cache()
+                        log("NFO identifier cache cleared after a KodiBridge ID change in settings.", xbmc.LOGINFO)
+                    except Exception as exc:
+                        log("V2 NFO cache invalidation failed: {}".format(exc), xbmc.LOGWARNING)
+                    last_live_poll = 0.0
                 if take_resolution_request():
                     # Settings action: ask again about postponed conflicts and
                     # run a sync cycle right away to find current ones.

@@ -349,6 +349,12 @@ def main():
             show_status()
     except Exception as exc:
         xbmcgui.Dialog().ok("KodiBridge — błąd", mask_vfs_credentials(str(exc)))
+    finally:
+        if action in ("assignids", "assign_ids", "rollbackids"):
+            # These actions change KodiBridge IDs in .nfo files from this script
+            # process; the running service must drop its cached NFO identifiers.
+            from resources.lib.sudosync_core import request_nfo_cache_refresh
+            request_nfo_cache_refresh()
 
 
 if __name__ == "__main__":

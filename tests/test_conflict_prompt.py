@@ -38,18 +38,90 @@ def make_conflict(kodi_id=99, lc=0, values=((LOCAL, "Salon", 2), (PEER, "Sypialn
     }
 
 
-class ConflictDialogTests(unittest.TestCase):
-    def setUp(self):
-        self.dialog = MagicMock()
-        patcher = patch.object(conflicts_module.xbmcgui, "Dialog", return_value=self.dialog)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        patcher = patch.object(conflicts_module, "item_label", return_value="Film (2020)")
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.runtime = MagicMock()
-        self.runtime.resolve_conflict.return_value = {"status": "resolved"}
+def make_field_conflict(field, values, kodi_id=99, lc=0, local=None):
+    conflict = make_conflict(kodi_id=kodi_id, lc=lc, values=values)
+    conflict["field"] = field
+    conflict["local_value"] = local
+    return conflict
 
+
+class FakeControl(object):
+    _next_id = [100]
+
+    def __init__(self, *args, **kwargs):
+        FakeControl._next_id[0] += 1
+        self._id = FakeControl._next_id[0]
+        self.args = args
+        self.kwargs = kwargs
+        self.label = args[4] if len(args) > 4 else ""
+        self.nav = {}
+
+    def getId(self):
+        return self._id
+
+    def setLabel(self, label):
+        self.label = label
+
+    def controlUp(self, other):
+        self.nav["up"] = other
+
+    def controlDown(self, other):
+        self.nav["down"] = other
+
+    def controlLeft(self, other):
+        self.nav["left"] = other
+
+    def controlRight(self, other):
+        self.nav["right"] = other
+
+
+class FakeWindowDialog(object):
+    def __init__(self):
+        self.controls = []
+        self.focused = None
+        self.closed = False
+
+    def addControl(self, control):
+        self.controls.append(control)
+
+    def setFocus(self, control):
+        self.focused = control
+
+    def close(self):
+        self.closed = True
+
+    def doModal(self):
+        pass
+
+
+class FakeGui(object):
+    WindowDialog = FakeWindowDialog
+    ControlImage = ControlLabel = ControlButton = FakeControl
+
+
+class FakeAction(object):
+    def __init__(self, action_id):
+        self._id = action_id
+
+    def getId(self):
+        return self._id
+
+
+THIRD = "33333333-3333-4333-8333-333333333333"
+
+
+def threads_group():
+    # The real case from the 2.2.3 test: Threads (1984), three fields.
+    return conflicts_module.group_conflicts([
+        make_field_conflict("lastplayed", ((LOCAL, "PC z Windows 11", "2018-11-05 00:00:00"),
+                                           (PEER, "Kodi (10.2.0.2)", "2026-09-13 14:30:36")),
+                            local="2018-11-05 00:00:00"),
+        make_field_conflict("playcount", ((LOCAL, "PC z Windows 11", 1), (PEER, "Kodi (10.2.0.2)", 2)), local=1),
+        make_field_conflict("userrating", ((LOCAL, "PC z Windows 11", 7), (PEER, "Kodi (10.2.0.2)", 9)), local=7),
+    ])[0]
+
+
+class ConflictMatrixTests(unittest.TestCase):
     def test_describe_values(self):
         d = conflicts_module.describe_value
         self.assertEqual(d("playcount", 0), "nieobejrzane")
@@ -60,59 +132,162 @@ class ConflictDialogTests(unittest.TestCase):
         self.assertEqual(d("resume", {"position": 3725, "total": 7200}), "1:02:05 z 2:00:00")
         self.assertEqual(d("lastplayed", ""), "brak")
 
-    def test_options_mark_local_device_and_merge_equal_values(self):
-        conflict = make_conflict(values=((LOCAL, "Salon", 2), (PEER, "Sypialnia", 1), ("3" * 36, "Kuchnia", 1)))
-        labels, values = conflicts_module.choice_options(conflict, LOCAL)
-        self.assertEqual(labels, [
-            "Salon (to Kodi): obejrzane, odtworzeń: 2",
-            "Sypialnia, Kuchnia: obejrzane, odtworzeń: 1",
-        ])
-        self.assertEqual(values, [2, 1])
+    def test_fields_of_one_item_form_one_table(self):
+        group = threads_group()
+        self.assertEqual(sorted(group["conflicts"]), ["lastplayed", "playcount", "userrating"])
+        matrix = conflicts_module.ConflictMatrix(group, LOCAL)
+        self.assertEqual(matrix.fields, ["playcount", "lastplayed", "userrating"])
+        self.assertEqual([name for _, name in matrix.columns], ["PC z Windows 11 (to Kodi)", "Kodi (10.2.0.2)"])
 
-    def test_selected_value_is_resolved(self):
-        self.dialog.select.return_value = 1
-        resolved = conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], set(), LOCAL)
+    def test_defaults_newest_date_and_local_values(self):
+        matrix = conflicts_module.ConflictMatrix(threads_group(), LOCAL)
+        self.assertEqual(matrix.choices(), {"playcount": 1, "lastplayed": "2026-09-13 14:30:36", "userrating": 7})
+
+    def test_values_can_be_mixed_per_row(self):
+        matrix = conflicts_module.ConflictMatrix(threads_group(), LOCAL)
+        self.assertTrue(matrix.select(0, 1))  # playcount from the other device
+        self.assertEqual(matrix.choices()["playcount"], 2)
+        self.assertEqual(matrix.choices()["userrating"], 7)
+
+    def test_device_missing_from_a_field_has_no_cell(self):
+        group = conflicts_module.group_conflicts([
+            make_field_conflict("playcount", ((LOCAL, "Salon", 1), (PEER, "Sypialnia", 2)), local=1),
+            make_field_conflict("userrating", ((PEER, "Sypialnia", 9), (THIRD, "Kuchnia", 5)), local=7),
+        ])[0]
+        matrix = conflicts_module.ConflictMatrix(group, LOCAL)
+        self.assertEqual([n for _, n in matrix.columns], ["Salon (to Kodi)", "Kuchnia", "Sypialnia"])
+        row = matrix.fields.index("userrating")
+        self.assertFalse(matrix.has_cell(row, 0))
+        self.assertFalse(matrix.select(row, 0))
+        self.assertEqual(matrix.cell_text(row, 0), "—")
+        self.assertIn(matrix.choices()["userrating"], (5, 9))
+
+
+class ConflictTableDialogTests(unittest.TestCase):
+    def _dialog(self):
+        cls = conflicts_module.build_dialog_class(FakeGui)
+        dialog = cls()
+        dialog.setup(conflicts_module.ConflictMatrix(threads_group(), LOCAL), "Threads (1984)", "1/1")
+        return dialog
+
+    def test_layout_title_and_selection_marks(self):
+        dialog = self._dialog()
+        labels = [c.args[4] for c in dialog.controls if len(c.args) > 4 and isinstance(c.args[4], str)]
+        self.assertTrue(any("Threads (1984)" in label for label in labels))
+        playcount_row = dialog.grid[0]
+        self.assertIn("»", playcount_row[0].label)
+        self.assertNotIn("»", playcount_row[1].label)
+        self.assertIs(dialog.focused, playcount_row[0])
+
+    def test_click_selects_cell_and_save_returns_choices(self):
+        dialog = self._dialog()
+        dialog.onControl(dialog.grid[0][1])  # mouse click or OK on "2 plays"
+        self.assertIn("»", dialog.grid[0][1].label)
+        self.assertNotIn("»", dialog.grid[0][0].label)
+        dialog.onControl(dialog.save_button)
+        self.assertTrue(dialog.closed)
+        self.assertEqual(dialog.result["playcount"], 2)
+
+    def test_later_back_and_right_click_return_none(self):
+        for close in ("later", 92, 10, 101):
+            dialog = self._dialog()
+            if close == "later":
+                dialog.onControl(dialog.later_button)
+            else:
+                dialog.onAction(FakeAction(close))
+            self.assertTrue(dialog.closed)
+            self.assertIsNone(dialog.result)
+
+    def test_remote_navigation_covers_grid_and_buttons(self):
+        dialog = self._dialog()
+        grid = dialog.grid
+        self.assertIs(grid[0][0].nav["right"], grid[0][1])
+        self.assertIs(grid[0][1].nav["left"], grid[0][0])
+        self.assertIs(grid[0][0].nav["down"], grid[1][0])
+        self.assertIs(grid[1][0].nav["up"], grid[0][0])
+        self.assertIs(grid[2][1].nav["down"], dialog.save_button)
+        self.assertIs(dialog.save_button.nav["right"], dialog.later_button)
+        self.assertIs(dialog.later_button.nav["left"], dialog.save_button)
+        self.assertIs(dialog.save_button.nav["up"], grid[2][0])
+
+    def test_table_failure_falls_back_to_selection_dialogs(self):
+        dialog = MagicMock()
+        dialog.select.side_effect = [1, 0, 1]
+        with patch.object(conflicts_module, "show_conflict_table", side_effect=RuntimeError("no WindowDialog")), \
+                patch.object(conflicts_module.xbmcgui, "Dialog", return_value=dialog):
+            choices = conflicts_module.ask_item(threads_group(), LOCAL, "Threads (1984)", "1/1")
+        self.assertEqual(choices, {"playcount": 2, "lastplayed": "2018-11-05 00:00:00", "userrating": 9})
+
+
+class ConflictDialogTests(unittest.TestCase):
+    def setUp(self):
+        self.dialog = MagicMock()
+        patcher = patch.object(conflicts_module.xbmcgui, "Dialog", return_value=self.dialog)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        patcher = patch.object(conflicts_module, "item_label", return_value="Film (2020)")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.answers = []
+        patcher = patch.object(conflicts_module, "ask_item", side_effect=self._ask)
+        self.ask = patcher.start()
+        self.addCleanup(patcher.stop)
+        self.runtime = MagicMock()
+        self.runtime.resolve_item_conflicts.return_value = {"status": "resolved"}
+
+    def _ask(self, group, local_client_id, title, counter):
+        return self.answers.pop(0) if self.answers else None
+
+    def notification_text(self):
+        return self.dialog.notification.call_args[0][1]
+
+    def test_one_question_per_item_and_one_resolution(self):
+        self.answers = [{"playcount": 2, "lastplayed": "2026-09-13 14:30:36", "userrating": 9}]
+        group = threads_group()
+        resolved = conflicts_module.prompt_and_resolve(self.runtime, list(group["conflicts"].values()), set(), LOCAL)
         self.assertEqual(resolved, 1)
-        self.runtime.resolve_conflict.assert_called_once_with(
-            "movie", 99, "playcount", 1, abort_requested=None,
-            expected_identity=["imdb:tt1234567"], expected_version={"lc": 0, "seq": 0},
-        )
-        heading, options = self.dialog.select.call_args[0]
-        self.assertIn("Film (2020)", heading)
-        self.assertIn("liczba odtworzeń", heading)
-        self.assertTrue(options[-1].startswith("Później"))
+        self.assertEqual(self.ask.call_count, 1)
+        args, kwargs = self.runtime.resolve_item_conflicts.call_args
+        self.assertEqual(args[:2], ("movie", 99))
+        self.assertEqual(args[2], {"playcount": 2, "lastplayed": "2026-09-13 14:30:36", "userrating": 9})
+        self.assertEqual(kwargs["expected_identity"], ["imdb:tt1234567"])
+        self.assertEqual(set(kwargs["expected_versions"]), {"playcount", "lastplayed", "userrating"})
+        self.assertEqual(self.notification_text(), "Zapisano wybór: 1.")
 
-    def test_later_dismisses_remaining_conflicts_for_the_session(self):
+    def test_progress_is_announced_before_saving(self):
+        self.answers = [{"playcount": 1}]
+        conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], set(), LOCAL)
+        first_notification = self.dialog.notification.call_args_list[0][0][1]
+        self.assertIn("Zapisuję wybór", first_notification)
+
+    def test_later_postpones_remaining_items_for_the_session(self):
         dismissed = set()
-        self.dialog.select.return_value = 2  # "Później"
         conflicts = [make_conflict(kodi_id=99), make_conflict(kodi_id=100)]
         self.assertEqual(conflicts_module.prompt_and_resolve(self.runtime, conflicts, dismissed, LOCAL), 0)
-        self.assertEqual(self.dialog.select.call_count, 1)
-        self.runtime.resolve_conflict.assert_not_called()
-        # Not asked again in this session...
+        self.assertEqual(self.ask.call_count, 1)
+        self.assertEqual(len(dismissed), 2)
         conflicts_module.prompt_and_resolve(self.runtime, conflicts, dismissed, LOCAL)
-        self.assertEqual(self.dialog.select.call_count, 1)
-        # ...unless the conflict itself changes (new version).
+        self.assertEqual(self.ask.call_count, 1)
+        # A conflict that changed (new version) is asked again.
         conflicts_module.prompt_and_resolve(self.runtime, [make_conflict(kodi_id=99, lc=5)], dismissed, LOCAL)
-        self.assertEqual(self.dialog.select.call_count, 2)
+        self.assertEqual(self.ask.call_count, 2)
+        self.runtime.resolve_item_conflicts.assert_not_called()
 
-    def test_closing_dialog_counts_as_later(self):
-        dismissed = set()
-        self.dialog.select.return_value = -1
-        conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], dismissed, LOCAL)
-        self.assertEqual(len(dismissed), 1)
-
-    def test_no_dialog_while_video_is_playing(self):
+    def test_no_dialog_while_busy(self):
         conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], set(), LOCAL, is_busy=lambda: True)
-        self.dialog.select.assert_not_called()
+        self.ask.assert_not_called()
 
-    def test_busy_state_is_checked_before_every_dialog(self):
-        # A library scan starting after the first answer stops further dialogs.
+    def test_busy_state_is_checked_before_every_item(self):
         busy = [False]
-        self.dialog.select.side_effect = lambda *a: busy.__setitem__(0, True) or 0
+
+        def answer(*args):
+            busy[0] = True
+            return {"playcount": 1}
+
+        self.ask.side_effect = answer
         conflicts = [make_conflict(kodi_id=99), make_conflict(kodi_id=100)]
         conflicts_module.prompt_and_resolve(self.runtime, conflicts, set(), LOCAL, is_busy=lambda: busy[0])
-        self.assertEqual(self.dialog.select.call_count, 1)
+        self.assertEqual(self.ask.call_count, 1)
 
     def test_lease_is_refreshed_while_dialog_is_open_and_before_writing(self):
         import time as _time
@@ -122,28 +297,28 @@ class ConflictDialogTests(unittest.TestCase):
             calls.append(1)
             return True
 
-        def slow_select(*args):
+        def slow_answer(*args):
             _time.sleep(0.35)
-            return 1
+            return {"playcount": 1}
 
-        self.dialog.select.side_effect = slow_select
+        self.ask.side_effect = slow_answer
         conflicts_module.prompt_and_resolve(
             self.runtime, [make_conflict()], set(), LOCAL, keep_alive=keep_alive, keep_alive_interval=0.05,
         )
-        self.assertGreaterEqual(len(calls), 3)  # background refreshes + one before writing
-        self.runtime.resolve_conflict.assert_called_once()
+        self.assertGreaterEqual(len(calls), 3)
+        self.runtime.resolve_item_conflicts.assert_called_once()
 
     def test_lost_lease_prevents_writing(self):
-        self.dialog.select.return_value = 1
+        self.answers = [{"playcount": 1}]
         resolved = conflicts_module.prompt_and_resolve(
             self.runtime, [make_conflict()], set(), LOCAL, keep_alive=lambda: False,
         )
         self.assertEqual(resolved, 0)
-        self.runtime.resolve_conflict.assert_not_called()
+        self.runtime.resolve_item_conflicts.assert_not_called()
 
     def test_failed_resolution_is_not_postponed_until_retries_run_out(self):
-        self.dialog.select.return_value = 1
-        self.runtime.resolve_conflict.side_effect = RuntimeError("NAS unavailable")
+        self.ask.side_effect = lambda *a: {"playcount": 1}
+        self.runtime.resolve_item_conflicts.side_effect = RuntimeError("NAS unavailable")
         dismissed, failures = set(), {}
         with patch.object(conflicts_module, "_record_error") as record_error:
             for _ in range(conflicts_module.MAX_RESOLVE_FAILURES - 1):
@@ -152,36 +327,23 @@ class ConflictDialogTests(unittest.TestCase):
             conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], dismissed, LOCAL, failures=failures)
         self.assertEqual(len(dismissed), 1)
         self.assertEqual(record_error.call_count, conflicts_module.MAX_RESOLVE_FAILURES)
-        message = self.dialog.notification.call_args[0][1]
-        self.assertIn("Błąd zapisu: 1", message)
+        self.assertIn("Błąd zapisu: 1", self.notification_text())
 
     def test_changed_conflict_is_reported_and_offered_again(self):
-        self.dialog.select.return_value = 1
-        self.runtime.resolve_conflict.return_value = {"status": "changed"}
+        self.answers = [{"playcount": 1}]
+        self.runtime.resolve_item_conflicts.return_value = {"status": "changed"}
         dismissed = set()
         self.assertEqual(conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], dismissed, LOCAL), 0)
         self.assertEqual(dismissed, set())
-        self.assertIn("Nieaktualne", self.dialog.notification.call_args[0][1])
+        self.assertIn("Nieaktualne", self.notification_text())
 
     def test_summary_counts_saved_and_outdated_choices(self):
-        self.dialog.select.return_value = 1
-        self.runtime.resolve_conflict.side_effect = [{"status": "not_found"}, {"status": "resolved"}]
+        self.ask.side_effect = lambda *a: {"playcount": 1}
+        self.runtime.resolve_item_conflicts.side_effect = [{"status": "not_found"}, {"status": "resolved"}]
         conflicts_module.prompt_and_resolve(
             self.runtime, [make_conflict(kodi_id=99), make_conflict(kodi_id=100)], set(), LOCAL,
         )
-        self.assertEqual(
-            self.dialog.notification.call_args[0][1],
-            "Zapisano wybór: 1; nieaktualne, bez zapisu: 1.",
-        )
-
-    def test_deferred_resolution_stops_and_asks_again_later(self):
-        self.dialog.select.return_value = 0
-        self.runtime.resolve_conflict.return_value = {"status": "deferred"}
-        dismissed = set()
-        conflicts = [make_conflict(kodi_id=99), make_conflict(kodi_id=100)]
-        conflicts_module.prompt_and_resolve(self.runtime, conflicts, dismissed, LOCAL)
-        self.assertEqual(self.dialog.select.call_count, 1)
-        self.assertEqual(dismissed, set())
+        self.assertEqual(self.notification_text(), "Zapisano wybór: 1; nieaktualne, bez zapisu: 1.")
 
     def test_resolvable_conflicts_require_local_item(self):
         foreign = make_conflict()
@@ -204,7 +366,7 @@ SETTINGS = {
 
 
 class ServiceConflictSchedulingTests(unittest.TestCase):
-    def _run(self, iterations, playing_until=0, requests=()):
+    def _run(self, iterations, playing_until=0, requests=(), nfo_requests=()):
         clock = [1000.0]
         monitor = sudosync_service.SudoSyncMonitor()
         monitor.aborted = False
@@ -237,6 +399,8 @@ class ServiceConflictSchedulingTests(unittest.TestCase):
             return 0
 
         request_iter = iter(requests)
+        nfo_iter = iter(nfo_requests)
+        self.runtime = runtime
         with patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=True), \
                 patch("resources.lib.sudosync_bootstrap.refresh_network_active_kodi_lease", return_value=True), \
                 patch("resources.lib.sudosync_bootstrap.release_network_active_kodi_lease"), \
@@ -252,6 +416,8 @@ class ServiceConflictSchedulingTests(unittest.TestCase):
                 patch.object(sudosync_service, "prompt_and_resolve", side_effect=fake_prompt), \
                 patch.object(sudosync_service, "take_resolution_request",
                              side_effect=lambda: next(request_iter, False)), \
+                patch.object(sudosync_service, "take_nfo_cache_refresh_request",
+                             side_effect=lambda: next(nfo_iter, False)), \
                 patch.object(sudosync_service.time, "time", side_effect=lambda: clock[0]):
             sudosync_service._run_service()
         return prompts, live_cycle
@@ -271,6 +437,27 @@ class ServiceConflictSchedulingTests(unittest.TestCase):
         # Startup cycle + immediate cycle requested from settings in iteration 1.
         self.assertGreaterEqual(live_cycle.call_count, 2)
         self.assertGreaterEqual(len(prompts), 2)
+
+
+    def test_nfo_id_change_in_settings_clears_service_cache_and_runs_cycle(self):
+        _, live_cycle = self._run(iterations=3, nfo_requests=(False, True))
+        self.runtime.sync_engine._kodi.clear_nfo_cache.assert_called_once()
+        self.assertGreaterEqual(live_cycle.call_count, 2)
+
+
+class NfoCacheRefreshRequestTests(unittest.TestCase):
+    def test_request_is_taken_once(self):
+        from resources.lib import sudosync_core
+        window = MagicMock()
+        props = {}
+        window.setProperty.side_effect = lambda k, v: props.__setitem__(k, v)
+        window.getProperty.side_effect = lambda k: props.get(k, "")
+        window.clearProperty.side_effect = lambda k: props.pop(k, None)
+        with patch.object(sudosync_core.xbmcgui, "Window", return_value=window):
+            self.assertFalse(sudosync_core.take_nfo_cache_refresh_request())
+            sudosync_core.request_nfo_cache_refresh()
+            self.assertTrue(sudosync_core.take_nfo_cache_refresh_request())
+            self.assertFalse(sudosync_core.take_nfo_cache_refresh_request())
 
 
 def sudosync_service_conflict_key(conflict):

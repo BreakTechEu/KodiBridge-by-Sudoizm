@@ -248,17 +248,31 @@ class V2RuntimeComponents(object):
 
     def resolve_conflict(self, media_type, kodi_id, field, value, abort_requested=None,
                          expected_identity=None, expected_version=None):
-        """Apply the user's choice for one concurrent-edit conflict and publish it.
+        """Resolve one field conflict; see ``resolve_item_conflicts``."""
+        return self.resolve_item_conflicts(
+            media_type, kodi_id, {field: value}, abort_requested=abort_requested,
+            expected_identity=expected_identity,
+            expected_versions=None if expected_version is None else {field: expected_version},
+        )
 
-        The chosen value is written to this Kodi (when it differs from the local
-        value) through the guarded transaction runner and published with a
-        version newer than every conflicting one, so the regular sync carries it
-        to all other Kodi devices. The conflict is re-read from a fresh preview;
-        if it no longer exists, nothing is written. When ``expected_identity`` /
-        ``expected_version`` describe the conflict shown to the user and the fresh
-        one differs (another item under this Kodi ID, or a newer edit), nothing
-        is written and ``changed`` is returned so the user can be asked again.
+    def resolve_item_conflicts(self, media_type, kodi_id, choices, abort_requested=None,
+                               expected_identity=None, expected_versions=None):
+        """Apply the user's choices for the conflicting fields of one item and publish them.
+
+        ``choices`` maps field -> chosen value. All fields are handled with one
+        fresh preview and at most one guarded Kodi write. Values that differ
+        from the local ones are written to this Kodi through the transaction
+        runner; every chosen field is published with a version newer than its
+        conflict (lc+1, seq+1), so the regular sync carries the choice to all
+        other Kodi devices.
+
+        Nothing is written when a chosen field is no longer in conflict
+        (``not_found`` if none is, otherwise ``changed``), or when the item or a
+        conflict version differs from what the user was shown (``changed``), so
+        the user can be asked again with current data.
         """
+        if not isinstance(choices, dict) or not choices:
+            raise V2RuntimeError("At least one conflict choice is required")
         startup = self.start(abort_requested=abort_requested)
         if startup["status"] != "ready":
             return {"status": startup["status"], "recovery": startup.get("recovery"), "published_snapshot_path": None}
@@ -268,43 +282,58 @@ class V2RuntimeComponents(object):
 
         candidate = preview["snapshot"]
         plan = preview["plan"] or {}
-        conflict = None
+        fresh = {}
         for item in plan.get("conflicts") or []:
-            if item.get("type") == media_type and item.get("kodi_id") == kodi_id and item.get("field") == field:
-                conflict = item
-                break
-        if conflict is None:
+            if item.get("type") == media_type and item.get("kodi_id") == kodi_id and item.get("field") in choices:
+                fresh[item["field"]] = item
+        if not fresh:
             return {"status": "not_found", "published_snapshot_path": None}
-        if expected_identity is not None and sorted(expected_identity) != sorted(conflict.get("identity") or []):
+        if set(fresh) != set(choices):
+            return {"status": "changed", "reason": "resolved_elsewhere", "published_snapshot_path": None}
+        identities = {tuple(sorted(c.get("identity") or [])) for c in fresh.values()}
+        if len(identities) != 1:
+            raise V2RuntimeError("Conflicts of one Kodi item report different identities")
+        identity = list(next(iter(identities)))
+        if expected_identity is not None and sorted(expected_identity) != identity:
             return {"status": "changed", "reason": "identity", "published_snapshot_path": None}
-        if expected_version is not None and (
-            int(expected_version.get("lc", -1)) != int(conflict["version"]["lc"])
-            or int(expected_version.get("seq", -1)) != int(conflict["version"]["seq"])
-        ):
-            return {"status": "changed", "reason": "version", "published_snapshot_path": None}
-        if value not in [option.get("value") for option in conflict.get("values") or []]:
-            raise V2RuntimeError("Chosen value is not one of the conflicting values")
+        for field, conflict in fresh.items():
+            expected = (expected_versions or {}).get(field)
+            if expected is not None and (
+                int(expected.get("lc", -1)) != int(conflict["version"]["lc"])
+                or int(expected.get("seq", -1)) != int(conflict["version"]["seq"])
+            ):
+                return {"status": "changed", "reason": "version", "published_snapshot_path": None}
+            if choices[field] not in [option.get("value") for option in conflict.get("values") or []]:
+                raise V2RuntimeError("Chosen value is not one of the conflicting values for " + field)
 
         client_id = self.client_id or candidate["client"]["id"]
-        winning_version = {
-            "lc": int(conflict["version"]["lc"]) + 1,
-            "seq": int(conflict["version"]["seq"]) + 1,
-            "client_id": client_id,
+        target_versions = {
+            field: {
+                "lc": int(conflict["version"]["lc"]) + 1,
+                "seq": int(conflict["version"]["seq"]) + 1,
+                "client_id": client_id,
+            }
+            for field, conflict in fresh.items()
         }
         resolution_plan = {
             "local_client_id": client_id,
             "changes": [{
                 "type": media_type,
                 "kodi_id": kodi_id,
-                "identity": list(conflict["identity"]),
-                "before": {field: conflict["local_value"]},
-                "changes": {field: value},
-                "target_versions": {field: winning_version},
+                "identity": identity,
+                "before": {field: fresh[field]["local_value"] for field in choices},
+                "changes": dict(choices),
+                "target_versions": target_versions,
             }],
         }
+        kodi_changes = {f: v for f, v in choices.items() if v != fresh[f]["local_value"]}
         tx_result = None
-        if value != conflict["local_value"]:
-            tx_result = self.transaction_runner.run(resolution_plan, client_id, candidate, abort_requested=abort_requested)
+        if kodi_changes:
+            tx_plan = {
+                "local_client_id": client_id,
+                "changes": [dict(resolution_plan["changes"][0], changes=kodi_changes)],
+            }
+            tx_result = self.transaction_runner.run(tx_plan, client_id, candidate, abort_requested=abort_requested)
             if tx_result.get("status") == "deferred":
                 return {
                     "status": "deferred",
@@ -319,7 +348,8 @@ class V2RuntimeComponents(object):
             "transaction": tx_result,
             "snapshot": post_snapshot,
             "published_snapshot_path": published_path,
-            "version": winning_version,
+            "versions": target_versions,
+            "version": target_versions[next(iter(choices))] if len(choices) == 1 else None,
         }
 
     def publish_local_snapshot(self, abort_requested=None, suppress_local_changes=False):

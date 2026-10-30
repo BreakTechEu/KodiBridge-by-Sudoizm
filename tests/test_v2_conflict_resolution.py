@@ -203,5 +203,48 @@ class MultiPartConflictTests(unittest.TestCase):
         self.assertEqual(_playcount_conflicts(runtime_b.sync_cycle()), [])
 
 
+
+class MultiFieldItemResolutionTests(unittest.TestCase):
+    def setUp(self):
+        backend = InMemorySharedBackend()
+        lock_factory = ProcessLocalLockFactory()
+        self.kodi_a = MutableFakeKodi(movie_id=10, playcount=1)
+        self.kodi_a.userrating = 7
+        self.kodi_a.lastplayed = "2018-11-05 00:00:00"
+        self.kodi_b = MutableFakeKodi(movie_id=99, playcount=2)
+        self.kodi_b.userrating = 9
+        self.kodi_b.lastplayed = "2026-09-13 14:30:36"
+        self.runtime_a = build_v2_runtime(self.kodi_a, backend, "smb://nas/.SudoSync", lock_factory, CLIENT_A, "Salon")
+        self.runtime_b = build_v2_runtime(self.kodi_b, backend, "smb://nas/.SudoSync", lock_factory, CLIENT_B, "Sypialnia")
+        self.runtime_a.sync_cycle()
+        result = self.runtime_b.sync_cycle()
+        self.conflicts = {c["field"]: c for c in result["preview"]["plan"]["conflicts"]}
+
+    def test_mixed_choices_are_written_once_and_win_everywhere(self):
+        self.assertEqual(set(self.conflicts), {"playcount", "lastplayed", "userrating"})
+        choices = {"playcount": 1, "lastplayed": "2026-09-13 14:30:36", "userrating": 9}
+        result = self.runtime_b.resolve_item_conflicts(
+            "movie", 99, choices,
+            expected_identity=["imdb:tt1234567"],
+            expected_versions={f: c["version"] for f, c in self.conflicts.items()},
+        )
+        self.assertEqual(result["status"], "resolved")
+        # Only the value taken from the other device is written to this Kodi, in one write.
+        self.assertEqual(self.kodi_b.writes, 1)
+        self.assertEqual((self.kodi_b.playcount, self.kodi_b.userrating), (1, 9))
+
+        self.assertEqual(self.runtime_a.sync_cycle()["status"], "committed")
+        self.assertEqual((self.kodi_a.playcount, self.kodi_a.lastplayed, self.kodi_a.userrating),
+                         (1, "2026-09-13 14:30:36", 9))
+        for runtime in (self.runtime_a, self.runtime_b, self.runtime_a):
+            after = runtime.sync_cycle()
+            self.assertEqual(after["preview"]["plan"]["conflicts"], [])
+            self.assertEqual(after["status"], "no_changes")
+
+    def test_partially_resolved_item_is_reported_as_changed(self):
+        self.runtime_b.resolve_conflict("movie", 99, "playcount", 2)
+        result = self.runtime_b.resolve_item_conflicts("movie", 99, {"playcount": 2, "userrating": 9})
+        self.assertEqual(result["status"], "changed")
+
 if __name__ == "__main__":
     unittest.main()

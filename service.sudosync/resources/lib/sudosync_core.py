@@ -162,6 +162,31 @@ def log(message, level=xbmc.LOGINFO):
 
 V2_LOGGER_NAME = "resources.lib.sudosync_v2"
 
+# Window property: a settings action changed .nfo files, so the running
+# service must drop its cached NFO identifiers (separate processes).
+NFO_CACHE_REFRESH_PROPERTY = "service.sudosync.refresh_nfo_cache"
+HOME_WINDOW_ID = 10000
+
+
+def request_nfo_cache_refresh():
+    """Ask the running service to re-read KodiBridge IDs from .nfo files."""
+    try:
+        xbmcgui.Window(HOME_WINDOW_ID).setProperty(NFO_CACHE_REFRESH_PROPERTY, "1")
+    except Exception as exc:
+        log("Cannot request NFO cache refresh: {}".format(exc), xbmc.LOGWARNING)
+
+
+def take_nfo_cache_refresh_request():
+    """Return True once if a settings action asked for an NFO cache refresh."""
+    try:
+        window = xbmcgui.Window(HOME_WINDOW_ID)
+        if window.getProperty(NFO_CACHE_REFRESH_PROPERTY) != "1":
+            return False
+        window.clearProperty(NFO_CACHE_REFRESH_PROPERTY)
+        return True
+    except Exception:
+        return False
+
 
 class KodiLogHandler(logging.Handler):
     """Route Python ``logging`` records from the v2 engine to the Kodi log.
