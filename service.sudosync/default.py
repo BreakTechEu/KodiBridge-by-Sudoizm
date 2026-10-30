@@ -88,13 +88,15 @@ def show_status():
         last_sudosync_num,
     ) if settings.get("sudosync_id_enabled") else "WYŁĄCZONE (ostatni użyty numer w sieci: {})".format(last_sudosync_num)
 
+    coverage_text = _coverage_text(status.get("kodibridge_id_coverage"))
     text = (
         "KodiBridge {version}\n\n"
         "Urządzenie: {name}\n"
         "Client ID: {cid}\n"
         "Kodi: {kodi} ({platform})\n"
         "JSON-RPC: {rpc}\n"
-        "KodiBridge ID: {sid_state}\n\n"
+        "KodiBridge ID: {sid_state}\n"
+        "{coverage}\n\n"
         "Ostatni snapshot: {when}\n"
         "Filmy: {movies}\n"
         "Odcinki: {episodes}\n\n"
@@ -109,6 +111,7 @@ def show_status():
         platform=kodi.get("platform", "—"),
         rpc=rpcv or "—",
         sid_state=sudosync_id_state,
+        coverage=coverage_text,
         when=status.get("last_snapshot_at", "—"),
         movies=counts.get("movies", 0),
         episodes=counts.get("episodes", 0),
@@ -170,6 +173,32 @@ def install_local_zip_dialog():
     if not zip_path:
         return
     install_update_from_zip_path(zip_path, show_dialogs=True)
+
+
+def _coverage_text(coverage):
+    """Describe the KodiBridge ID coverage of this Kodi's library for the status window."""
+    if not isinstance(coverage, dict):
+        return "Pokrycie KodiBridge ID: — (pojawi się po pierwszym cyklu synchronizacji)"
+    movie = coverage.get("movie") or {}
+    episode = coverage.get("episode") or {}
+    lines = ["Pokrycie KodiBridge ID: filmy {}/{}, odcinki {}/{} (sprawdzono: {})".format(
+        movie.get("with_id", 0), movie.get("total", 0),
+        episode.get("with_id", 0), episode.get("total", 0),
+        coverage.get("checked_at") or "—",
+    )]
+    problems = []
+    for key, label in (("missing", "bez ID"), ("duplicates", "zdublowane ID"),
+                       ("ambiguous", "wspólne ID zewnętrzne bez KodiBridge ID")):
+        count = int(movie.get(key) or 0) + int(episode.get(key) or 0)
+        if count:
+            problems.append("{}: {}".format(label, count))
+    if coverage.get("unreadable_nfo"):
+        problems.append("nieczytelne .nfo: {}".format(coverage["unreadable_nfo"]))
+    if problems:
+        lines.append("UWAGA – " + ", ".join(problems) + " (przykłady w kodi.log: „KodiBridge ID coverage”)")
+    else:
+        lines.append("Wszystkie pozycje mają KodiBridge ID.")
+    return "\n".join(lines)
 
 
 def main():

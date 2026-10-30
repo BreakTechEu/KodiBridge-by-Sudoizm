@@ -1446,6 +1446,28 @@ OBSOLETE_V1_STATUS_KEYS = (
 )
 
 
+def record_kodibridge_id_coverage(coverage):
+    """Store the KodiBridge ID coverage in status.json (only when it changed)."""
+    if not isinstance(coverage, dict):
+        return False
+    try:
+        status = read_local_status()
+        stored = dict(coverage)
+        previous = status.get("kodibridge_id_coverage") if isinstance(status, dict) else None
+        if isinstance(previous, dict):
+            comparable = dict(previous)
+            comparable.pop("checked_at", None)
+            if comparable == stored:
+                return False
+        stored["checked_at"] = utc_now()
+        status["kodibridge_id_coverage"] = stored
+        _write_local_json(os.path.join(_addon_profile_path(), "status.json"), status)
+        return True
+    except Exception as exc:
+        log("Cannot record KodiBridge ID coverage: {}".format(exc), xbmc.LOGDEBUG)
+        return False
+
+
 def update_local_status_from_v2(v2_result=None, published_snapshot=None, candidate_snapshot=None, error=None):
     """Update status.json immediately from v2 runtime results."""
     try:

@@ -1,3 +1,8 @@
+KodiBridge by Sudoizm 2.2.6
+===========================
+
+- Okno statusu pokazuje pokrycie KodiBridge ID biblioteki tego Kodi: ile filmów i odcinków ma KodiBridge ID, a jeśli coś jest nie tak, ile pozycji nie ma ID, ile ma zdublowane ID, ile ma wspólny identyfikator zewnętrzny (IMDb/TMDb/TVDB/Trakt) przy braku KodiBridge ID (to blokuje synchronizację) i ile plików .nfo nie dało się odczytać. Liczniki są liczone przy każdym odczycie biblioteki, także wtedy, gdy synchronizacja zatrzymała się z błędem, i zapisywane w `status.json` (`kodibridge_id_coverage`). W dzienniku Kodi pojawia się wpis „KodiBridge ID coverage” z przykładami konkretnych pozycji, powtarzany tylko po zmianie.
+
 KodiBridge by Sudoizm 2.2.5
 ===========================
 

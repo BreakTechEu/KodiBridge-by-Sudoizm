@@ -342,6 +342,120 @@ def _report_shared_external_identities(client_id, counts):
     )
 
 
+COVERAGE_MAX_EXAMPLES = 5
+_LAST_COVERAGE_REPORT = {}
+
+
+def _item_label(item):
+    label = item.get("file") or item.get("label") or item.get("title") or ""
+    if item.get("showtitle") and item.get("season") is not None and item.get("episode") is not None:
+        try:
+            return "{} S{:02d}E{:02d} [{}]".format(item["showtitle"], int(item["season"]), int(item["episode"]), label)
+        except (TypeError, ValueError):
+            pass
+    return str(label)
+
+
+def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES):
+    """Count KodiBridge (SudoSync) IDs in the raw Kodi library items.
+
+    Computed before the snapshot is built, so it is available even when the
+    snapshot cannot be built. Per media type: ``total``, ``with_id``,
+    ``missing`` (no KodiBridge ID), ``duplicates`` (one KodiBridge ID on several
+    items that are not parts of one multi-episode file) and ``ambiguous``
+    (an IMDb/TMDb/TVDB/Trakt ID shared by several items when at least one of
+    them has no KodiBridge ID - the case that stops synchronization), each
+    with a few examples.
+    """
+    result = {}
+    for media_type, source in (("movie", movies), ("episode", episodes)):
+        total = with_id = 0
+        missing, by_sid, ext_owners = [], {}, {}
+        for item in source if isinstance(source, list) else []:
+            if not isinstance(item, dict):
+                continue
+            total += 1
+            try:
+                ids = identifiers_from_kodi_item(item)
+            except ValueError:
+                ids = {}
+            label = _item_label(item)
+            sid = ids.get("sudosync")
+            if sid:
+                with_id += 1
+                by_sid.setdefault(sid, []).append((item.get("season"), item.get("episode"), label))
+            else:
+                missing.append(label)
+            for kind, value in ids.items():
+                if kind != "sudosync":
+                    ext_owners.setdefault((kind, value), []).append((bool(sid), label))
+        duplicates = []
+        for sid, entries in sorted(by_sid.items()):
+            if len(entries) < 2:
+                continue
+            keys = [(season, episode) for season, episode, _ in entries]
+            multi_episode_file = (
+                media_type == "episode"
+                and all(season is not None and episode is not None for season, episode in keys)
+                and len(set(keys)) == len(keys)
+            )
+            if not multi_episode_file:
+                duplicates.append("{} ({})".format(sid, "; ".join(label for _, _, label in entries[:3])))
+        ambiguous = []
+        for (kind, value), owners in sorted(ext_owners.items()):
+            if len(owners) > 1 and not all(has_sid for has_sid, _ in owners):
+                ambiguous.append("{}:{} ({})".format(kind, value, "; ".join(label for _, label in owners[:3])))
+        result[media_type] = {
+            "total": total,
+            "with_id": with_id,
+            "missing": len(missing),
+            "duplicates": len(duplicates),
+            "ambiguous": len(ambiguous),
+            "examples": {
+                "missing": sorted(missing)[:max_examples],
+                "duplicates": duplicates[:max_examples],
+                "ambiguous": ambiguous[:max_examples],
+            },
+        }
+    return result
+
+
+def coverage_has_problems(coverage):
+    return any(
+        isinstance(coverage.get(t), dict)
+        and (coverage[t].get("missing") or coverage[t].get("duplicates") or coverage[t].get("ambiguous"))
+        for t in ("movie", "episode")
+    ) or bool(coverage.get("unreadable_nfo"))
+
+
+def report_kodibridge_id_coverage(client_id, coverage):
+    """Log the coverage once per change: WARNING with examples when incomplete."""
+    key = repr(sorted((t, sorted((k, v) for k, v in coverage.get(t, {}).items() if k != "examples"))
+                      for t in ("movie", "episode"))) + repr(coverage.get("unreadable_nfo"))
+    if _LAST_COVERAGE_REPORT.get(client_id) == key:
+        return
+    _LAST_COVERAGE_REPORT[client_id] = key
+    lines = []
+    for media_type, name in (("movie", "movies"), ("episode", "episodes")):
+        c = coverage.get(media_type) or {}
+        lines.append("{}: {}/{} with KodiBridge ID, missing {}, duplicate IDs {}, ambiguous external IDs {}".format(
+            name, c.get("with_id", 0), c.get("total", 0), c.get("missing", 0), c.get("duplicates", 0),
+            c.get("ambiguous", 0)))
+    if coverage.get("unreadable_nfo"):
+        lines.append("unreadable .nfo files: {}".format(coverage["unreadable_nfo"]))
+    if not coverage_has_problems(coverage):
+        logger.info("KodiBridge ID coverage complete: %s", "; ".join(lines))
+        return
+    examples = []
+    for media_type in ("movie", "episode"):
+        ex = (coverage.get(media_type) or {}).get("examples") or {}
+        for kind in ("missing", "duplicates", "ambiguous"):
+            for entry in ex.get(kind) or []:
+                examples.append("{} {} {}".format(media_type, kind, entry))
+    logger.warning("KodiBridge ID coverage incomplete: %s. Examples: %s",
+                   "; ".join(lines), " | ".join(examples) or "-")
+
+
 def _identity_keys(media_type, ids):
     """Return every valid typed alias for conservative snapshot matching."""
     aliases = []

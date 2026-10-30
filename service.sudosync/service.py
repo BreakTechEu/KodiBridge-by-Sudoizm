@@ -30,6 +30,7 @@ from resources.lib.sudosync_core import (
     log,
     maybe_check_github_update_daily,
     read_shared_config,
+    record_kodibridge_id_coverage,
     take_nfo_cache_refresh_request,
     update_local_status_from_v2,
 )
@@ -209,6 +210,13 @@ def _live_retry_delay_seconds(result, live_poll):
     return 0
 
 
+def _record_coverage(v2_runtime):
+    """Store the KodiBridge ID coverage of the last library read in status.json."""
+    coverage = getattr(getattr(v2_runtime, "sync_engine", None), "last_coverage", None)
+    if isinstance(coverage, dict):
+        record_kodibridge_id_coverage(coverage)
+
+
 def _execute_integrated_live_cycle(
     v2_runtime,
     monitor,
@@ -217,7 +225,28 @@ def _execute_integrated_live_cycle(
     collect_local,
     receiver_notification_delay_ms=0,
 ):
-    """Run one LIVE sync cycle with the v2 engine (the only synchronization engine)."""
+    """Run one LIVE sync cycle with the v2 engine (the only synchronization engine).
+
+    The KodiBridge ID coverage is recorded after every cycle, also a failed
+    one: the library is read before the snapshot is built.
+    """
+    try:
+        return _run_live_cycle(
+            v2_runtime, monitor, show_notification, suppress_local_changes,
+            collect_local, receiver_notification_delay_ms,
+        )
+    finally:
+        _record_coverage(v2_runtime)
+
+
+def _run_live_cycle(
+    v2_runtime,
+    monitor,
+    show_notification,
+    suppress_local_changes,
+    collect_local,
+    receiver_notification_delay_ms=0,
+):
     if v2_runtime is None:
         log("V2 runtime unavailable; LIVE sync cycle skipped.", xbmc.LOGERROR)
         update_local_status_from_v2(error="v2_unavailable")
@@ -431,6 +460,7 @@ def _run_service():
                     base_client_id=init.get("base_client_id"),
                     init_completed=bool(init.get("completed", False)),
                 )
+                _record_coverage(v2_runtime)
                 last_snapshot = time.time()
         except Exception as exc:
             log("Startup synchronization failed: {}".format(exc), xbmc.LOGERROR)
@@ -592,6 +622,7 @@ def _run_service():
                                             log("V2 published local library change during playback.", xbmc.LOGINFO)
                                 except Exception as exc:
                                     log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
+                                _record_coverage(v2_runtime)
                             # Dirty flags stay set: remote changes are still applied
                             # by the regular cycle after playback stops.
                             if published_ok:
@@ -673,6 +704,7 @@ def _run_service():
                             base_client_id=init.get("base_client_id"),
                             init_completed=bool(init.get("completed", False)),
                         )
+                        _record_coverage(v2_runtime)
                         last_snapshot = time.time()
                         if (
                             getattr(monitor, "dirty_seq", 0) == cycle_dirty_seq

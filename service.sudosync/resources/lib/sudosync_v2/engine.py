@@ -14,11 +14,15 @@ commit new snapshots.
 """
 from __future__ import absolute_import
 
+import logging
+
 from .kodi_rpc import OperationAborted, invoke_with_abort, is_aborted
 from .planning import build_sync_plan
 from .initialization import build_initialization_plan
 from .identity import matching_kinds
-from .snapshot import build_snapshot
+from .snapshot import build_snapshot, kodibridge_id_coverage, report_kodibridge_id_coverage
+
+logger = logging.getLogger(__name__)
 
 
 class SyncEngineError(RuntimeError):
@@ -63,6 +67,18 @@ class SyncEngine(object):
         self._abort_requested = abort_requested
         # bool or zero-argument callable (the network setting may change at runtime)
         self._sudosync_only = sudosync_only
+        # KodiBridge ID coverage of the last library read (see snapshot.kodibridge_id_coverage)
+        self.last_coverage = None
+
+    def _record_coverage(self, movies, episodes):
+        """Store KodiBridge ID coverage of the library just read (never fails the cycle)."""
+        try:
+            coverage = kodibridge_id_coverage(movies, episodes)
+            coverage["unreadable_nfo"] = len(list(getattr(self._kodi, "skipped_nfos", []) or []))
+            self.last_coverage = coverage
+            report_kodibridge_id_coverage(self._client_id, coverage)
+        except Exception as exc:
+            logger.debug("KodiBridge ID coverage not computed: %s", exc)
 
     def _identity_kinds(self):
         flag = self._sudosync_only() if callable(self._sudosync_only) else self._sudosync_only
@@ -104,6 +120,8 @@ class SyncEngine(object):
             except OperationAborted as exc:
                 episodes = exc.partial_items
                 raise
+
+            self._record_coverage(movies, episodes)
 
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before loading previous snapshot")
@@ -211,6 +229,7 @@ class SyncEngine(object):
             except OperationAborted as exc:
                 episodes = exc.partial_items
                 raise
+            self._record_coverage(movies, episodes)
             if is_aborted(abort):
                 raise OperationAborted("Local snapshot build aborted before loading previous snapshot")
             previous = invoke_with_abort(self._load_previous_local, abort)
