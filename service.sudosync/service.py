@@ -188,6 +188,10 @@ def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_cl
 
 # Short retry delay when a sync cycle is busy without an error or block.
 LIVE_BUSY_RETRY_SECONDS = 10
+# How often the loop re-reads system/config.json from the NAS. Reading it every
+# 2 s kept a handle open often enough to block replacing the file (e.g. while
+# KodiBridge IDs were being assigned from settings).
+SHARED_CONFIG_REFRESH_SECONDS = 30
 
 
 def _live_retry_delay_seconds(result, live_poll):
@@ -391,6 +395,8 @@ def _run_service():
         conflict_failures = {}
         # Earliest retry of a failed publish during playback.
         playback_retry_not_before = 0.0
+        shared_cache = None
+        shared_read_at = 0.0
         report_no_conflicts = False
         local_client_id = getattr(v2_runtime, "client_id", None)
 
@@ -473,7 +479,10 @@ def _run_service():
                         break
                 snapshot_interval = settings["interval_seconds"]
                 live_poll = settings.get("live_poll_seconds", 60)
-                shared = read_shared_config(settings["base_path"])
+                if shared_cache is None or (now - shared_read_at) >= SHARED_CONFIG_REFRESH_SECONDS:
+                    shared_cache = read_shared_config(settings["base_path"])
+                    shared_read_at = now
+                shared = shared_cache
                 init = shared.get("initialization") or {}
                 live_active = bool(init.get("completed", False) and settings.get("live_sync_enabled", True))
                 if take_nfo_cache_refresh_request() and v2_runtime is not None:

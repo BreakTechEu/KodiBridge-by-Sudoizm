@@ -1326,6 +1326,29 @@ def _write_vfs_bytes(path, payload):
     return written
 
 
+# Windows refuses to replace a file on an SMB share while another handle has it
+# open (e.g. the background service reading system/config.json), reporting
+# "access denied". Such collisions are short, so the replace is retried.
+UNC_REPLACE_ATTEMPTS = 10
+UNC_REPLACE_DELAY_MS = 200
+
+
+def _replace_with_retry(source, target, attempts=None, delay_ms=None):
+    attempts = UNC_REPLACE_ATTEMPTS if attempts is None else attempts
+    delay_ms = UNC_REPLACE_DELAY_MS if delay_ms is None else delay_ms
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            if attempt:
+                log("Replaced {} after {} retries (file was busy).".format(target, attempt), xbmc.LOGDEBUG)
+            return
+        except OSError as exc:
+            if attempt == attempts - 1:
+                raise
+            log("Replace of {} refused ({}); retrying.".format(target, exc), xbmc.LOGDEBUG)
+            xbmc.sleep(int(delay_ms * (attempt + 1)))
+
+
 def _write_vfs_json(path, data):
     payload = json.dumps(data, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
     unc = _core_win_unc(path)
@@ -1334,7 +1357,7 @@ def _write_vfs_json(path, data):
         with open(tmp_unc, "wb") as f:
             f.write(payload.encode("utf-8"))
             f.flush()
-        os.replace(tmp_unc, unc)
+        _replace_with_retry(tmp_unc, unc)
         return
     tmp = path + ".new"
     bak = path + ".bak"

@@ -1,3 +1,8 @@
+KodiBridge by Sudoizm 2.2.5
+===========================
+
+- Naprawiono przerywanie nadawania KodiBridge ID z błędem „Nie udało się zapisać licznika KodiBridge ID na NAS: [WinError 5] Odmowa dostępu … config.json.new -> config.json” (Windows, udział SMB). Usługa w tle odczytywała `system/config.json` co około 2 sekundy, a Windows odmawia podmiany pliku, który jest w tej chwili otwarty. Podmiana jest teraz ponawiana do 10 razy z rosnącą przerwą, a usługa odczytuje ten plik najwyżej raz na 30 sekund. Przerwanie nie powodowało zdublowanych numerów: licznik jest rezerwowany przed zmianą pliku .nfo.
+
 KodiBridge by Sudoizm 2.2.4
 ===========================
 
