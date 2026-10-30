@@ -246,14 +246,18 @@ class V2RuntimeComponents(object):
             "applied_count": len(changes),
         }
 
-    def resolve_conflict(self, media_type, kodi_id, field, value, abort_requested=None):
+    def resolve_conflict(self, media_type, kodi_id, field, value, abort_requested=None,
+                         expected_identity=None, expected_version=None):
         """Apply the user's choice for one concurrent-edit conflict and publish it.
 
         The chosen value is written to this Kodi (when it differs from the local
         value) through the guarded transaction runner and published with a
         version newer than every conflicting one, so the regular sync carries it
         to all other Kodi devices. The conflict is re-read from a fresh preview;
-        if it no longer exists, nothing is written.
+        if it no longer exists, nothing is written. When ``expected_identity`` /
+        ``expected_version`` describe the conflict shown to the user and the fresh
+        one differs (another item under this Kodi ID, or a newer edit), nothing
+        is written and ``changed`` is returned so the user can be asked again.
         """
         startup = self.start(abort_requested=abort_requested)
         if startup["status"] != "ready":
@@ -271,6 +275,13 @@ class V2RuntimeComponents(object):
                 break
         if conflict is None:
             return {"status": "not_found", "published_snapshot_path": None}
+        if expected_identity is not None and sorted(expected_identity) != sorted(conflict.get("identity") or []):
+            return {"status": "changed", "reason": "identity", "published_snapshot_path": None}
+        if expected_version is not None and (
+            int(expected_version.get("lc", -1)) != int(conflict["version"]["lc"])
+            or int(expected_version.get("seq", -1)) != int(conflict["version"]["seq"])
+        ):
+            return {"status": "changed", "reason": "version", "published_snapshot_path": None}
         if value not in [option.get("value") for option in conflict.get("values") or []]:
             raise V2RuntimeError("Chosen value is not one of the conflicting values")
 

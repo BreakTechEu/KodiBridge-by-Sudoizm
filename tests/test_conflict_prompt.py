@@ -73,7 +73,10 @@ class ConflictDialogTests(unittest.TestCase):
         self.dialog.select.return_value = 1
         resolved = conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], set(), LOCAL)
         self.assertEqual(resolved, 1)
-        self.runtime.resolve_conflict.assert_called_once_with("movie", 99, "playcount", 1, abort_requested=None)
+        self.runtime.resolve_conflict.assert_called_once_with(
+            "movie", 99, "playcount", 1, abort_requested=None,
+            expected_identity=["imdb:tt1234567"], expected_version={"lc": 0, "seq": 0},
+        )
         heading, options = self.dialog.select.call_args[0]
         self.assertIn("Film (2020)", heading)
         self.assertIn("liczba odtworzeń", heading)
@@ -100,8 +103,76 @@ class ConflictDialogTests(unittest.TestCase):
         self.assertEqual(len(dismissed), 1)
 
     def test_no_dialog_while_video_is_playing(self):
-        conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], set(), LOCAL, is_playing=lambda: True)
+        conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], set(), LOCAL, is_busy=lambda: True)
         self.dialog.select.assert_not_called()
+
+    def test_busy_state_is_checked_before_every_dialog(self):
+        # A library scan starting after the first answer stops further dialogs.
+        busy = [False]
+        self.dialog.select.side_effect = lambda *a: busy.__setitem__(0, True) or 0
+        conflicts = [make_conflict(kodi_id=99), make_conflict(kodi_id=100)]
+        conflicts_module.prompt_and_resolve(self.runtime, conflicts, set(), LOCAL, is_busy=lambda: busy[0])
+        self.assertEqual(self.dialog.select.call_count, 1)
+
+    def test_lease_is_refreshed_while_dialog_is_open_and_before_writing(self):
+        import time as _time
+        calls = []
+
+        def keep_alive():
+            calls.append(1)
+            return True
+
+        def slow_select(*args):
+            _time.sleep(0.35)
+            return 1
+
+        self.dialog.select.side_effect = slow_select
+        conflicts_module.prompt_and_resolve(
+            self.runtime, [make_conflict()], set(), LOCAL, keep_alive=keep_alive, keep_alive_interval=0.05,
+        )
+        self.assertGreaterEqual(len(calls), 3)  # background refreshes + one before writing
+        self.runtime.resolve_conflict.assert_called_once()
+
+    def test_lost_lease_prevents_writing(self):
+        self.dialog.select.return_value = 1
+        resolved = conflicts_module.prompt_and_resolve(
+            self.runtime, [make_conflict()], set(), LOCAL, keep_alive=lambda: False,
+        )
+        self.assertEqual(resolved, 0)
+        self.runtime.resolve_conflict.assert_not_called()
+
+    def test_failed_resolution_is_not_postponed_until_retries_run_out(self):
+        self.dialog.select.return_value = 1
+        self.runtime.resolve_conflict.side_effect = RuntimeError("NAS unavailable")
+        dismissed, failures = set(), {}
+        with patch.object(conflicts_module, "_record_error") as record_error:
+            for _ in range(conflicts_module.MAX_RESOLVE_FAILURES - 1):
+                conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], dismissed, LOCAL, failures=failures)
+                self.assertEqual(dismissed, set())
+            conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], dismissed, LOCAL, failures=failures)
+        self.assertEqual(len(dismissed), 1)
+        self.assertEqual(record_error.call_count, conflicts_module.MAX_RESOLVE_FAILURES)
+        message = self.dialog.notification.call_args[0][1]
+        self.assertIn("Błąd zapisu: 1", message)
+
+    def test_changed_conflict_is_reported_and_offered_again(self):
+        self.dialog.select.return_value = 1
+        self.runtime.resolve_conflict.return_value = {"status": "changed"}
+        dismissed = set()
+        self.assertEqual(conflicts_module.prompt_and_resolve(self.runtime, [make_conflict()], dismissed, LOCAL), 0)
+        self.assertEqual(dismissed, set())
+        self.assertIn("Nieaktualne", self.dialog.notification.call_args[0][1])
+
+    def test_summary_counts_saved_and_outdated_choices(self):
+        self.dialog.select.return_value = 1
+        self.runtime.resolve_conflict.side_effect = [{"status": "not_found"}, {"status": "resolved"}]
+        conflicts_module.prompt_and_resolve(
+            self.runtime, [make_conflict(kodi_id=99), make_conflict(kodi_id=100)], set(), LOCAL,
+        )
+        self.assertEqual(
+            self.dialog.notification.call_args[0][1],
+            "Zapisano wybór: 1; nieaktualne, bez zapisu: 1.",
+        )
 
     def test_deferred_resolution_stops_and_asks_again_later(self):
         self.dialog.select.return_value = 0
@@ -157,7 +228,9 @@ class ServiceConflictSchedulingTests(unittest.TestCase):
         live_cycle = MagicMock(return_value=cycle_result)
         prompts = []
 
-        def fake_prompt(rt, items, dismissed, local_id, is_playing=None, abort_requested=None):
+        def fake_prompt(rt, items, dismissed, local_id, is_busy=None, abort_requested=None,
+                        keep_alive=None, failures=None):
+            assert callable(keep_alive) and isinstance(failures, dict)
             prompts.append((iteration[0], [c["kodi_id"] for c in items], local_id))
             for c in items:
                 dismissed.add(sudosync_service_conflict_key(c))

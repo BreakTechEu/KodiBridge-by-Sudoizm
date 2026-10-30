@@ -110,5 +110,98 @@ class ConflictResolutionTests(unittest.TestCase):
         self.assertEqual(_playcount_conflicts(self.runtime_b.sync_cycle())[0]["local_value"], 2)
 
 
+class ConflictResolutionGuardTests(unittest.TestCase):
+    setUp = ConflictResolutionTests.setUp
+
+    def test_changed_version_is_not_applied(self):
+        result = self.runtime_b.resolve_conflict(
+            "movie", 99, "playcount", 1, expected_identity=["imdb:tt1234567"], expected_version={"lc": 3, "seq": 1},
+        )
+        self.assertEqual(result["status"], "changed")
+        self.assertEqual(self.kodi_b.writes, 0)
+
+    def test_other_item_under_same_kodi_id_is_not_applied(self):
+        result = self.runtime_b.resolve_conflict(
+            "movie", 99, "playcount", 1, expected_identity=["imdb:tt7654321"], expected_version={"lc": 0, "seq": 0},
+        )
+        self.assertEqual(result["status"], "changed")
+        self.assertEqual(self.kodi_b.writes, 0)
+
+    def test_matching_expectation_is_applied(self):
+        result = self.runtime_b.resolve_conflict(
+            "movie", 99, "playcount", 1, expected_identity=["imdb:tt1234567"], expected_version={"lc": 0, "seq": 0},
+        )
+        self.assertEqual(result["status"], "resolved")
+        self.assertEqual(self.kodi_b.playcount, 1)
+
+
+class TwoPartEpisodeKodi(object):
+    """Two parts of one TV episode: same TVDB ID, different KodiBridge IDs."""
+
+    def __init__(self, playcounts):
+        self.playcounts = dict(playcounts)
+        self.playing = False
+        self.writes = 0
+
+    def is_video_playing(self):
+        return self.playing
+
+    def _item(self, episode_id):
+        return {
+            "episodeid": episode_id,
+            "title": "Finale part {}".format(episode_id - 200),
+            "uniqueid": {"tvdb": "777", "sudosync": "MAZURY-00090{}".format(episode_id - 200)},
+            "playcount": self.playcounts[episode_id],
+            "lastplayed": "",
+            "resume": {"position": 0.0, "total": 0.0},
+            "userrating": 0,
+        }
+
+    def get_movies(self):
+        return []
+
+    def get_episodes(self):
+        return [self._item(i) for i in sorted(self.playcounts)]
+
+    def get_episode_details(self, episode_id):
+        return self._item(episode_id)
+
+    def set_episode_details(self, episode_id, changes):
+        self.writes += 1
+        if "playcount" in changes:
+            self.playcounts[episode_id] = changes["playcount"]
+        return "OK"
+
+
+class MultiPartConflictTests(unittest.TestCase):
+    def test_resolution_touches_only_the_chosen_part(self):
+        backend = InMemorySharedBackend()
+        lock_factory = ProcessLocalLockFactory()
+        kodi_a = TwoPartEpisodeKodi({201: 1, 202: 5})
+        kodi_b = TwoPartEpisodeKodi({201: 2, 202: 5})
+        runtime_a = build_v2_runtime(kodi_a, backend, "smb://nas/.SudoSync", lock_factory, CLIENT_A, "Salon",
+                                     sudosync_only=True)
+        runtime_b = build_v2_runtime(kodi_b, backend, "smb://nas/.SudoSync", lock_factory, CLIENT_B, "Sypialnia",
+                                     sudosync_only=True)
+        runtime_a.sync_cycle()
+        conflicts = _playcount_conflicts(runtime_b.sync_cycle())
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(conflicts[0]["kodi_id"], 201)
+
+        result = runtime_b.resolve_conflict("episode", 201, "playcount", 1,
+                                            expected_identity=conflicts[0]["identity"],
+                                            expected_version=conflicts[0]["version"])
+        self.assertEqual(result["status"], "resolved")
+        self.assertEqual(kodi_b.playcounts, {201: 1, 202: 5})
+        parts = {r["ids"]["sudosync"]: r for r in result["snapshot"]["episodes"]}
+        self.assertEqual(parts["mazury-000901"]["state"]["playcount"], 1)
+        self.assertEqual(parts["mazury-000901"]["versions"]["playcount"]["lc"], 1)
+        self.assertEqual(parts["mazury-000902"]["versions"]["playcount"]["lc"], 0)
+
+        runtime_a.sync_cycle()
+        self.assertEqual(kodi_a.playcounts, {201: 1, 202: 5})
+        self.assertEqual(_playcount_conflicts(runtime_b.sync_cycle()), [])
+
+
 if __name__ == "__main__":
     unittest.main()

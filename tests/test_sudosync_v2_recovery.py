@@ -178,7 +178,7 @@ class TestRecoveryRunner(unittest.TestCase):
         self.assertEqual(self.coordinator.released, [SESSION])
         self.assertEqual(self.kodi.writes, 0)
 
-    def test_committed_journal_is_verified_before_marker_release(self):
+    def test_committed_journal_releases_marker_without_writes(self):
         self.journals = [journal(status="committed", item_status="verified")]
         self.kodi.value = 2
         result = self.runner.recover_on_start(CLIENT_A)
@@ -203,6 +203,63 @@ class TestRecoveryRunner(unittest.TestCase):
         self.assertFalse(self.coordinator.exists)
         self.assertEqual(self.kodi.writes, 0)
 
+
+class TwoMovieKodi(object):
+    """Kodi with two movies; writes to movie 6 can be made to fail once."""
+
+    IMDB = {5: "tt1234567", 6: "tt7654321"}
+
+    def __init__(self, values):
+        self.values = dict(values)
+        self.playing = False
+        self.writes = []
+        self.fail_next_write = False
+
+    def is_video_playing(self):
+        return self.playing
+
+    def get_movie_details(self, kodi_id):
+        return dict(state(self.values[kodi_id]), movieid=kodi_id, imdbnumber=self.IMDB[kodi_id])
+
+    def set_movie_details(self, kodi_id, changes):
+        self.writes.append(kodi_id)
+        if self.fail_next_write:
+            self.fail_next_write = False
+            raise IOError("simulated Kodi stop")
+        self.values[kodi_id] = changes["playcount"]
+        return "OK"
+
+
+class TestRecoveryAfterPartialSkip(unittest.TestCase):
+    def test_crash_after_skipping_first_item_resumes_with_remaining_items(self):
+        stored = journal()
+        second = deepcopy(stored["items"][0])
+        second.update({"kodi_id": 6, "identity": ["imdb:tt7654321"]})
+        stored["items"].append(second)
+        journals = [stored]
+        coordinator = Coordinator()
+        # Movie 5 changed since the interruption (9: neither before 0 nor after 2);
+        # movie 6 still holds the before-value and must be applied.
+        kodi = TwoMovieKodi({5: 9, 6: 0})
+        kodi.fail_next_write = True
+        runner = RecoveryRunner(
+            kodi, coordinator,
+            lambda session_id: deepcopy(journals[-1]),
+            lambda value: journals.append(deepcopy(value)),
+            clock=lambda: "2026-10-11T12:00:00Z",
+        )
+        with self.assertRaises(TransactionError):
+            runner.recover_on_start(CLIENT_A)
+        self.assertTrue(coordinator.exists)
+        self.assertEqual(journals[-1]["items"][0]["status"], "superseded")
+
+        result = runner.recover_on_start(CLIENT_A)
+        self.assertEqual(result["status"], "recovered")
+        self.assertFalse(coordinator.exists)
+        self.assertEqual(kodi.values, {5: 9, 6: 2})
+        self.assertNotIn(5, kodi.writes)
+        self.assertEqual(journals[-1]["status"], "committed")
+        self.assertEqual([i["status"] for i in journals[-1]["items"]], ["superseded", "verified"])
 
 if __name__ == "__main__":
     unittest.main()

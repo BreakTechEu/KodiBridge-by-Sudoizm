@@ -387,6 +387,9 @@ def _run_service():
         # conflicts postponed by the user are not asked again until Kodi restarts.
         pending_conflicts = []
         conflict_dismissed = set()
+        conflict_failures = {}
+        # Earliest retry of a failed publish during playback.
+        playback_retry_not_before = 0.0
         report_no_conflicts = False
         local_client_id = getattr(v2_runtime, "client_id", None)
 
@@ -550,14 +553,16 @@ def _run_service():
                             and event_due
                             and current_seq != playback_published_seq
                         )
-                        if (poll_due or user_event_due) and not monitor.scanning:
+                        if (poll_due or user_event_due) and not monitor.scanning and now >= playback_retry_not_before:
+                            published_ok = False
                             if v2_runtime is not None:
                                 try:
                                     v2_pub = v2_runtime.publish_local_snapshot(
                                         abort_requested=monitor.abortRequested,
                                         suppress_local_changes=False,
                                     )
-                                    if isinstance(v2_pub, dict) and v2_pub.get("published_snapshot_path"):
+                                    published_ok = isinstance(v2_pub, dict) and v2_pub.get("status") in ("published", "unchanged")
+                                    if published_ok and v2_pub.get("published_snapshot_path"):
                                         update_local_status_from_v2(
                                             published_snapshot=v2_pub.get("snapshot"),
                                             v2_result=v2_pub,
@@ -568,8 +573,13 @@ def _run_service():
                                     log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
                             # Dirty flags stay set: remote changes are still applied
                             # by the regular cycle after playback stops.
-                            playback_published_seq = current_seq
-                            last_live_poll = time.time()
+                            if published_ok:
+                                playback_published_seq = current_seq
+                                last_live_poll = time.time()
+                            else:
+                                # Not published: keep the event pending and retry
+                                # shortly instead of waiting for the next poll.
+                                playback_retry_not_before = time.time() + LIVE_BUSY_RETRY_SECONDS
                     elif (event_due or poll_due) and not monitor.scanning and time.time() >= live_retry_not_before:
                         cycle_dirty_seq = getattr(monitor, "dirty_seq", 0)
                         cycle_dirty_since = monitor.dirty_since
@@ -620,9 +630,13 @@ def _run_service():
                                 monitor.user_update_dirty = False
                     if pending_conflicts and v2_runtime is not None and not monitor.scanning and not _is_playing_video():
                         to_ask, pending_conflicts = pending_conflicts, []
+                        lease_path = base_for_lease
                         if prompt_and_resolve(
                             v2_runtime, to_ask, conflict_dismissed, local_client_id,
-                            is_playing=_is_playing_video, abort_requested=monitor.abortRequested,
+                            is_busy=lambda: _is_playing_video() or bool(monitor.scanning),
+                            abort_requested=monitor.abortRequested,
+                            keep_alive=lambda: refresh_network_active_kodi_lease(lease_path),
+                            failures=conflict_failures,
                         ):
                             # Apply/publish the rest of the state right away.
                             last_live_poll = 0.0

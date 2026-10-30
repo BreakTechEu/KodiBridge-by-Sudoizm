@@ -1,3 +1,15 @@
+KodiBridge by Sudoizm 2.2.4
+===========================
+
+- Poprawki po audycie zewnętrznym 2.2.3 (Gemini i ChatGPT):
+  - Okno wyboru przy konflikcie nie wstrzymuje już podtrzymywania sesji aktywnego Kodi: dzierżawa w `active_kodi_lock.json` jest odświeżana w tle co 30 s, dopóki okno jest otwarte, i jeszcze raz przed zapisem. Gdy dzierżawa zostanie utracona, wybór nie jest zapisywany.
+  - Wybór jest stosowany tylko do konfliktu, który użytkownik widział (ta sama pozycja i ta sama wersja). Jeśli w międzyczasie konflikt się zmienił, nic nie jest zapisywane, a pytanie wraca w następnym cyklu.
+  - Błąd zapisu wyboru nie odkłada już konfliktu do ponownego uruchomienia Kodi: pojawia się komunikat, błąd trafia do okna statusu, a pytanie wraca w kolejnym cyklu (po trzech nieudanych próbach odkładane do ponownego uruchomienia). Powiadomienie końcowe podaje osobno zapisane, nieaktualne i nieudane wybory.
+  - Przed każdym kolejnym oknem konfliktu sprawdzane jest także skanowanie biblioteki, nie tylko odtwarzanie.
+  - Nieudana publikacja zmiany statusu lub oceny w trakcie odtwarzania jest ponawiana po 10 s; wcześniej czekała do kolejnego okresowego zapisu.
+  - Błąd zapisu do dziennika Kodi nie może przerwać pracy silnika synchronizacji.
+- Testy: odzyskiwanie po awarii w trakcie pomijania jednej z kilku pozycji, konflikt dla odcinka w dwóch częściach ze wspólnym zewnętrznym ID, podtrzymanie dzierżawy podczas okna, zmiana konfliktu w trakcie wyboru, ponowienie nieudanej publikacji.
+
 KodiBridge by Sudoizm 2.2.3
 ===========================
 

@@ -171,19 +171,20 @@ class KodiLogHandler(logging.Handler):
     """
 
     def emit(self, record):
+        # A logging failure must never interrupt the synchronization engine.
         try:
             message = self.format(record)
+            if record.levelno >= logging.ERROR:
+                level = xbmc.LOGERROR
+            elif record.levelno >= logging.WARNING:
+                level = xbmc.LOGWARNING
+            elif record.levelno >= logging.INFO:
+                level = xbmc.LOGINFO
+            else:
+                level = xbmc.LOGDEBUG
+            log(message, level)
         except Exception:
-            return
-        if record.levelno >= logging.ERROR:
-            level = xbmc.LOGERROR
-        elif record.levelno >= logging.WARNING:
-            level = xbmc.LOGWARNING
-        elif record.levelno >= logging.INFO:
-            level = xbmc.LOGINFO
-        else:
-            level = xbmc.LOGDEBUG
-        log(message, level)
+            pass
 
 
 def install_v2_log_bridge(logger_name=V2_LOGGER_NAME):

@@ -32,7 +32,7 @@ SETTINGS = {
 
 
 class PlaybackUserUpdatePublishTests(unittest.TestCase):
-    def _run(self, events, iterations):
+    def _run(self, events, iterations, publish_side_effect=None):
         """Run the service loop while a video plays.
 
         events maps a loop iteration number (1-based) to notifications that
@@ -63,6 +63,8 @@ class PlaybackUserUpdatePublishTests(unittest.TestCase):
         runtime.publish_local_snapshot.return_value = {
             "status": "published", "published_snapshot_path": "x", "snapshot": {},
         }
+        if publish_side_effect is not None:
+            runtime.publish_local_snapshot.side_effect = publish_side_effect
         live_cycle = MagicMock(return_value={"busy": False, "applied_items": 0})
         fire(1)
         with patch("resources.lib.sudosync_bootstrap.run_bootstrap", return_value=True), \
@@ -109,6 +111,23 @@ class PlaybackUserUpdatePublishTests(unittest.TestCase):
         _, runtime, _ = self._run({2: ["Player.OnStop"]}, iterations=5)
         runtime.publish_local_snapshot.assert_not_called()
 
+
+    def test_failed_publish_is_retried_shortly_and_then_marked_done(self):
+        ok = {"status": "published", "published_snapshot_path": "x", "snapshot": {}}
+        # 1st attempt fails (NAS hiccup), 2nd succeeds; nothing more afterwards.
+        _, runtime, _ = self._run(
+            {2: ["VideoLibrary.OnUpdate"]}, iterations=10,
+            publish_side_effect=[IOError("NAS unavailable"), ok, ok, ok],
+        )
+        self.assertEqual(runtime.publish_local_snapshot.call_count, 2)
+
+    def test_deferred_publish_is_retried(self):
+        ok = {"status": "published", "published_snapshot_path": "x", "snapshot": {}}
+        _, runtime, _ = self._run(
+            {2: ["VideoLibrary.OnUpdate"]}, iterations=10,
+            publish_side_effect=[{"status": "deferred", "snapshot": None}, ok, ok],
+        )
+        self.assertEqual(runtime.publish_local_snapshot.call_count, 2)
 
 if __name__ == "__main__":
     unittest.main()

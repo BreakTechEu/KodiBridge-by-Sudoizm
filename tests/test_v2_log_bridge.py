@@ -103,5 +103,14 @@ class KodiLogBridgeTests(unittest.TestCase):
         self.assertNotIn("secret", messages[2])
 
 
+    def test_failing_kodi_log_never_breaks_the_caller(self):
+        sudosync_core.install_v2_log_bridge()
+        child = logging.getLogger(sudosync_core.V2_LOGGER_NAME + ".engine")
+        fake_xbmc = MagicMock()
+        fake_xbmc.log.side_effect = RuntimeError("Kodi log unavailable")
+        with patch.object(sudosync_core, "xbmc", fake_xbmc):
+            child.warning("still running")  # must not raise
+        fake_xbmc.log.assert_called_once()
+
 if __name__ == "__main__":
     unittest.main()
