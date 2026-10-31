@@ -201,6 +201,20 @@ def _coverage_text(coverage):
     return "\n".join(lines)
 
 
+# Number of .nfo files changed by the current settings action (assign or roll
+# back KodiBridge IDs); the service re-reads NFO identifiers only if it is > 0.
+_NFO_CHANGES = {"count": 0}
+
+
+def _note_nfo_changes(result, keys=("movies", "episodes")):
+    if not isinstance(result, dict):
+        return
+    try:
+        _NFO_CHANGES["count"] += sum(int(result.get(key) or 0) for key in keys)
+    except (TypeError, ValueError):
+        _NFO_CHANGES["count"] += 1  # unknown amount: assume something changed
+
+
 def main():
     install_v2_log_bridge()
     action = sys.argv[1].lower() if len(sys.argv) > 1 else "status"
@@ -230,7 +244,9 @@ def main():
             from resources.lib.sudosync_conflicts import request_resolution
             request_resolution()
             xbmcgui.Dialog().notification(
-                "KodiBridge", "Sprawdzam konflikty zmian…", xbmcgui.NOTIFICATION_INFO, 4000,
+                "KodiBridge",
+                "Zlecono sprawdzenie konfliktów. Postęp w rogu ekranu; przy dużej bibliotece kilka minut.",
+                xbmcgui.NOTIFICATION_INFO, 6000,
             )
         elif action in ("assignids", "assign_ids"):
             if not addon_settings().get("sudosync_id_enabled"):
@@ -284,6 +300,7 @@ def main():
 
                 if not preview:
                     sync_res = assign_sudosync_ids(show_notification=False, auto_mode=True, is_canceled=is_canceled)
+                    _note_nfo_changes(sync_res)
                     last_num = sync_res.get("last_number", 0) if isinstance(sync_res, dict) else 0
                     dialog.close()
                     xbmcgui.Dialog().ok(
@@ -320,6 +337,7 @@ def main():
                     progress_callback=phase2_progress,
                     is_canceled=is_canceled,
                 )
+                _note_nfo_changes(result)
 
                 if isinstance(result, dict) and result.get("fatal_error") and not is_canceled():
                     log("SudoSync ID assignment aborted by error: {}".format(mask_vfs_credentials(result.get("fatal_error"))), xbmc.LOGERROR)
@@ -373,15 +391,18 @@ def main():
             ):
                 return
             res = rollback_sudosync_ids()
+            _note_nfo_changes(res, keys=("rolled_back", "restored", "deleted"))
             xbmcgui.Dialog().ok("KodiBridge", "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0)))
         else:
             show_status()
     except Exception as exc:
         xbmcgui.Dialog().ok("KodiBridge — błąd", mask_vfs_credentials(str(exc)))
     finally:
-        if action in ("assignids", "assign_ids", "rollbackids"):
+        if action in ("assignids", "assign_ids", "rollbackids") and _NFO_CHANGES["count"] > 0:
             # These actions change KodiBridge IDs in .nfo files from this script
             # process; the running service must drop its cached NFO identifiers.
+            # Only when something changed: re-reading every .nfo of a large
+            # library over SMB can take minutes.
             from resources.lib.sudosync_core import request_nfo_cache_refresh
             request_nfo_cache_refresh()
 

@@ -565,6 +565,73 @@ def _notify_summary(counts):
     _notify("; ".join(parts).capitalize() + ".", warning=bool(counts["failed"]))
 
 
+CONFLICT_CHECK_TIMEOUT_SECONDS = 15 * 60
+CHECK_HEADING = "KodiBridge — sprawdzam konflikty zmian"
+CHECK_START_MESSAGE = "Odczyt biblioteki i porównanie z innymi Kodi. Przy dużej bibliotece może to potrwać kilka minut."
+
+
+class ConflictCheckProgress(object):
+    """Non-blocking progress bar shown while a "Resolve conflicts" request is being processed.
+
+    It stays visible until the check ends (no conflicts, conflicts to choose
+    from, or failure), so the user always sees that KodiBridge is still working.
+    """
+
+    def __init__(self, gui=None):
+        self._gui = gui or xbmcgui
+        self._dialog = None
+        self.started_at = None
+
+    @property
+    def active(self):
+        return self.started_at is not None
+
+    def start(self, now):
+        self.started_at = now
+        try:
+            if self._dialog is None:
+                self._dialog = self._gui.DialogProgressBG()
+                self._dialog.create(CHECK_HEADING, CHECK_START_MESSAGE)
+            else:
+                self._dialog.update(0, CHECK_HEADING, CHECK_START_MESSAGE)
+        except Exception as exc:
+            log("Cannot show conflict check progress: {}".format(exc), xbmc.LOGDEBUG)
+            self._dialog = None
+
+    def update(self, message, now=None):
+        if not self.active:
+            return
+        elapsed = ""
+        if now is not None:
+            elapsed = " (trwa {} min)".format(int((now - self.started_at) // 60))
+        try:
+            if self._dialog is not None:
+                self._dialog.update(0, CHECK_HEADING, message + elapsed)
+        except Exception:
+            pass
+
+    def timed_out(self, now):
+        return self.active and (now - self.started_at) >= CONFLICT_CHECK_TIMEOUT_SECONDS
+
+    def finish(self, message=None, warning=False):
+        self.started_at = None
+        try:
+            if self._dialog is not None:
+                self._dialog.close()
+        except Exception:
+            pass
+        self._dialog = None
+        if message:
+            try:
+                self._gui.Dialog().notification(
+                    "KodiBridge", message,
+                    self._gui.NOTIFICATION_WARNING if warning else self._gui.NOTIFICATION_INFO,
+                    6000 if warning else 5000,
+                )
+            except Exception:
+                pass
+
+
 def request_resolution():
     """Ask the running service to look for conflicts now (settings action)."""
     xbmcgui.Window(HOME_WINDOW_ID).setProperty(RESOLVE_REQUEST_PROPERTY, "1")

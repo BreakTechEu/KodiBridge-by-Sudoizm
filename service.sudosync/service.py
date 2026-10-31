@@ -17,6 +17,7 @@ import xbmcgui
 
 from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_guard, ServiceGuardError
 from resources.lib.sudosync_conflicts import (
+    ConflictCheckProgress,
     prompt_and_resolve,
     resolvable_conflicts,
     take_resolution_request,
@@ -467,6 +468,7 @@ def _run_service():
         pending_conflicts = []
         conflict_dismissed = set()
         conflict_failures = {}
+        conflict_check = ConflictCheckProgress()
         # Earliest retry of a failed publish during playback.
         playback_retry_not_before = 0.0
         shared_cache = None
@@ -577,6 +579,11 @@ def _run_service():
                     conflict_dismissed.clear()
                     last_live_poll = 0.0
                     report_no_conflicts = True
+                    conflict_check.start(now)
+                if report_no_conflicts and conflict_check.timed_out(now):
+                    report_no_conflicts = False
+                    conflict_check.finish(
+                        "Sprawdzanie konfliktów przerwane po 15 minutach. Spróbuj ponownie później.", warning=True)
 
                 # Check for pending post-scan SudoSync ID assignment (debounce 3-5s)
                 scan_pending = getattr(monitor, "scan_assign_pending", False) is True
@@ -703,18 +710,23 @@ def _run_service():
                         retry_delay = _live_retry_delay_seconds(result, live_poll)
                         if retry_delay > 0:
                             live_retry_not_before = time.time() + retry_delay
+                        v2_status = (result.get("v2") or {}).get("status") if isinstance(result.get("v2"), dict) else None
                         if not result.get("busy"):
                             pending_conflicts = resolvable_conflicts(result.get("v2"))
-                            if report_no_conflicts:
+                        if report_no_conflicts:
+                            if result.get("busy"):
+                                # Error or busy session: keep the request and retry.
+                                conflict_check.update(
+                                    "Synchronizacja chwilowo niemożliwa ({}), ponawiam…".format(
+                                        result.get("error") or "sesja zajęta"), now=time.time())
+                            elif v2_status == "deferred":
+                                conflict_check.update("Czekam, aż będzie można odczytać bibliotekę…", now=time.time())
+                            else:
                                 report_no_conflicts = False
-                                if not pending_conflicts:
-                                    try:
-                                        xbmcgui.Dialog().notification(
-                                            "KodiBridge", "Brak konfliktów do rozwiązania.",
-                                            xbmcgui.NOTIFICATION_INFO, 5000,
-                                        )
-                                    except Exception:
-                                        pass
+                                if pending_conflicts:
+                                    conflict_check.finish()
+                                else:
+                                    conflict_check.finish("Brak konfliktów do rozwiązania.")
                         if not result.get("busy"):
                             if (
                                 getattr(monitor, "dirty_seq", 0) == cycle_dirty_seq

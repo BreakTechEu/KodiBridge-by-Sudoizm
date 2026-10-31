@@ -2,6 +2,8 @@ KodiBridge by Sudoizm 2.2.7
 ===========================
 
 - Gdy w bibliotece tego Kodi są pozycje bez KodiBridge ID, zdublowane ID, pozycje blokujące synchronizację albo nieczytelne pliki .nfo, KodiBridge pokazuje powiadomienie w rogu ekranu, np. „Pozycje biblioteki: bez KodiBridge ID: 5, blokujące synchronizację: 2. Szczegóły w oknie statusu KodiBridge.”. Powiadomienie pojawia się przy pierwszym sprawdzeniu po uruchomieniu Kodi i ponownie, gdy liczby się zmienią; nigdy w trakcie odtwarzania filmu (wtedy po jego zatrzymaniu).
+- „Rozwiąż konflikty” od razu informuje, że sprawdzanie może potrwać kilka minut, i do czasu wyniku pokazuje w rogu ekranu pasek postępu z czasem trwania („trwa N min”). Gdy synchronizacja jest chwilowo niemożliwa albo biblioteka nie jest gotowa do odczytu, pasek mówi, na co czeka. Po 15 minutach bez wyniku sprawdzanie jest przerywane z komunikatem. Wcześniej po pierwszym komunikacie nic nie było widać aż do wyniku.
+- Po „Przypisz KodiBridge ID…” i „Wycofaj KodiBridge ID…” ponowny odczyt plików .nfo jest zlecany tylko wtedy, gdy któryś plik faktycznie się zmienił. Wcześniej każde uruchomienie, także bez zmian, wymuszało pełny odczyt wszystkich .nfo, co na wolnym NAS spowalniało następne sprawdzenie konfliktów.
 
 KodiBridge by Sudoizm 2.2.6
 ===========================
