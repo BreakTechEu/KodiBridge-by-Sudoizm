@@ -2084,8 +2084,18 @@ def rollback_sudosync_ids(manifest_path=None):
     restored = 0
     deleted = 0
     skipped_modified = 0
+    already = 0
     errors = 0
     error_details = []
+
+    def _mark_done(entry):
+        # Progress is saved after every file, so an interrupted rollback can
+        # be started again without reporting finished files as errors.
+        entry["rolled_back"] = True
+        try:
+            _write_local_json(manifest_path, manifest)
+        except Exception as exc:
+            log("Cannot record rollback progress in {}: {}".format(manifest_path, exc), xbmc.LOGWARNING)
 
     def _record_error(file_path, reason, message):
         error_details.append({"file": file_path, "reason": reason, "message": message})
@@ -2106,6 +2116,33 @@ def rollback_sudosync_ids(manifest_path=None):
             errors += 1
             _record_error(None, "missing_file_path", "Wpis manifestu nie zawiera ścieżki pliku .nfo.")
             continue
+
+        if entry.get("rolled_back"):
+            already += 1
+            continue
+
+        state = entry.get("state")
+        if state in ("pending", "failed") and bak_path:
+            # Repair interrupted between its steps (see repair_duplicate_sudosync_ids).
+            target_exists = xbmcvfs.exists(best_path)
+            backup_exists = xbmcvfs.exists(bak_path)
+            if not target_exists and backup_exists:
+                try:
+                    if not xbmcvfs.rename(bak_path, best_path):
+                        raise IOError("rename failed")
+                    rollbacks += 1
+                    restored += 1
+                    _mark_done(entry)
+                except Exception as exc:
+                    errors += 1
+                    _record_error(best_path, "restore_failed",
+                                  "Nie udało się przywrócić pliku .nfo z kopii {}: {}".format(bak_path, exc))
+                continue
+            if not backup_exists:
+                # The original was never moved: nothing to undo.
+                already += 1
+                _mark_done(entry)
+                continue
 
         if is_created:
             if not xbmcvfs.exists(best_path):
@@ -2130,6 +2167,7 @@ def rollback_sudosync_ids(manifest_path=None):
             if xbmcvfs.delete(best_path):
                 rollbacks += 1
                 deleted += 1
+                _mark_done(entry)
             else:
                 errors += 1
                 _record_error(best_path, "delete_failed", "Nie udało się usunąć utworzonego pliku .nfo.")
@@ -2188,6 +2226,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _safe_restore_modified_nfo(bak_path, best_path)
                 rollbacks += 1
                 restored += 1
+                _mark_done(entry)
             except Exception as exc:
                 errors += 1
                 _record_error(
@@ -2197,10 +2236,18 @@ def rollback_sudosync_ids(manifest_path=None):
                 )
 
     _NFO_ID_CACHE.clear()
+    entries = [entry for entry in manifest.get("modified", []) if isinstance(entry, dict)]
+    if entries and all(entry.get("rolled_back") for entry in entries):
+        manifest["rolled_back_at"] = utc_now_precise()
+        try:
+            _write_local_json(manifest_path, manifest)
+        except Exception as exc:
+            log("Cannot mark {} as rolled back: {}".format(manifest_path, exc), xbmc.LOGWARNING)
     return {
         "rolled_back": rollbacks,
         "restored": restored,
         "deleted": deleted,
+        "already_rolled_back": already,
         "skipped_modified": skipped_modified,
         "errors": errors,
         "error_details": error_details,
@@ -2227,6 +2274,7 @@ _SUDOSYNC_UNIQUEID_RE = re.compile(
     rb"(<uniqueid\b[^>]*?\btype\s*=\s*[\"']sudosync[\"'][^>]*>)(\s*)([^<]*?)(\s*)(</uniqueid>)",
     re.IGNORECASE,
 )
+_XML_COMMENT_RE = re.compile(rb"<!--.*?-->", re.DOTALL)
 _SEEN_NFO_ID_EPOCH = {"value": None}
 
 
@@ -2290,9 +2338,10 @@ def find_duplicate_sudosync_id_groups(movies, episodes):
     return result
 
 
-def _load_network_snapshot_ids(base_path):
-    """(media type, ids) of every record in the client snapshots on the NAS."""
+def _load_network_snapshot_ids(base_path, exclude_client_id=None):
+    """(snapshot file, media type, ids) of the records in other clients' snapshots on the NAS."""
     found = []
+    own_file = "client-{}.json".format(exclude_client_id).lower() if exclude_client_id else None
     base = str(base_path or "").strip()
     if not base:
         return found
@@ -2307,6 +2356,8 @@ def _load_network_snapshot_ids(base_path):
     for filename in files or []:
         if not isinstance(filename, str) or not filename.lower().endswith(".json"):
             continue
+        if own_file and filename.lower() == own_file:
+            continue
         try:
             snap = _read_vfs_json(dir_path.rstrip("/") + "/" + filename)
         except Exception:
@@ -2316,12 +2367,12 @@ def _load_network_snapshot_ids(base_path):
         for key, media_type in (("movies", "movie"), ("episodes", "episode")):
             for rec in snap.get(key) or []:
                 if isinstance(rec, dict) and isinstance(rec.get("ids"), dict):
-                    found.append((media_type, rec["ids"]))
+                    found.append((filename, media_type, rec["ids"]))
     return found
 
 
-def _known_on_network(entry, snapshot_ids):
-    """True when a client snapshot keeps this file's item under its KodiBridge ID.
+def _network_holders(entry, snapshot_ids):
+    """Number of other Kodi devices whose snapshot keeps this file's item under its KodiBridge ID.
 
     Matched by an external ID (IMDb/TMDb/TVDB/Trakt) of the item; such an item
     keeps its number, because the synchronized history belongs to it.
@@ -2333,15 +2384,17 @@ def _known_on_network(entry, snapshot_ids):
             if ids.get(kind):
                 external.setdefault(kind, set()).add(str(ids[kind]).strip().lower())
     if not external:
-        return False
+        return 0
     key = _sid_key(entry["sudosync_id"])
-    for media_type, ids in snapshot_ids:
+    holders = set()
+    for snapshot_file, media_type, ids in snapshot_ids:
         if media_type != entry["type"] or _sid_key(ids.get("sudosync")) != key:
             continue
         for kind, values in external.items():
             if str(ids.get(kind) or "").strip().lower() in values:
-                return True
-    return False
+                holders.add(snapshot_file)
+                break
+    return len(holders)
 
 
 def _replace_sudosync_id_in_nfo(raw, old_id, new_id):
@@ -2358,11 +2411,27 @@ def _replace_sudosync_id_in_nfo(raw, old_id, new_id):
         count[0] += 1
         return match.group(1) + match.group(2) + new_value + match.group(4) + match.group(5)
 
-    return _SUDOSYNC_UNIQUEID_RE.sub(_repl, bytes(raw)), count[0]
+    raw = bytes(raw)
+    comments = [(m.start(), m.end()) for m in _XML_COMMENT_RE.finditer(raw)]
+
+    def _repl_outside_comments(match):
+        if any(start <= match.start() < end for start, end in comments):
+            return match.group(0)
+        return _repl(match)
+
+    return _SUDOSYNC_UNIQUEID_RE.sub(_repl_outside_comments, raw), count[0]
 
 
 def _nfo_id_epoch_path():
     return os.path.join(_addon_profile_path(), NFO_ID_EPOCH_FILE_NAME)
+
+
+def _read_local_nfo_id_epoch():
+    try:
+        with open(_nfo_id_epoch_path(), "r", encoding="utf-8") as handle:
+            return handle.read().strip()
+    except Exception:
+        return ""
 
 
 def _remember_nfo_id_epoch(epoch):
@@ -2402,8 +2471,15 @@ def publish_kodibridge_id_change(base_path=None, renumbered=None):
             shared[SHARED_RENUMBERED_IDS_KEY] = mapping
         return True
 
-    update_shared_config(_mutator, base)
+    # Stored locally first: the service of this Kodi may read system/config.json
+    # at any moment and must not take its own change for another Kodi's one.
+    previous = _read_local_nfo_id_epoch()
     _remember_nfo_id_epoch(epoch)
+    try:
+        update_shared_config(_mutator, base)
+    except Exception:
+        _remember_nfo_id_epoch(previous)
+        raise
     return epoch
 
 
@@ -2415,11 +2491,7 @@ def take_nfo_id_epoch_change(shared):
     epoch = str(epoch)
     if _SEEN_NFO_ID_EPOCH["value"] == epoch:
         return False
-    try:
-        with open(_nfo_id_epoch_path(), "r", encoding="utf-8") as handle:
-            local = handle.read().strip()
-    except Exception:
-        local = ""
+    local = _read_local_nfo_id_epoch()
     _remember_nfo_id_epoch(epoch)
     return local != epoch
 
@@ -2441,7 +2513,9 @@ def latest_rollback_manifests():
             data = _read_local_json(path)
         except Exception:
             data = None
-        stamp = str(data.get("generated_at") or "") if isinstance(data, dict) else ""
+        if not isinstance(data, dict) or data.get("rolled_back_at"):
+            continue
+        stamp = str(data.get("generated_at") or "")
         found.append((kind, path, stamp))
     found.sort(key=lambda item: item[2], reverse=True)
     return found
@@ -2501,13 +2575,14 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
         if not groups:
             return result
 
-        snapshot_ids = _load_network_snapshot_ids(base)
+        snapshot_ids = _load_network_snapshot_ids(base, exclude_client_id=get_or_create_client_id())
         prefix = get_or_sync_network_id_and_alias(base)
         last_number = get_network_sudosync_id_last_number(base, list(movies) + list(episodes))
         manifest_path = os.path.join(_addon_profile_path(), REPAIR_IDS_MANIFEST_NAME)
+        generated_at = utc_now_precise()
         manifest = {
             "operation": "repair_duplicate_ids",
-            "generated_at": utc_now_precise(),
+            "generated_at": generated_at,
             "groups": len(groups),
             "last_number": last_number,
             "kept": [],
@@ -2517,18 +2592,35 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             "fatal_error": "",
         }
         result["manifest_path"] = manifest_path
+        stamp = re.sub(r"[^0-9]", "", generated_at)[:14] or uuid.uuid4().hex[:12]
 
         def _write_manifest():
             manifest["last_number"] = last_number
             try:
                 _write_local_json(manifest_path, manifest)
+                return True
             except Exception as exc:
                 log("Cannot write {}: {}".format(REPAIR_IDS_MANIFEST_NAME, exc), xbmc.LOGWARNING)
+                return False
 
         def _error(entry, label, message):
             manifest["errors"].append({"file": entry["file"], "title": label, "error": message})
             result["errors"].append("{}: {}".format(label, message))
             log("Duplicate KodiBridge ID repair skipped '{}': {}".format(entry["file"], message), xbmc.LOGWARNING)
+
+        def _fatal(entry, label, message):
+            result["fatal_error"] = manifest["fatal_error"] = message
+            _error(entry, label, message)
+
+        def _backup_path(best_path):
+            # Never overwrite an earlier backup (an earlier repair or assignment).
+            candidate = best_path + REPAIR_BACKUP_SUFFIX
+            if xbmcvfs.exists(candidate):
+                candidate = "{}.repair-{}.bak".format(best_path, stamp)
+            return candidate
+
+        if not _write_manifest():
+            raise RuntimeError("Nie można zapisać raportu {}; naprawa nie została rozpoczęta.".format(REPAIR_IDS_MANIFEST_NAME))
 
         total = sum(len(group["files"]) - 1 for group in groups)
         done = 0
@@ -2537,16 +2629,22 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             if stop:
                 break
             files = group["files"]
-            known = [entry for entry in files if _known_on_network(entry, snapshot_ids)]
-            keeper = known[0] if known else files[0]
+            holders = [_network_holders(entry, snapshot_ids) for entry in files]
+            best = max(holders)
+            keeper = files[holders.index(best)]  # files are sorted by path: first wins a tie
+            known_elsewhere = sum(1 for count in holders if count)
             keeper_label = _record_label(keeper["records"][0])
             manifest["kept"].append({
                 "file": keeper["file"],
                 "title": keeper_label,
                 "sudosync_id": keeper["sudosync_id"],
-                "known_on_network": bool(known),
+                "known_on_network": bool(best),
+                "ambiguous": known_elsewhere > 1,
             })
-            result["kept"].append("{} — {}".format(keeper["sudosync_id"], keeper_label))
+            note = ""
+            if known_elsewhere > 1:
+                note = " (UWAGA: inne Kodi synchronizują pod tym ID {} różne pozycje; numer zachowała ta, którą zna najwięcej urządzeń)".format(known_elsewhere)
+            result["kept"].append("{} — {}{}".format(keeper["sudosync_id"], keeper_label, note))
             for entry in files:
                 if entry is keeper:
                     continue
@@ -2581,56 +2679,82 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
                         raise IOError("Rezerwacja licznika zwróciła nieprawidłową wartość: {}".format(persisted))
                     candidate = persisted
                 except Exception as exc:
-                    result["fatal_error"] = manifest["fatal_error"] = str(exc)
-                    _error(entry, label, "rezerwacja licznika nie powiodła się: {}".format(exc))
+                    _fatal(entry, label, "rezerwacja licznika nie powiodła się: {}".format(exc))
                     stop = True
                     break
                 last_number = candidate
-                _write_manifest()
 
                 new_id = "{}-{:06d}".format(prefix, candidate)
                 new_raw, _count = _replace_sudosync_id_in_nfo(raw, old_id, new_id)
-                bak_path = best_path + REPAIR_BACKUP_SUFFIX
+                bak_path = _backup_path(best_path)
                 new_path = best_path + ".new"
-                try:
-                    _write_vfs_bytes(new_path, new_raw)
-                    if xbmcvfs.exists(bak_path):
-                        xbmcvfs.delete(bak_path)
-                    moved_original = xbmcvfs.rename(best_path, bak_path)
-                    if not moved_original or not xbmcvfs.rename(new_path, best_path):
-                        if moved_original and not xbmcvfs.exists(best_path):
-                            xbmcvfs.rename(bak_path, best_path)
-                        if xbmcvfs.exists(new_path):
-                            xbmcvfs.delete(new_path)
-                        _error(entry, label, "nie można podmienić pliku .nfo (numer {} pozostaje niewykorzystany)".format(new_id))
-                        continue
-                except Exception as exc:
-                    if xbmcvfs.exists(new_path):
-                        xbmcvfs.delete(new_path)
-                    _error(entry, label, "błąd zapisu .nfo: {}".format(exc))
-                    continue
-
-                for record in entry["records"]:
-                    record.setdefault("ids", {})["sudosync"] = new_id
-                    try:
-                        if entry["type"] == "movie":
-                            rpc("VideoLibrary.RefreshMovie", {"movieid": record.get("local", {}).get("movieid")})
-                        else:
-                            rpc("VideoLibrary.RefreshEpisode", {"episodeid": record.get("local", {}).get("episodeid")})
-                    except Exception:
-                        pass
-                manifest["modified"].append({
+                record = {
                     "file": best_path,
                     "backup": bak_path,
                     "action": "modified",
                     "created": False,
+                    "state": "pending",
                     "type": entry["type"],
                     "sudosync_id": new_id,
                     "old_sudosync_id": old_id,
                     "content_sha256": hashlib.sha256(new_raw).hexdigest(),
+                    "original_sha256": hashlib.sha256(raw).hexdigest(),
                     "title": label,
                     "media_file": entry["file"],
-                })
+                }
+                # The rollback record must be on disk before the .nfo changes.
+                manifest["modified"].append(record)
+                if not _write_manifest():
+                    manifest["modified"].remove(record)
+                    _fatal(entry, label, "nie można zapisać raportu naprawy; przerwano bez zmiany pliku")
+                    stop = True
+                    break
+
+                moved_original = False
+                changed = False
+                failure = ""
+                try:
+                    _write_vfs_bytes(new_path, new_raw)
+                    current = _read_vfs_all(best_path)
+                    current = current.encode("utf-8") if isinstance(current, str) else bytes(current or b"")
+                    if current != raw:
+                        failure = "plik .nfo zmienił się w trakcie naprawy; pozostawiono go bez zmian"
+                    else:
+                        moved_original = bool(xbmcvfs.rename(best_path, bak_path))
+                        if not moved_original:
+                            failure = "nie można utworzyć kopii zapasowej"
+                        elif xbmcvfs.rename(new_path, best_path):
+                            changed = True
+                        else:
+                            failure = "nie można podmienić pliku .nfo"
+                except Exception as exc:
+                    failure = "błąd zapisu .nfo: {}".format(exc)
+                if not changed:
+                    try:
+                        if moved_original and not xbmcvfs.exists(best_path):
+                            xbmcvfs.rename(bak_path, best_path)
+                        if xbmcvfs.exists(new_path):
+                            xbmcvfs.delete(new_path)
+                    except Exception as exc:
+                        failure += "; przywracanie kopii nie powiodło się: {} (kopia: {})".format(exc, bak_path)
+                    if xbmcvfs.exists(best_path):
+                        manifest["modified"].remove(record)
+                    else:
+                        record["state"] = "failed"
+                    _error(entry, label, "{} (numer {} pozostaje niewykorzystany)".format(failure, new_id))
+                    _write_manifest()
+                    continue
+
+                record["state"] = "done"
+                for library_record in entry["records"]:
+                    library_record.setdefault("ids", {})["sudosync"] = new_id
+                    try:
+                        if entry["type"] == "movie":
+                            rpc("VideoLibrary.RefreshMovie", {"movieid": library_record.get("local", {}).get("movieid")})
+                        else:
+                            rpc("VideoLibrary.RefreshEpisode", {"episodeid": library_record.get("local", {}).get("episodeid")})
+                    except Exception:
+                        pass
                 result["changes"].append("{} → {} — {}".format(old_id, new_id, label))
                 result["renumbered"] += 1
                 _write_manifest()
@@ -2638,7 +2762,8 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
         _NFO_ID_CACHE.clear()
         result["last_number"] = last_number
         _write_manifest()
-        pairs = [(item["old_sudosync_id"], item["sudosync_id"]) for item in manifest["modified"]]
+        pairs = [(item["old_sudosync_id"], item["sudosync_id"])
+                 for item in manifest["modified"] if item.get("state") == "done"]
         if pairs:
             try:
                 publish_kodibridge_id_change(base, pairs)

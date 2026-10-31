@@ -344,14 +344,46 @@ def _sudosync_base(value):
     return str(value or "").strip().casefold().split(":", 1)[0]
 
 
+def _sudosync_qualifier(value):
+    parts = str(value or "").strip().casefold().split(":", 1)
+    return parts[1] if len(parts) > 1 else ""
+
+
+RENUMBER_CHAIN_LIMIT = 8
+
+
 def _is_renumbered(renumbered_ids, old_value, new_value):
-    """True when the duplicate repair replaced old_value with new_value."""
+    """True when the duplicate repair replaced old_value with new_value.
+
+    Follows chains (repair, rollback, repair again: A -> B -> A -> C) for a
+    device that missed the intermediate steps. Episode qualifiers must agree
+    when both IDs carry one; a qualifier may appear or disappear, because a
+    repaired ID is no longer shared by several items.
+    """
     if not isinstance(renumbered_ids, dict) or not old_value or not new_value:
         return False
-    targets = renumbered_ids.get(_sudosync_base(old_value))
-    if not isinstance(targets, (list, tuple)):
+    old_q, new_q = _sudosync_qualifier(old_value), _sudosync_qualifier(new_value)
+    if old_q and new_q and old_q != new_q:
         return False
-    return _sudosync_base(new_value) in {_sudosync_base(t) for t in targets}
+    start, goal = _sudosync_base(old_value), _sudosync_base(new_value)
+    seen, frontier = {start}, [start]
+    for _step in range(RENUMBER_CHAIN_LIMIT):
+        following = []
+        for current in frontier:
+            targets = renumbered_ids.get(current)
+            if not isinstance(targets, (list, tuple)):
+                continue
+            for target in targets:
+                key = _sudosync_base(target)
+                if key == goal:
+                    return True
+                if key not in seen:
+                    seen.add(key)
+                    following.append(key)
+        if not following:
+            return False
+        frontier = following
+    return False
 
 
 def _report_shared_external_identities(client_id, counts):
@@ -414,7 +446,7 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
             sid = ids.get("sudosync")
             if sid:
                 with_id += 1
-                by_sid.setdefault(sid, []).append((item.get("season"), item.get("episode"), label))
+                by_sid.setdefault(sid, []).append((item.get("file") or "#{}".format(total), label))
             else:
                 missing.append(label)
             for kind, value in ids.items():
@@ -422,16 +454,11 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
                     ext_owners.setdefault((kind, value), []).append((bool(sid), label))
         duplicates = []
         for sid, entries in sorted(by_sid.items()):
-            if len(entries) < 2:
+            # One media file may hold several library items (episodes of a
+            # multi-episode file); one ID on several files is a duplicate.
+            if len({media_file for media_file, _ in entries}) < 2:
                 continue
-            keys = [(season, episode) for season, episode, _ in entries]
-            multi_episode_file = (
-                media_type == "episode"
-                and all(season is not None and episode is not None for season, episode in keys)
-                and len(set(keys)) == len(keys)
-            )
-            if not multi_episode_file:
-                duplicates.append("{} ({})".format(sid, "; ".join(label for _, _, label in entries[:3])))
+            duplicates.append("{} ({})".format(sid, "; ".join(label for _, label in entries[:3])))
         ambiguous = []
         for (kind, value), owners in sorted(ext_owners.items()):
             if len(owners) > 1 and not all(has_sid for has_sid, _ in owners):

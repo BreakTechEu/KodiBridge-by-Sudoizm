@@ -1,3 +1,20 @@
+KodiBridge by Sudoizm 2.2.8
+===========================
+
+Poprawki po audycie zewnętrznym 2.2.7 (ChatGPT i Gemini/Argon):
+
+- Naprawa zdublowanych ID nie usuwa już wcześniejszych kopii zapasowych. Gdy obok pliku jest już `.repair.bak`, nowa kopia dostaje nazwę `.repair-<data i godzina>.bak`.
+- Wpis potrzebny do wycofania trafia do `repair_ids_manifest.json` przed zmianą pliku `.nfo`. Jeśli raportu nie da się zapisać, naprawa nie zmienia żadnego pliku i kończy się komunikatem.
+- Błąd w trakcie podmiany pliku (np. zerwane połączenie SMB między dwiema zmianami nazwy) przywraca oryginalny `.nfo` z kopii. Wcześniej przy wyjątku plik mógł zostać tylko pod nazwą kopii.
+- Przed podmianą plik `.nfo` jest odczytywany ponownie. Jeśli zmienił się w trakcie naprawy, zostaje nietknięty, a pozycja trafia na listę pominiętych.
+- Wybór pozycji zachowującej numer opiera się wyłącznie na migawkach innych Kodi (bez własnej migawki tego urządzenia). Gdy pod jednym ID inne Kodi synchronizują różne pozycje, numer zachowuje ta, którą zna najwięcej urządzeń, a podsumowanie wyraźnie o tym ostrzega.
+- Wartość KodiBridge ID w zakomentowanym fragmencie `.nfo` (`<!-- … -->`) nie jest zmieniana.
+- „Wycofaj ostatnio przypisane ID” zapisuje postęp po każdym pliku. Przerwane wycofanie można uruchomić ponownie: pliki już przywrócone nie są liczone jako błędy, a dokończona operacja nie jest proponowana drugi raz. Wycofanie przywraca też plik po naprawie przerwanej między dwiema zmianami nazwy.
+- Znacznik zmiany KodiBridge ID jest zapisywany lokalnie przed publikacją w `system/config.json` (i przywracany, gdy publikacja się nie uda), więc usługa tego samego Kodi nie bierze własnej zmiany za cudzą. Ponowny odczyt `.nfo` jest zlecany od razu po naprawie lub wycofaniu, a nie dopiero po zamknięciu okna z podsumowaniem.
+- Przyjęcie nowego numeru w migawce działa także dla łańcucha zmian (naprawa, wycofanie, ponowna naprawa), gdy inne Kodi nie widziało kroków pośrednich. Kwalifikatory odcinków `:sNNeNN` muszą się zgadzać, jeśli oba identyfikatory je mają.
+- Pokrycie KodiBridge ID liczy duplikaty według plików: różne pliki z tym samym ID to duplikat (np. skopiowany szablon `.nfo` dla kolejnego odcinka), a kilka pozycji z jednego pliku nie. Wcześniej dwa różne odcinki w osobnych plikach z jednym ID nie były zgłaszane.
+- Pasek „KodiBridge — sprawdzam konflikty zmian” jest zamykany również przy zatrzymaniu usługi (zamknięcie Kodi, przejęcie sesji przez inne Kodi).
+
 KodiBridge by Sudoizm 2.2.7
 ===========================
 

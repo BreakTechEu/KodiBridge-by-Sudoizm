@@ -45,7 +45,7 @@ class ProgressObjectTests(unittest.TestCase):
 
 
 class ServiceProgressTests(unittest.TestCase):
-    def _run(self, cycle_results, iterations, request_at=1):
+    def _run(self, cycle_results, iterations, request_at=1, active=False):
         clock = [1000.0]
         monitor = sudosync_service.SudoSyncMonitor()
         monitor.aborted = False
@@ -67,7 +67,7 @@ class ServiceProgressTests(unittest.TestCase):
         results = iter(cycle_results)
         live_cycle = MagicMock(side_effect=lambda **kw: next(results, {"busy": False, "v2": {"status": "no_changes"}}))
         progress = MagicMock()
-        progress.active = False
+        progress.active = active
         progress.timed_out.return_value = False
         settings = {"base_path": "smb://nas/sudosync", "client_name": "Salon", "interval_seconds": 300,
                     "live_poll_seconds": 60, "live_sync_enabled": True, "check_updates": False}
@@ -114,6 +114,13 @@ class ServiceProgressTests(unittest.TestCase):
         ], iterations=1)
         progress.finish.assert_not_called()
         self.assertIn("Czekam", progress.update.call_args[0][0])
+
+    def test_service_stop_closes_open_progress(self):
+        progress = self._run([
+            {"busy": False, "v2": {"status": "no_changes"}},
+            {"busy": False, "v2": {"status": "deferred"}},
+        ], iterations=1, active=True)
+        progress.finish.assert_called_once_with()
 
     def test_conflicts_found_close_progress_and_open_dialog(self):
         conflict = {"type": "movie", "kodi_id": 1, "identity": ["imdb:tt1"], "field": "playcount",

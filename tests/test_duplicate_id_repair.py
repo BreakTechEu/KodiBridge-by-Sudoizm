@@ -39,7 +39,7 @@ def _episode_nfo(entries):
     return b'<?xml version="1.0" encoding="UTF-8"?>\n' + body
 
 
-class DuplicateRepairTests(unittest.TestCase):
+class RepairFixture(unittest.TestCase):
     def setUp(self):
         sudosync_core._NFO_ID_CACHE.clear()
         sudosync_core._SEEN_NFO_ID_EPOCH["value"] = None
@@ -129,6 +129,9 @@ class DuplicateRepairTests(unittest.TestCase):
     def _shared(self):
         return json.loads(self.vfs.files[BASE + "system/config.json"].decode("utf-8"))
 
+
+
+class DuplicateRepairTests(RepairFixture):
     def test_groups_skip_multi_episode_file(self):
         with ExitStack() as stack:
             self._env(stack)
@@ -207,6 +210,169 @@ class DuplicateRepairTests(unittest.TestCase):
             sudosync_core._SEEN_NFO_ID_EPOCH["value"] = None  # service restart
             self.assertFalse(sudosync_core.take_nfo_id_epoch_change({"nfo_id_epoch": "e1"}))
             self.assertTrue(sudosync_core.take_nfo_id_epoch_change({"nfo_id_epoch": "e2"}))
+
+
+class RepairSafetyTests(RepairFixture):
+    """Findings of the external audit of 2.2.7 (backups, failures, rollback, keeper)."""
+
+    A = "smb://nas/wideo/seriale/A/a1.nfo"
+    B = "smb://nas/wideo/seriale/B/b3.nfo"
+
+    def test_existing_backup_is_never_overwritten(self):
+        self.vfs.files[self.B + ".repair.bak"] = b"earlier backup"
+        original = self.vfs.files[self.B]
+        result, _ = self._repair()
+        self.assertEqual(result["renumbered"], 1)
+        self.assertEqual(self.vfs.files[self.B + ".repair.bak"], b"earlier backup")
+        new_backups = [k for k in self.vfs.files if k.startswith(self.B + ".repair-") and k.endswith(".bak")]
+        self.assertEqual(len(new_backups), 1)
+        self.assertEqual(self.vfs.files[new_backups[0]], original)
+
+    def test_failed_swap_restores_original(self):
+        original = self.vfs.files[self.B]
+        real_rename = self.vfs.rename
+
+        def rename(src, dst):
+            if src.endswith(".nfo.new"):
+                raise OSError("SMB connection lost")
+            return real_rename(src, dst)
+
+        with ExitStack() as stack:
+            self._env(stack)
+            stack.enter_context(patch.object(sudosync_core.xbmcvfs, "rename", side_effect=rename))
+            result = sudosync_core.repair_duplicate_sudosync_ids()
+        self.assertEqual(self.vfs.files[self.B], original)
+        self.assertEqual(result["renumbered"], 0)
+        self.assertIn("SMB connection lost", result["errors"][0])
+        self.assertFalse(any(k.endswith(".nfo.new") for k in self.vfs.files))
+        manifest = json.loads(self.vfs.files[PROFILE + "/repair_ids_manifest.json"].decode("utf-8"))
+        self.assertEqual(manifest["modified"], [])
+
+    def test_no_change_without_manifest(self):
+        before = (self.vfs.files[self.A], self.vfs.files[self.B])
+        with ExitStack() as stack:
+            self._env(stack)
+            real_write = sudosync_core._write_local_json
+
+            def write(path, data):
+                if path.endswith("repair_ids_manifest.json"):
+                    raise IOError("disk full")
+                return real_write(path, data)
+
+            stack.enter_context(patch.object(sudosync_core, "_write_local_json", side_effect=write))
+            with self.assertRaises(RuntimeError):
+                sudosync_core.repair_duplicate_sudosync_ids()
+        self.assertEqual((self.vfs.files[self.A], self.vfs.files[self.B]), before)
+
+    def test_file_changed_during_repair_is_left_alone(self):
+        real_write = sudosync_core._write_vfs_bytes
+
+        def write(path, payload):
+            if path.endswith(".nfo.new"):
+                self.vfs.files[self.B] = self.vfs.files[self.B] + b"<!-- edited -->"
+            return real_write(path, payload)
+
+        with ExitStack() as stack:
+            self._env(stack)
+            stack.enter_context(patch.object(sudosync_core, "_write_vfs_bytes", side_effect=write))
+            result = sudosync_core.repair_duplicate_sudosync_ids()
+        self.assertEqual(result["renumbered"], 0)
+        self.assertIn(b">DOM-000005</uniqueid>", self.vfs.files[self.B])
+        self.assertIn("zmienił się", result["errors"][0])
+
+    def test_own_snapshot_does_not_decide(self):
+        self.vfs.files[BASE + "clients/client-{}.json".format(CLIENT)] = json.dumps({
+            "movies": [], "episodes": [{"type": "episode", "ids": {"sudosync": "dom-000005", "tvdb": "222"}}],
+        }).encode("utf-8")
+        self._repair()
+        self.assertIn(b">DOM-000005</uniqueid>", self.vfs.files[self.A])
+        self.assertIn(b">DOM-000010</uniqueid>", self.vfs.files[self.B])
+
+    def test_item_known_on_more_devices_wins_and_ambiguity_is_reported(self):
+        for name, tvdb in (("1" * 8, "222"), ("2" * 8, "111"), ("4" * 8, "111")):
+            self.vfs.files[BASE + "clients/client-{}.json".format(name)] = json.dumps({
+                "movies": [], "episodes": [{"type": "episode", "ids": {"sudosync": "dom-000005", "tvdb": tvdb}}],
+            }).encode("utf-8")
+        result, _ = self._repair()
+        self.assertIn(b">DOM-000005</uniqueid>", self.vfs.files[self.A])
+        self.assertIn(b">DOM-000010</uniqueid>", self.vfs.files[self.B])
+        self.assertIn("UWAGA", result["kept"][0])
+
+    def test_rollback_can_be_repeated_and_is_not_offered_again(self):
+        self._repair()
+        with ExitStack() as stack:
+            self._env(stack)
+            path = sudosync_core.latest_rollback_manifests()[0][1]
+            first = sudosync_core.rollback_sudosync_ids(manifest_path=path)
+            second = sudosync_core.rollback_sudosync_ids(manifest_path=path)
+            offered = sudosync_core.latest_rollback_manifests()
+        self.assertEqual((first["restored"], first["errors"]), (1, 0))
+        self.assertEqual((second["rolled_back"], second["already_rolled_back"], second["errors"]), (0, 1, 0))
+        self.assertEqual(offered, [])
+
+    def test_rollback_finishes_interrupted_swap(self):
+        self._repair()
+        manifest_path = PROFILE + "/repair_ids_manifest.json"
+        manifest = json.loads(self.vfs.files[manifest_path].decode("utf-8"))
+        entry = manifest["modified"][0]
+        entry["state"] = "pending"  # crash between the two renames
+        self.vfs.files[manifest_path] = json.dumps(manifest).encode("utf-8")
+        del self.vfs.files[self.B]
+        with ExitStack() as stack:
+            self._env(stack)
+            res = sudosync_core.rollback_sudosync_ids(manifest_path=manifest_path)
+        self.assertEqual(res["restored"], 1)
+        self.assertIn(b">DOM-000005</uniqueid>", self.vfs.files[self.B])
+
+    def test_commented_out_id_is_not_touched(self):
+        raw = (b'<episodedetails><!-- <uniqueid type="sudosync">DOM-000005</uniqueid> -->'
+               b'<uniqueid type="sudosync">DOM-000005</uniqueid></episodedetails>')
+        new, count = sudosync_core._replace_sudosync_id_in_nfo(raw, "DOM-000005", "DOM-000010")
+        self.assertEqual(count, 1)
+        self.assertIn(b'<!-- <uniqueid type="sudosync">DOM-000005</uniqueid> -->', new)
+        self.assertIn(b'<uniqueid type="sudosync">DOM-000010</uniqueid></episodedetails>', new)
+
+    def test_epoch_marker_restored_when_publishing_fails(self):
+        self.profile = self.tmp
+        with ExitStack() as stack:
+            self._env(stack)
+            sudosync_core._remember_nfo_id_epoch("old-epoch")
+            stack.enter_context(patch.object(sudosync_core, "update_shared_config", side_effect=IOError("NAS down")))
+            with self.assertRaises(IOError):
+                sudosync_core.publish_kodibridge_id_change(BASE, [("DOM-000005", "DOM-000010")])
+            self.assertEqual(sudosync_core._read_local_nfo_id_epoch(), "old-epoch")
+
+    def test_publishing_marks_epoch_locally_first(self):
+        self.profile = self.tmp
+        seen = []
+        with ExitStack() as stack:
+            self._env(stack)
+            real_update = sudosync_core.update_shared_config
+
+            def update(mutator, base):
+                seen.append(sudosync_core._read_local_nfo_id_epoch())
+                return real_update(mutator, base)
+
+            stack.enter_context(patch.object(sudosync_core, "update_shared_config", side_effect=update))
+            epoch = sudosync_core.publish_kodibridge_id_change(BASE, [])
+        self.assertEqual(seen, [epoch])
+        self.assertEqual(self._shared()["nfo_id_epoch"], epoch)
+
+
+class RenumberingRuleTests(unittest.TestCase):
+    def test_chain_after_rollback_and_second_repair(self):
+        from resources.lib.sudosync_v2.snapshot import _is_renumbered
+        mapping = {"dom-000005": ["dom-000010", "dom-000011"], "dom-000010": ["dom-000005"]}
+        self.assertTrue(_is_renumbered(mapping, "DOM-000010", "DOM-000011"))
+        self.assertFalse(_is_renumbered(mapping, "DOM-000010", "DOM-000012"))
+        self.assertFalse(_is_renumbered({"a-1": ["b-1"], "b-1": ["a-1"]}, "a-1", "c-1"))
+
+    def test_episode_qualifiers(self):
+        from resources.lib.sudosync_v2.snapshot import _is_renumbered
+        mapping = {"dom-000005": ["dom-000010"]}
+        self.assertTrue(_is_renumbered(mapping, "dom-000005:s01e01", "dom-000010:s01e01"))
+        self.assertTrue(_is_renumbered(mapping, "dom-000005:s01e01", "dom-000010"))
+        self.assertFalse(_is_renumbered(mapping, "dom-000005:s01e01", "dom-000010:s02e03"))
 
 
 class RenumberedSnapshotTests(unittest.TestCase):

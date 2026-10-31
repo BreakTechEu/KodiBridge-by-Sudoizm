@@ -217,6 +217,14 @@ def _note_nfo_changes(result, keys=("movies", "episodes")):
         _NFO_CHANGES["count"] += 1  # unknown amount: assume something changed
 
 
+def _flush_nfo_refresh():
+    """Ask the service to re-read .nfo files now, before a dialog waits for the user."""
+    if _NFO_CHANGES["count"] > 0:
+        from resources.lib.sudosync_core import request_nfo_cache_refresh
+        request_nfo_cache_refresh()
+        _NFO_CHANGES["count"] = 0
+
+
 def repair_ids_dialog():
     """Settings action: give new KodiBridge IDs to items that share one ID."""
     from resources.lib.sudosync_core import repair_duplicate_sudosync_ids
@@ -266,6 +274,7 @@ def repair_ids_dialog():
         except Exception:
             pass
     _note_nfo_changes(result, keys=("renumbered",))
+    _flush_nfo_refresh()
 
     if result.get("busy"):
         xbmcgui.Dialog().ok("KodiBridge", "Przypisywanie KodiBridge ID jest już wykonywane w tle. Poczekaj na zakończenie i spróbuj ponownie.")
@@ -333,7 +342,11 @@ def rollback_ids_dialog():
             publish_kodibridge_id_change(renumbered=reverse)
         except Exception as exc:
             log("Cannot announce the KodiBridge ID rollback: {}".format(exc))
-    xbmcgui.Dialog().ok("KodiBridge", "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0)))
+    _flush_nfo_refresh()
+    message = "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0))
+    if res.get("already_rolled_back"):
+        message += "\nWycofane już wcześniej: {}".format(res["already_rolled_back"])
+    xbmcgui.Dialog().ok("KodiBridge", message)
 
 
 def main():

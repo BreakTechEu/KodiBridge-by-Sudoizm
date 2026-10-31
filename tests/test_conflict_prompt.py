@@ -464,5 +464,18 @@ def sudosync_service_conflict_key(conflict):
     return conflicts_module.conflict_key(conflict)
 
 
+
+class ChoiceOptionsTests(unittest.TestCase):
+    """Fallback single-field list used when the conflict table cannot be shown."""
+
+    def test_options_mark_local_device_and_merge_equal_values(self):
+        conflict = make_conflict(values=((LOCAL, "Salon", 2), (PEER, "Sypialnia", 1), ("3" * 36, "Kuchnia", 1)))
+        labels, values = conflicts_module.choice_options(conflict, LOCAL)
+        self.assertEqual(labels, [
+            "Salon (to Kodi): obejrzane, odtworzeń: 2",
+            "Sypialnia, Kuchnia: obejrzane, odtworzeń: 1",
+        ])
+        self.assertEqual(values, [2, 1])
+
 if __name__ == "__main__":
     unittest.main()

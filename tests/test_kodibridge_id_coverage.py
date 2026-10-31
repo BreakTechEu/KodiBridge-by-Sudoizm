@@ -65,6 +65,17 @@ class CoverageCountTests(unittest.TestCase):
         self.assertIn("mazury-000200", coverage["episode"]["examples"]["duplicates"][0])
         self.assertIn("imdb:tt1245924", coverage["episode"]["examples"]["ambiguous"][0])
 
+    def test_different_episode_files_with_one_id_are_duplicates(self):
+        # Copied .nfo template: different episodes, different files, one ID.
+        episodes = [ep(1, 1, 1, "s01e01.mkv", sudosync="MAZURY-000300"),
+                    ep(2, 1, 2, "s01e02.mkv", sudosync="MAZURY-000300")]
+        self.assertEqual(kodibridge_id_coverage([], episodes)["episode"]["duplicates"], 1)
+
+    def test_two_library_entries_of_one_movie_file_are_not_duplicates(self):
+        movies = [{"movieid": 1, "title": "A", "file": "a.mkv", "uniqueid": {"sudosync": "MAZURY-000001"}},
+                  {"movieid": 2, "title": "A", "file": "a.mkv", "uniqueid": {"sudosync": "MAZURY-000001"}}]
+        self.assertEqual(kodibridge_id_coverage(movies, [])["movie"]["duplicates"], 0)
+
     def test_complete_library(self):
         coverage = kodibridge_id_coverage(
             [{"movieid": 1, "uniqueid": {"sudosync": "MAZURY-000001"}}], [])

@@ -411,6 +411,7 @@ def _run_service():
 
     settings = addon_settings()
     base_for_lease = settings.get("base_path", "")
+    conflict_check = None
     try:
         if settings.get("check_updates", True):
             try:
@@ -815,6 +816,13 @@ def _run_service():
             if monitor.waitForAbort(2):
                 break
     finally:
+        # The background progress bar of a pending conflict check belongs to
+        # this process; close it when the service stops for any reason.
+        try:
+            if conflict_check is not None and conflict_check.active:
+                conflict_check.finish()
+        except Exception:
+            pass
         try:
             release_network_active_kodi_lease(base_for_lease)
         except Exception:
