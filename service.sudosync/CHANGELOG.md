@@ -2,6 +2,7 @@ KodiBridge by Sudoizm 2.2.9
 ===========================
 
 - Naprawiono „nieczytelne .nfo” dla plików o bardzo długiej ścieżce na udziale sieciowym w Windows. Ścieżka UNC dłuższa niż ok. 260 znaków (np. długa nazwa odcinka w folderach serialu o długiej nazwie) kończyła się błędem „No such file or directory”, mimo że plik istniał. Ścieżki od 240 znaków są teraz otwierane w formie rozszerzonej `\\?\UNC\…`, która nie ma tego limitu.
+- Po naprawie zdublowanych ID albo wycofaniu ID stare numery nie wracają już do pamięci identyfikatorów .nfo. Wyczyszczona pamięć (`nfo_id_cache.json`) zostaje zapisana jako pusta, a nie usunięta. Wcześniej, gdy Kodi zamknięto przed ponownym odczytem biblioteki, wtyczka przy starcie odtwarzała pamięć z raportu ostatniego przypisywania ID (`assign_ids_manifest.json`), który mógł zawierać nieaktualne numery. Ten raport nie jest też używany po wycofaniu przypisania.
 
 KodiBridge by Sudoizm 2.2.8
 ===========================

@@ -145,12 +145,25 @@ class KodiJsonRpcAdapter(object):
         self._nfo_id_cache.clear()
         self._dirty_cache = True
         if self._cache_path:
+            # Leave an empty cache file instead of none: a missing file makes
+            # the next start seed the cache from assign_ids_manifest.json,
+            # which may hold IDs changed since (repair, rollback).
             try:
                 import os
-                if os.path.isfile(self._cache_path):
-                    os.remove(self._cache_path)
+                parent = os.path.dirname(self._cache_path)
+                if parent and not os.path.isdir(parent):
+                    os.makedirs(parent, exist_ok=True)
+                tmp_path = self._cache_path + ".tmp"
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump({"version": 1, "items": []}, f)
+                os.replace(tmp_path, self._cache_path)
             except Exception:
-                pass
+                try:
+                    import os
+                    if os.path.isfile(self._cache_path):
+                        os.remove(self._cache_path)
+                except Exception:
+                    pass
 
     def _load_persistent_cache(self):
         if not self._cache_path:
@@ -163,8 +176,12 @@ class KodiJsonRpcAdapter(object):
                 if os.path.isfile(manifest_path):
                     with open(manifest_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
+                    if not isinstance(data, dict) or data.get("rolled_back_at"):
+                        return
                     now = time.time()
                     for item in data.get("modified") or []:
+                        if not isinstance(item, dict) or item.get("rolled_back"):
+                            continue
                         f_path = item.get("file") or ""
                         sid = item.get("sudosync_id") or ""
                         typ = item.get("type") or "movie"

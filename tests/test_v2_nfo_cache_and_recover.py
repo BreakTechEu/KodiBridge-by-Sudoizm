@@ -203,6 +203,50 @@ class NfoCacheTests(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def _manifest_dir(self, manifest_data):
+        import json
+        import tempfile
+        temp_dir = tempfile.mkdtemp(prefix="sudosync_test_manifest_")
+        with open(os.path.join(temp_dir, "assign_ids_manifest.json"), "w", encoding="utf-8") as f:
+            json.dump(manifest_data, f)
+        return temp_dir
+
+    def test_cleared_cache_is_not_seeded_again_from_manifest(self):
+        # After a repair or rollback the manifest may hold outdated IDs.
+        import shutil
+        temp_dir = self._manifest_dir({"modified": [
+            {"file": "smb://nas/m/1/film.nfo", "type": "movie", "sudosync_id": "MAZURY-000042"}]})
+        try:
+            cache_file = os.path.join(temp_dir, "nfo_id_cache.json")
+            first = KodiJsonRpcAdapter(_Transport([_movie(1)]), nfo_reader=lambda p, m: None, cache_path=cache_file)
+            first.clear_nfo_cache()
+            reader_calls = []
+
+            def reader(path, max_bytes):
+                reader_calls.append(path)
+                return None
+
+            restarted = KodiJsonRpcAdapter(_Transport([_movie(1)]), nfo_reader=reader, cache_path=cache_file)
+            movies = restarted.get_movies()
+            self.assertGreater(len(reader_calls), 0)
+            self.assertIsNone(movies[0]["uniqueid"].get("sudosync"))
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_rolled_back_manifest_does_not_seed_cache(self):
+        import shutil
+        for data in ({"rolled_back_at": "2026-10-31T10:00:00Z", "modified": [
+                         {"file": "smb://nas/m/1/film.nfo", "type": "movie", "sudosync_id": "MAZURY-000042"}]},
+                     {"modified": [{"file": "smb://nas/m/1/film.nfo", "type": "movie",
+                                    "sudosync_id": "MAZURY-000042", "rolled_back": True}]}):
+            temp_dir = self._manifest_dir(data)
+            try:
+                adapter = KodiJsonRpcAdapter(_Transport([_movie(1)]), nfo_reader=lambda p, m: None,
+                                             cache_path=os.path.join(temp_dir, "nfo_id_cache.json"))
+                self.assertIsNone(adapter.get_movies()[0]["uniqueid"].get("sudosync"))
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 class RecoverTests(unittest.TestCase):
     def _components(self, recovery_status, client_id="client-0000000001", runtime_client_id="client-0000000001"):
