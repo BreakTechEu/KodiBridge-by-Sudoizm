@@ -119,14 +119,25 @@ class KodiVFSMetadataReader(object):
             raise ValueError("metadata path must be a non-empty string")
         if type(max_bytes) is not int or max_bytes < 1:
             raise ValueError("max_bytes must be a positive integer")
+        # A missing sidecar is not an error: None means "no metadata file"
+        # (e.g. an item without .nfo, or a library entry whose files were
+        # renamed or removed since the last scan).
         unc_path = _resolve_win_unc(path, self._allow_win_unc)
         if unc_path is not None:
             try:
                 with open(unc_path, "rb") as handle:
                     data = handle.read(max_bytes + 1)
+            except FileNotFoundError:
+                return None
             except Exception as exc:
                 raise KodiVFSBackendError("Cannot read metadata {}: {}".format(path, exc))
         else:
+            try:
+                stripped = _strip_vfs_credentials(path)
+                if not self._vfs.exists(path) and (stripped == path or not self._vfs.exists(stripped)):
+                    return None
+            except Exception:
+                pass
             handle = None
             try:
                 handle = self._vfs.File(path, "r")

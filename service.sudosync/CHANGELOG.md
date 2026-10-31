@@ -1,3 +1,8 @@
+KodiBridge by Sudoizm 2.2.11
+============================
+
+- Brak pliku .nfo nie jest już liczony jako „nieczytelne .nfo”. Tak było np. dla pozycji biblioteki, której pliki zmieniły nazwę albo zniknęły od ostatniego skanowania, albo dla pozycji w ogóle bez .nfo. Brakujący plik oznacza teraz po prostu brak metadanych. Jako nieczytelne zgłaszane są tylko pliki, które istnieją, a nie dają się odczytać: puste, niepoprawny UTF-8 albo XML, za duże, z błędem dostępu. Nieaktualne wpisy biblioteki usuwa w Kodi „Wyczyść bibliotekę”.
+
 KodiBridge by Sudoizm 2.2.10
 ============================
 

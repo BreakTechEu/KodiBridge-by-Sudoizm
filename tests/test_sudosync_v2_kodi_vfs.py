@@ -226,5 +226,30 @@ class WindowsLongPathTests(unittest.TestCase):
         self.assertEqual(_long_unc("C:\\" + "x" * 300), "C:\\" + "x" * 300)
 
 
+class MissingMetadataTests(unittest.TestCase):
+    """A missing .nfo means "no metadata", not an unreadable file (home PC, 2026-10-31)."""
+
+    def test_missing_file_through_kodi_vfs_returns_none(self):
+        reader = KodiVFSMetadataReader(FakeVFS(), allow_win_unc=False)
+        self.assertIsNone(reader("smb://nas/Wideo/Serial/missing.nfo", 1024))
+
+    def test_missing_file_through_windows_unc_returns_none(self):
+        import tempfile
+        from unittest.mock import patch
+        folder = tempfile.mkdtemp()
+        missing = os.path.join(folder, "Childhood\u02c8s End - s01e01.nfo")
+        with patch("resources.lib.sudosync_v2.kodi_vfs._resolve_win_unc", return_value=missing):
+            reader = KodiVFSMetadataReader(FakeVFS(), allow_win_unc=True)
+            self.assertIsNone(reader("smb://nas/Wideo/Serial/x.nfo", 1024))
+
+    def test_other_read_errors_are_still_reported(self):
+        import tempfile
+        from unittest.mock import patch
+        folder = tempfile.mkdtemp()  # a directory cannot be opened as a file
+        with patch("resources.lib.sudosync_v2.kodi_vfs._resolve_win_unc", return_value=folder):
+            reader = KodiVFSMetadataReader(FakeVFS(), allow_win_unc=True)
+            with self.assertRaises(KodiVFSBackendError):
+                reader("smb://nas/Wideo/Serial/x.nfo", 1024)
+
 if __name__ == "__main__":
     unittest.main()
