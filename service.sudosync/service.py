@@ -32,9 +32,29 @@ from resources.lib.sudosync_core import (
     maybe_check_github_update_daily,
     read_shared_config,
     record_kodibridge_id_coverage,
+    renumbered_sudosync_ids,
     take_nfo_cache_refresh_request,
+    take_nfo_id_epoch_change,
     update_local_status_from_v2,
 )
+
+
+# Last system/config.json read by the service loop; the sync engine reads the
+# KodiBridge IDs renumbered by the duplicate repair from it.
+_SHARED_VIEW = {"data": None}
+
+
+def _drop_nfo_identifier_cache(v2_runtime, reason):
+    """Forget cached .nfo identifiers so the next cycle reads them again."""
+    try:
+        from resources.lib.sudosync_core import _NFO_ID_CACHE
+        _NFO_ID_CACHE.clear()
+        kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
+        if hasattr(kodi_adapter, "clear_nfo_cache"):
+            kodi_adapter.clear_nfo_cache()
+        log("NFO identifier cache cleared: {}.".format(reason), xbmc.LOGINFO)
+    except Exception as exc:
+        log("V2 NFO cache invalidation failed: {}".format(exc), xbmc.LOGWARNING)
 
 
 _MonitorBase = getattr(xbmc, "Monitor", object)
@@ -431,6 +451,7 @@ def _run_service():
                 # With the network KodiBridge ID option enabled, media are matched
                 # only by KodiBridge ID; external IDs are a fallback otherwise.
                 sudosync_only=lambda: bool(addon_settings().get("sudosync_id_enabled")),
+                renumbered_ids=lambda: renumbered_sudosync_ids(_SHARED_VIEW["data"]),
             )
             # Recovery only: the library scan is done once, by the first sync cycle.
             # A second full NFO scan here delayed the first snapshot by 1-2 minutes.
@@ -478,6 +499,9 @@ def _run_service():
 
         try:
             shared = read_shared_config(settings["base_path"])
+            _SHARED_VIEW["data"] = shared
+            if v2_runtime is not None and take_nfo_id_epoch_change(shared):
+                _drop_nfo_identifier_cache(v2_runtime, "KodiBridge IDs were changed on another Kodi")
             init = shared.get("initialization") or {}
             if v2_blocked:
                 log("Skipping startup synchronization because v2 session recovery is blocked.", xbmc.LOGERROR)
@@ -559,19 +583,17 @@ def _run_service():
                 if shared_cache is None or (now - shared_read_at) >= SHARED_CONFIG_REFRESH_SECONDS:
                     shared_cache = read_shared_config(settings["base_path"])
                     shared_read_at = now
+                    _SHARED_VIEW["data"] = shared_cache
+                    if v2_runtime is not None and take_nfo_id_epoch_change(shared_cache):
+                        _drop_nfo_identifier_cache(v2_runtime, "KodiBridge IDs were changed on another Kodi")
+                        last_live_poll = 0.0
                 shared = shared_cache
                 init = shared.get("initialization") or {}
                 live_active = bool(init.get("completed", False) and settings.get("live_sync_enabled", True))
                 if take_nfo_cache_refresh_request() and v2_runtime is not None:
-                    # KodiBridge IDs were assigned or rolled back from the settings
-                    # script: drop cached NFO identifiers and re-read them now.
-                    try:
-                        kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
-                        if hasattr(kodi_adapter, "clear_nfo_cache"):
-                            kodi_adapter.clear_nfo_cache()
-                        log("NFO identifier cache cleared after a KodiBridge ID change in settings.", xbmc.LOGINFO)
-                    except Exception as exc:
-                        log("V2 NFO cache invalidation failed: {}".format(exc), xbmc.LOGWARNING)
+                    # KodiBridge IDs were assigned, repaired or rolled back from the
+                    # settings script: drop cached NFO identifiers and re-read them now.
+                    _drop_nfo_identifier_cache(v2_runtime, "KodiBridge IDs were changed in settings")
                     last_live_poll = 0.0
                 if take_resolution_request():
                     # Settings action: ask again about postponed conflicts and

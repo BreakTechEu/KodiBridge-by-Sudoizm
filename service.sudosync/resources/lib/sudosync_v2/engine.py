@@ -53,7 +53,7 @@ class SyncEngine(object):
 
     def __init__(self, kodi, client_id, client_name, load_previous_local,
                  load_peer_snapshots, max_records=100000, abort_requested=None,
-                 sudosync_only=False):
+                 sudosync_only=False, renumbered_ids=None):
         if kodi is None:
             raise ValueError("kodi adapter is required")
         if not callable(load_previous_local) or not callable(load_peer_snapshots):
@@ -67,8 +67,19 @@ class SyncEngine(object):
         self._abort_requested = abort_requested
         # bool or zero-argument callable (the network setting may change at runtime)
         self._sudosync_only = sudosync_only
+        # dict or zero-argument callable: KodiBridge IDs replaced by the
+        # duplicate repair (old ID -> new IDs), read from the NAS
+        self._renumbered_ids = renumbered_ids
         # KodiBridge ID coverage of the last library read (see snapshot.kodibridge_id_coverage)
         self.last_coverage = None
+
+    def _renumbered(self):
+        try:
+            value = self._renumbered_ids() if callable(self._renumbered_ids) else self._renumbered_ids
+        except Exception as exc:
+            logger.debug("Renumbered KodiBridge IDs unavailable: %s", exc)
+            return None
+        return value if isinstance(value, dict) else None
 
     def _record_coverage(self, movies, episodes):
         """Store KodiBridge ID coverage of the library just read (never fails the cycle)."""
@@ -149,6 +160,7 @@ class SyncEngine(object):
                 self._client_id,
                 self._client_name,
                 previous_snapshot=previous,
+                renumbered_ids=self._renumbered(),
                 logical_clock=logical_clock,
                 max_records=self._max_records,
                 suppress_local_changes=bool(suppress_local_changes),
@@ -250,6 +262,7 @@ class SyncEngine(object):
                 self._client_id,
                 self._client_name,
                 previous_snapshot=previous,
+                renumbered_ids=self._renumbered(),
                 logical_clock=logical_clock,
                 max_records=self._max_records,
                 suppress_local_changes=bool(suppress_local_changes),
@@ -330,6 +343,7 @@ class SyncEngine(object):
                 self._client_id,
                 self._client_name,
                 previous_snapshot=previous,
+                renumbered_ids=self._renumbered(),
                 logical_clock=logical_clock,
                 max_records=self._max_records,
                 kept_kodi_ids_out=local_kodi_ids,

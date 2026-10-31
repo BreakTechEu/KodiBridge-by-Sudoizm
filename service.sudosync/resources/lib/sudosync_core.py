@@ -2207,6 +2207,452 @@ def rollback_sudosync_ids(manifest_path=None):
     }
 
 
+# ---------------------------------------------------------------------------
+# Repair of duplicate KodiBridge IDs
+# ---------------------------------------------------------------------------
+
+ASSIGN_IDS_MANIFEST_NAME = "assign_ids_manifest.json"
+REPAIR_IDS_MANIFEST_NAME = "repair_ids_manifest.json"
+REPAIR_BACKUP_SUFFIX = ".repair.bak"
+NFO_ID_EPOCH_FILE_NAME = "nfo_id_epoch.txt"
+# system/config.json keys: a new value of the epoch tells every Kodi that
+# KodiBridge IDs in .nfo files were changed or removed (not only added), so the
+# cached identifiers must be read again; the map lets the sync engine accept an
+# item whose KodiBridge ID was replaced by the duplicate repair.
+SHARED_NFO_ID_EPOCH_KEY = "nfo_id_epoch"
+SHARED_RENUMBERED_IDS_KEY = "kodibridge_id_renumbered"
+MAX_SHARED_RENUMBERED_IDS = 5000
+_EXTERNAL_ID_KINDS = ("imdb", "tmdb", "tvdb", "trakt")
+_SUDOSYNC_UNIQUEID_RE = re.compile(
+    rb"(<uniqueid\b[^>]*?\btype\s*=\s*[\"']sudosync[\"'][^>]*>)(\s*)([^<]*?)(\s*)(</uniqueid>)",
+    re.IGNORECASE,
+)
+_SEEN_NFO_ID_EPOCH = {"value": None}
+
+
+def _sid_key(value):
+    """Comparable KodiBridge ID: lower case, without a ':sNNeNN' episode qualifier."""
+    return str(value or "").strip().lower().split(":", 1)[0]
+
+
+def _effective_sudosync_id(record):
+    """KodiBridge ID as the sync engine sees it: the .nfo value wins over the Kodi database."""
+    nfo_ids = _NFO_ID_CACHE.get(record.get("file") or "") or {}
+    value = nfo_ids.get("sudosync") or (record.get("ids") or {}).get("sudosync")
+    return str(value).strip() if value else ""
+
+
+def _record_label(record):
+    if record.get("type") == "episode":
+        try:
+            return "{} S{:02d}E{:02d}".format(
+                record.get("showtitle") or record.get("title") or "?",
+                int(record.get("season") or 0),
+                int(record.get("episode") or 0),
+            )
+        except (TypeError, ValueError):
+            pass
+    title = record.get("title") or record.get("originaltitle") or ""
+    if record.get("year"):
+        title = "{} ({})".format(title, record.get("year"))
+    return title or os.path.basename(str(record.get("file") or "")) or "?"
+
+
+def find_duplicate_sudosync_id_groups(movies, episodes):
+    """Return the KodiBridge IDs used by more than one media file.
+
+    Library items of one media file (episodes of a multi-episode file) share
+    one .nfo and one ID; that is not a duplicate. Each group lists its files
+    sorted by path: {"sudosync_id", "files": [{"file", "type", "sudosync_id",
+    "records"}]}.
+    """
+    groups = {}
+    for kind, collection in (("movie", movies), ("episode", episodes)):
+        for record in collection or []:
+            if not isinstance(record, dict) or not record.get("file"):
+                continue
+            sid = _effective_sudosync_id(record)
+            if not sid:
+                continue
+            group = groups.setdefault(_sid_key(sid), {"sudosync_id": sid, "files": {}})
+            entry = group["files"].setdefault(
+                record["file"],
+                {"file": record["file"], "type": kind, "sudosync_id": sid, "records": []},
+            )
+            entry["records"].append(record)
+    result = []
+    for key in sorted(groups):
+        group = groups[key]
+        if len(group["files"]) < 2:
+            continue
+        files = sorted(group["files"].values(), key=lambda entry: entry["file"].lower())
+        result.append({"sudosync_id": group["sudosync_id"], "files": files})
+    return result
+
+
+def _load_network_snapshot_ids(base_path):
+    """(media type, ids) of every record in the client snapshots on the NAS."""
+    found = []
+    base = str(base_path or "").strip()
+    if not base:
+        return found
+    dir_path = _join_vfs(base.rstrip("/") + "/", "clients")
+    try:
+        if not _vfs_exists(dir_path):
+            return found
+        _dirs, files = _vfs_listdir(dir_path)
+    except Exception as exc:
+        log("Cannot list client snapshots for the duplicate repair: {}".format(exc), xbmc.LOGWARNING)
+        return found
+    for filename in files or []:
+        if not isinstance(filename, str) or not filename.lower().endswith(".json"):
+            continue
+        try:
+            snap = _read_vfs_json(dir_path.rstrip("/") + "/" + filename)
+        except Exception:
+            continue
+        if not isinstance(snap, dict):
+            continue
+        for key, media_type in (("movies", "movie"), ("episodes", "episode")):
+            for rec in snap.get(key) or []:
+                if isinstance(rec, dict) and isinstance(rec.get("ids"), dict):
+                    found.append((media_type, rec["ids"]))
+    return found
+
+
+def _known_on_network(entry, snapshot_ids):
+    """True when a client snapshot keeps this file's item under its KodiBridge ID.
+
+    Matched by an external ID (IMDb/TMDb/TVDB/Trakt) of the item; such an item
+    keeps its number, because the synchronized history belongs to it.
+    """
+    external = {}
+    for record in entry["records"]:
+        ids = record.get("ids") if isinstance(record.get("ids"), dict) else {}
+        for kind in _EXTERNAL_ID_KINDS:
+            if ids.get(kind):
+                external.setdefault(kind, set()).add(str(ids[kind]).strip().lower())
+    if not external:
+        return False
+    key = _sid_key(entry["sudosync_id"])
+    for media_type, ids in snapshot_ids:
+        if media_type != entry["type"] or _sid_key(ids.get("sudosync")) != key:
+            continue
+        for kind, values in external.items():
+            if str(ids.get(kind) or "").strip().lower() in values:
+                return True
+    return False
+
+
+def _replace_sudosync_id_in_nfo(raw, old_id, new_id):
+    """Replace the KodiBridge ID value old_id with new_id; return (bytes, count)."""
+    import xml.sax.saxutils
+
+    old_key = str(old_id or "").strip().lower()
+    new_value = xml.sax.saxutils.escape(str(new_id)).encode("utf-8")
+    count = [0]
+
+    def _repl(match):
+        if match.group(3).decode("utf-8", "replace").strip().lower() != old_key:
+            return match.group(0)
+        count[0] += 1
+        return match.group(1) + match.group(2) + new_value + match.group(4) + match.group(5)
+
+    return _SUDOSYNC_UNIQUEID_RE.sub(_repl, bytes(raw)), count[0]
+
+
+def _nfo_id_epoch_path():
+    return os.path.join(_addon_profile_path(), NFO_ID_EPOCH_FILE_NAME)
+
+
+def _remember_nfo_id_epoch(epoch):
+    _SEEN_NFO_ID_EPOCH["value"] = epoch
+    try:
+        with open(_nfo_id_epoch_path(), "w", encoding="utf-8") as handle:
+            handle.write(epoch)
+    except Exception as exc:
+        log("Cannot store the KodiBridge ID change marker: {}".format(exc), xbmc.LOGWARNING)
+
+
+def publish_kodibridge_id_change(base_path=None, renumbered=None):
+    """Tell every Kodi that KodiBridge IDs in .nfo files changed or were removed.
+
+    Bumps the epoch in system/config.json (each service then drops its cached
+    .nfo identifiers once) and records renumbered pairs (old ID, new ID).
+    """
+    base = base_path if base_path is not None else (addon_settings().get("base_path") or "")
+    if not str(base or "").strip():
+        return ""
+    epoch = "{}-{}".format(utc_now_precise(), uuid.uuid4().hex[:8])
+    pairs = [(_sid_key(old), _sid_key(new)) for old, new in (renumbered or []) if old and new]
+
+    def _mutator(shared):
+        shared[SHARED_NFO_ID_EPOCH_KEY] = epoch
+        if pairs:
+            mapping = shared.get(SHARED_RENUMBERED_IDS_KEY)
+            mapping = dict(mapping) if isinstance(mapping, dict) else {}
+            for old, new in pairs:
+                targets = mapping.pop(old, None)
+                targets = list(targets) if isinstance(targets, list) else []
+                if new not in targets:
+                    targets.append(new)
+                mapping[old] = targets  # re-inserted last: oldest entries are dropped first
+            while len(mapping) > MAX_SHARED_RENUMBERED_IDS:
+                mapping.pop(next(iter(mapping)))
+            shared[SHARED_RENUMBERED_IDS_KEY] = mapping
+        return True
+
+    update_shared_config(_mutator, base)
+    _remember_nfo_id_epoch(epoch)
+    return epoch
+
+
+def take_nfo_id_epoch_change(shared):
+    """Return True once per new KodiBridge ID change marker found in system/config.json."""
+    epoch = shared.get(SHARED_NFO_ID_EPOCH_KEY) if isinstance(shared, dict) else None
+    if not epoch:
+        return False
+    epoch = str(epoch)
+    if _SEEN_NFO_ID_EPOCH["value"] == epoch:
+        return False
+    try:
+        with open(_nfo_id_epoch_path(), "r", encoding="utf-8") as handle:
+            local = handle.read().strip()
+    except Exception:
+        local = ""
+    _remember_nfo_id_epoch(epoch)
+    return local != epoch
+
+
+def renumbered_sudosync_ids(shared):
+    """Old KodiBridge ID -> new IDs from system/config.json (for the sync engine)."""
+    mapping = shared.get(SHARED_RENUMBERED_IDS_KEY) if isinstance(shared, dict) else None
+    return mapping if isinstance(mapping, dict) else {}
+
+
+def latest_rollback_manifests():
+    """Existing rollback manifests, newest first: [(kind, path, generated_at)]."""
+    found = []
+    for kind, name in (("assign", ASSIGN_IDS_MANIFEST_NAME), ("repair", REPAIR_IDS_MANIFEST_NAME)):
+        path = os.path.join(_addon_profile_path(), name)
+        if not xbmcvfs.exists(path):
+            continue
+        try:
+            data = _read_local_json(path)
+        except Exception:
+            data = None
+        stamp = str(data.get("generated_at") or "") if isinstance(data, dict) else ""
+        found.append((kind, path, stamp))
+    found.sort(key=lambda item: item[2], reverse=True)
+    return found
+
+
+def renumbered_pairs_from_manifest(manifest_path):
+    """(old ID, new ID) pairs recorded by the duplicate repair in a manifest."""
+    try:
+        data = _read_local_json(manifest_path)
+    except Exception:
+        return []
+    pairs = []
+    for entry in (data.get("modified") or []) if isinstance(data, dict) else []:
+        if isinstance(entry, dict) and entry.get("old_sudosync_id") and entry.get("sudosync_id"):
+            pairs.append((entry["old_sudosync_id"], entry["sudosync_id"]))
+    return pairs
+
+
+def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base_path=None, collected_items=None):
+    """Give a new KodiBridge ID to every extra media file that shares one ID.
+
+    In each group one file keeps the number: the one a client snapshot on the
+    NAS knows under this ID (by an external ID), otherwise the first by path.
+    The other .nfo files get the next numbers of the network counter, reserved
+    before each change. Every changed .nfo is backed up as .repair.bak and
+    listed in repair_ids_manifest.json, so the change can be rolled back.
+    """
+    settings = addon_settings()
+    if not bool(settings.get("sudosync_id_enabled") or settings.get("enable_sudosync_id")):
+        raise RuntimeError("Generowanie KodiBridge ID jest wyłączone w ustawieniach.")
+    base = base_path if base_path is not None else (settings.get("base_path") or "")
+    result = {
+        "busy": False,
+        "groups": 0,
+        "renumbered": 0,
+        "changes": [],
+        "kept": [],
+        "errors": [],
+        "manifest_path": "",
+        "last_number": 0,
+        "cancelled": False,
+        "fatal_error": "",
+    }
+    if not _acquire_assign_ids_lock(base_path=base, auto_mode=False):
+        result["busy"] = True
+        return result
+    try:
+        if collected_items is not None:
+            movies, episodes = collected_items
+        else:
+            movies, episodes = collect_library(first_import=True, is_canceled=is_canceled)
+        if is_canceled and is_canceled():
+            result["cancelled"] = True
+            return result
+        groups = find_duplicate_sudosync_id_groups(movies, episodes)
+        result["groups"] = len(groups)
+        if not groups:
+            return result
+
+        snapshot_ids = _load_network_snapshot_ids(base)
+        prefix = get_or_sync_network_id_and_alias(base)
+        last_number = get_network_sudosync_id_last_number(base, list(movies) + list(episodes))
+        manifest_path = os.path.join(_addon_profile_path(), REPAIR_IDS_MANIFEST_NAME)
+        manifest = {
+            "operation": "repair_duplicate_ids",
+            "generated_at": utc_now_precise(),
+            "groups": len(groups),
+            "last_number": last_number,
+            "kept": [],
+            "modified": [],
+            "errors": [],
+            "cancelled": False,
+            "fatal_error": "",
+        }
+        result["manifest_path"] = manifest_path
+
+        def _write_manifest():
+            manifest["last_number"] = last_number
+            try:
+                _write_local_json(manifest_path, manifest)
+            except Exception as exc:
+                log("Cannot write {}: {}".format(REPAIR_IDS_MANIFEST_NAME, exc), xbmc.LOGWARNING)
+
+        def _error(entry, label, message):
+            manifest["errors"].append({"file": entry["file"], "title": label, "error": message})
+            result["errors"].append("{}: {}".format(label, message))
+            log("Duplicate KodiBridge ID repair skipped '{}': {}".format(entry["file"], message), xbmc.LOGWARNING)
+
+        total = sum(len(group["files"]) - 1 for group in groups)
+        done = 0
+        stop = False
+        for group in groups:
+            if stop:
+                break
+            files = group["files"]
+            known = [entry for entry in files if _known_on_network(entry, snapshot_ids)]
+            keeper = known[0] if known else files[0]
+            keeper_label = _record_label(keeper["records"][0])
+            manifest["kept"].append({
+                "file": keeper["file"],
+                "title": keeper_label,
+                "sudosync_id": keeper["sudosync_id"],
+                "known_on_network": bool(known),
+            })
+            result["kept"].append("{} — {}".format(keeper["sudosync_id"], keeper_label))
+            for entry in files:
+                if entry is keeper:
+                    continue
+                if is_canceled and is_canceled():
+                    result["cancelled"] = manifest["cancelled"] = True
+                    stop = True
+                    break
+                label = _record_label(entry["records"][0])
+                done += 1
+                if progress_callback:
+                    progress_callback(done, total, label)
+                old_id = entry["sudosync_id"]
+                best_path, _ids, _text = _find_best_nfo(entry["file"], entry["type"])
+                if not best_path or not xbmcvfs.exists(best_path):
+                    _error(entry, label, "brak pliku .nfo")
+                    continue
+                _touch_assign_ids_lock(base)
+                try:
+                    raw = _read_vfs_all(best_path)
+                    raw = raw.encode("utf-8") if isinstance(raw, str) else bytes(raw or b"")
+                except Exception as exc:
+                    _error(entry, label, "nie można odczytać .nfo: {}".format(exc))
+                    continue
+                if _replace_sudosync_id_in_nfo(raw, old_id, old_id)[1] == 0:
+                    _error(entry, label, "plik .nfo nie zawiera ID {} (ID pochodzi z bazy Kodi)".format(old_id))
+                    continue
+
+                candidate = last_number + 1
+                try:
+                    persisted = persist_network_sudosync_id_last_number(candidate, base)
+                    if not persisted or persisted < candidate:
+                        raise IOError("Rezerwacja licznika zwróciła nieprawidłową wartość: {}".format(persisted))
+                    candidate = persisted
+                except Exception as exc:
+                    result["fatal_error"] = manifest["fatal_error"] = str(exc)
+                    _error(entry, label, "rezerwacja licznika nie powiodła się: {}".format(exc))
+                    stop = True
+                    break
+                last_number = candidate
+                _write_manifest()
+
+                new_id = "{}-{:06d}".format(prefix, candidate)
+                new_raw, _count = _replace_sudosync_id_in_nfo(raw, old_id, new_id)
+                bak_path = best_path + REPAIR_BACKUP_SUFFIX
+                new_path = best_path + ".new"
+                try:
+                    _write_vfs_bytes(new_path, new_raw)
+                    if xbmcvfs.exists(bak_path):
+                        xbmcvfs.delete(bak_path)
+                    moved_original = xbmcvfs.rename(best_path, bak_path)
+                    if not moved_original or not xbmcvfs.rename(new_path, best_path):
+                        if moved_original and not xbmcvfs.exists(best_path):
+                            xbmcvfs.rename(bak_path, best_path)
+                        if xbmcvfs.exists(new_path):
+                            xbmcvfs.delete(new_path)
+                        _error(entry, label, "nie można podmienić pliku .nfo (numer {} pozostaje niewykorzystany)".format(new_id))
+                        continue
+                except Exception as exc:
+                    if xbmcvfs.exists(new_path):
+                        xbmcvfs.delete(new_path)
+                    _error(entry, label, "błąd zapisu .nfo: {}".format(exc))
+                    continue
+
+                for record in entry["records"]:
+                    record.setdefault("ids", {})["sudosync"] = new_id
+                    try:
+                        if entry["type"] == "movie":
+                            rpc("VideoLibrary.RefreshMovie", {"movieid": record.get("local", {}).get("movieid")})
+                        else:
+                            rpc("VideoLibrary.RefreshEpisode", {"episodeid": record.get("local", {}).get("episodeid")})
+                    except Exception:
+                        pass
+                manifest["modified"].append({
+                    "file": best_path,
+                    "backup": bak_path,
+                    "action": "modified",
+                    "created": False,
+                    "type": entry["type"],
+                    "sudosync_id": new_id,
+                    "old_sudosync_id": old_id,
+                    "content_sha256": hashlib.sha256(new_raw).hexdigest(),
+                    "title": label,
+                    "media_file": entry["file"],
+                })
+                result["changes"].append("{} → {} — {}".format(old_id, new_id, label))
+                result["renumbered"] += 1
+                _write_manifest()
+
+        _NFO_ID_CACHE.clear()
+        result["last_number"] = last_number
+        _write_manifest()
+        pairs = [(item["old_sudosync_id"], item["sudosync_id"]) for item in manifest["modified"]]
+        if pairs:
+            try:
+                publish_kodibridge_id_change(base, pairs)
+            except Exception as exc:
+                msg = "Nie udało się ogłosić zmiany ID innym Kodi: {}".format(exc)
+                result["errors"].append(msg)
+                log(msg, xbmc.LOGWARNING)
+        log("Duplicate KodiBridge ID repair: groups={}, renumbered={}, errors={}".format(
+            len(groups), result["renumbered"], len(result["errors"])), xbmc.LOGINFO)
+        return result
+    finally:
+        _release_assign_ids_lock(base_path=base)
+
+
 class _PreviewResult(list):
     def __init__(self, *args, **kwargs):
         super(_PreviewResult, self).__init__(*args, **kwargs)

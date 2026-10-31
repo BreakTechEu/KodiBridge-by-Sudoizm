@@ -196,6 +196,8 @@ def _coverage_text(coverage):
         problems.append("nieczytelne .nfo: {}".format(coverage["unreadable_nfo"]))
     if problems:
         lines.append("UWAGA – " + ", ".join(problems) + " (przykłady w kodi.log: „KodiBridge ID coverage”)")
+        if int(movie.get("duplicates") or 0) + int(episode.get("duplicates") or 0):
+            lines.append("Zdublowane ID naprawia przycisk „Napraw zdublowane KodiBridge ID” w ustawieniach.")
     else:
         lines.append("Wszystkie pozycje mają KodiBridge ID.")
     return "\n".join(lines)
@@ -213,6 +215,125 @@ def _note_nfo_changes(result, keys=("movies", "episodes")):
         _NFO_CHANGES["count"] += sum(int(result.get(key) or 0) for key in keys)
     except (TypeError, ValueError):
         _NFO_CHANGES["count"] += 1  # unknown amount: assume something changed
+
+
+def repair_ids_dialog():
+    """Settings action: give new KodiBridge IDs to items that share one ID."""
+    from resources.lib.sudosync_core import repair_duplicate_sudosync_ids
+
+    if not addon_settings().get("sudosync_id_enabled"):
+        xbmcgui.Dialog().ok("KodiBridge", "Funkcja jest wyłączona. Najpierw ją włącz i zatwierdź opcje przyciskiem OK.")
+        return
+    if not xbmcgui.Dialog().yesno(
+        "KodiBridge — zdublowane ID",
+        "Pozycje biblioteki, które mają to samo KodiBridge ID, dostaną nowe numery. "
+        "Jedna pozycja z każdej grupy zachowuje numer (ta, którą zna synchronizacja). "
+        "Zmienione pliki .nfo dostają kopię .repair.bak, a zmianę można wycofać.\n"
+        "Odczyt biblioteki może potrwać kilka minut. Kontynuować?",
+        yeslabel="Napraw",
+        nolabel="Anuluj",
+    ):
+        return
+
+    import xbmc
+    monitor = xbmc.Monitor()
+    dialog = xbmcgui.DialogProgress()
+    heading = "KodiBridge — naprawa zdublowanych ID"
+
+    def is_canceled():
+        try:
+            if dialog.iscanceled():
+                return True
+        except Exception:
+            pass
+        try:
+            return monitor.abortRequested() is True
+        except Exception:
+            return False
+
+    def progress(current, total, label=""):
+        if is_canceled():
+            return
+        pct = int(min(100, max(0, current * 100 // max(1, total))))
+        dialog.update(pct, "Nadaję nowe numery ({}/{})\n{}".format(current, total, label))
+
+    dialog.create(heading, "Odczyt biblioteki i plików .nfo…")
+    try:
+        result = repair_duplicate_sudosync_ids(progress_callback=progress, is_canceled=is_canceled)
+    finally:
+        try:
+            dialog.close()
+        except Exception:
+            pass
+    _note_nfo_changes(result, keys=("renumbered",))
+
+    if result.get("busy"):
+        xbmcgui.Dialog().ok("KodiBridge", "Przypisywanie KodiBridge ID jest już wykonywane w tle. Poczekaj na zakończenie i spróbuj ponownie.")
+        return
+    if not result.get("groups"):
+        xbmcgui.Dialog().ok("KodiBridge", "W bibliotece tego Kodi nie ma zdublowanych KodiBridge ID.")
+        return
+
+    lines = [
+        "Grupy z tym samym ID: {}. Nadano nowe numery: {}. Pominięte: {}.".format(
+            result.get("groups", 0), result.get("renumbered", 0), len(result.get("errors") or [])),
+    ]
+    if result.get("cancelled"):
+        lines.append("Przerwano na żądanie; pozostałe pozycje bez zmian.")
+    if result.get("fatal_error"):
+        lines.append("Przerwano: {}".format(mask_vfs_credentials(result["fatal_error"])))
+    if result.get("changes"):
+        lines += ["", "Nowe numery:"] + ["  " + line for line in result["changes"]]
+    if result.get("kept"):
+        lines += ["", "Zachowały numer:"] + ["  " + line for line in result["kept"]]
+    if result.get("errors"):
+        lines += ["", "Pominięte:"] + ["  " + mask_vfs_credentials(line) for line in result["errors"]]
+    lines += ["", "Raport: {}. Zmianę wycofuje przycisk „Wycofaj ostatnio przypisane ID”.".format(
+        os.path.basename(result.get("manifest_path") or "") or "repair_ids_manifest.json")]
+    xbmcgui.Dialog().textviewer(heading, "\n".join(lines))
+
+
+def rollback_ids_dialog():
+    """Settings action: undo the last KodiBridge ID assignment or duplicate repair."""
+    from resources.lib.sudosync_core import (
+        latest_rollback_manifests,
+        publish_kodibridge_id_change,
+        renumbered_pairs_from_manifest,
+        rollback_sudosync_ids,
+    )
+
+    manifests = latest_rollback_manifests()
+    if not manifests:
+        xbmcgui.Dialog().ok("KodiBridge", "Brak zapisanej operacji do wycofania.")
+        return
+    names = {"assign": "przypisanie KodiBridge ID", "repair": "naprawę zdublowanych ID"}
+    kind, path, stamp = manifests[0]
+    if len(manifests) > 1:
+        choice = xbmcgui.Dialog().select(
+            "KodiBridge — co wycofać?",
+            ["Ostatnie {} ({})".format(names[k], s[:16].replace("T", " ") or "?") for k, _p, s in manifests],
+        )
+        if choice < 0:
+            return
+        kind, path, stamp = manifests[choice]
+    if not xbmcgui.Dialog().yesno(
+        "KodiBridge - cofnięcie zmian",
+        "Czy wycofać ostatnie {}, przywracając pliki .nfo z kopii zapasowych?".format(names[kind]),
+        yeslabel="Tak, wycofaj",
+        nolabel="Anuluj",
+    ):
+        return
+    res = rollback_sudosync_ids(manifest_path=path)
+    _note_nfo_changes(res, keys=("rolled_back", "restored", "deleted"))
+    if res.get("rolled_back"):
+        # Other Kodi devices keep KodiBridge IDs read from .nfo files in a cache;
+        # a restored file may carry an older ID, so they must read it again.
+        reverse = [(new, old) for old, new in renumbered_pairs_from_manifest(path)] if kind == "repair" else []
+        try:
+            publish_kodibridge_id_change(renumbered=reverse)
+        except Exception as exc:
+            log("Cannot announce the KodiBridge ID rollback: {}".format(exc))
+    xbmcgui.Dialog().ok("KodiBridge", "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0)))
 
 
 def main():
@@ -381,24 +502,16 @@ def main():
                     dialog.close()
                 except Exception:
                     pass
+        elif action in ("repairids", "repair_ids"):
+            repair_ids_dialog()
         elif action == "rollbackids":
-            from resources.lib.sudosync_core import rollback_sudosync_ids
-            if not xbmcgui.Dialog().yesno(
-                "KodiBridge - cofnięcie zmian",
-                "Czy wycofać ostatnie zmiany ID przywracając kopie z backupu .bak?",
-                yeslabel="Tak, wycofaj",
-                nolabel="Anuluj"
-            ):
-                return
-            res = rollback_sudosync_ids()
-            _note_nfo_changes(res, keys=("rolled_back", "restored", "deleted"))
-            xbmcgui.Dialog().ok("KodiBridge", "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0)))
+            rollback_ids_dialog()
         else:
             show_status()
     except Exception as exc:
         xbmcgui.Dialog().ok("KodiBridge — błąd", mask_vfs_credentials(str(exc)))
     finally:
-        if action in ("assignids", "assign_ids", "rollbackids") and _NFO_CHANGES["count"] > 0:
+        if action in ("assignids", "assign_ids", "repairids", "repair_ids", "rollbackids") and _NFO_CHANGES["count"] > 0:
             # These actions change KodiBridge IDs in .nfo files from this script
             # process; the running service must drop its cached NFO identifiers.
             # Only when something changed: re-reading every .nfo of a large

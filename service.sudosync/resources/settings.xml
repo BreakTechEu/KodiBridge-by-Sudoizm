@@ -85,6 +85,16 @@
             </dependency>
           </dependencies>
         </setting>
+        <setting id="repair_sudosync_ids" type="action" label="32086" help="32087">
+          <level>0</level>
+          <data>RunScript(service.sudosync,repairids)</data>
+          <control type="button" format="action"><close>false</close></control>
+          <dependencies>
+            <dependency type="enable">
+              <condition operator="is" setting="sudosync_id_enabled">true</condition>
+            </dependency>
+          </dependencies>
+        </setting>
         <setting id="rollback_sudosync_ids" type="action" label="32072" help="32073">
           <level>0</level>
           <data>RunScript(service.sudosync,rollbackids)</data>

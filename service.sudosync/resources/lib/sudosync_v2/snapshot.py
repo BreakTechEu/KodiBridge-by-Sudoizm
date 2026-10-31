@@ -123,7 +123,8 @@ def _record_versions(state, prior, client_id, logical_clock, has_previous_snapsh
 
 def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=None,
                    generated_at=None, logical_clock=0, max_records=100000,
-                   suppress_local_changes=False, kept_kodi_ids_out=None):
+                   suppress_local_changes=False, kept_kodi_ids_out=None,
+                   renumbered_ids=None):
     """Convert Kodi movie/episode arrays into a schema-validated snapshot.
 
     A changed field advances that field's local version relative to the previous
@@ -131,6 +132,11 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
     snapshot atomically and advancing logical_clock from all observed versions.
     Duplicate strong identities within one media type are rejected rather than
     silently choosing a local item.
+
+    ``renumbered_ids`` maps an old KodiBridge ID to the new IDs it was replaced
+    with by the duplicate repair (published on the NAS). An item whose previous
+    record carries the old ID and which now carries one of the new IDs keeps its
+    field history instead of failing as an identifier conflict.
     """
     try:
         canonical_client = str(uuid.UUID(str(client_id)))
@@ -276,6 +282,16 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                             ", ".join(conflicting_kinds),
                             ids.get("sudosync"),
                         )
+                    elif conflicting_kinds == ["sudosync"] and _is_renumbered(
+                        renumbered_ids, prior.get("ids", {}).get("sudosync"), ids.get("sudosync")
+                    ):
+                        logger.info(
+                            "%s item got a new KodiBridge ID from the duplicate repair: %s -> %s; "
+                            "keeping its field history",
+                            media_type,
+                            prior.get("ids", {}).get("sudosync"),
+                            ids.get("sudosync"),
+                        )
                     else:
                         raise SnapshotBuildError(
                             "current {} item has conflicting identifiers with its previous snapshot: {}"
@@ -321,6 +337,21 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
 
 
 _LAST_SHARED_EXTERNAL_REPORT = {}
+
+
+def _sudosync_base(value):
+    """KodiBridge ID without the ':sNNeNN' qualifier of a multi-episode file."""
+    return str(value or "").strip().casefold().split(":", 1)[0]
+
+
+def _is_renumbered(renumbered_ids, old_value, new_value):
+    """True when the duplicate repair replaced old_value with new_value."""
+    if not isinstance(renumbered_ids, dict) or not old_value or not new_value:
+        return False
+    targets = renumbered_ids.get(_sudosync_base(old_value))
+    if not isinstance(targets, (list, tuple)):
+        return False
+    return _sudosync_base(new_value) in {_sudosync_base(t) for t in targets}
 
 
 def _report_shared_external_identities(client_id, counts):

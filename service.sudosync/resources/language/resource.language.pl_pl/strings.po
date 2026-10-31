@@ -209,8 +209,8 @@ msgid "Rollback last assigned IDs"
 msgstr "Wycofaj ostatnio przypisane ID"
 
 msgctxt "#32073"
-msgid "Restores .nfo files from .bak backups created during the last KodiBridge ID assignment."
-msgstr "Przywraca pliki .nfo z kopii zapasowych .bak utworzonych podczas ostatniego przypisywania KodiBridge ID."
+msgid "Restores .nfo files from the backups made by the last KodiBridge ID assignment or duplicate repair."
+msgstr "Przywraca pliki .nfo z kopii zapasowych utworzonych podczas ostatniego przypisywania KodiBridge ID albo naprawy zdublowanych ID."
 
 msgctxt "#32074"
 msgid "Install update from local ZIP file..."
@@ -260,3 +260,11 @@ msgstr "Rozwiąż konflikty"
 msgctxt "#32085"
 msgid "Shows changes made on two Kodi devices at the same time (e.g. different play counts) and lets you choose the correct value. Conflicts postponed with \"Later\" are asked about again."
 msgstr "Pokazuje zmiany wprowadzone jednocześnie na dwóch Kodi (np. różna liczba odtworzeń) i pozwala wybrać właściwą wartość. Konflikty odłożone przyciskiem „Później” są pokazywane ponownie."
+
+msgctxt "#32086"
+msgid "Repair duplicate KodiBridge IDs"
+msgstr "Napraw zdublowane KodiBridge ID"
+
+msgctxt "#32087"
+msgid "Gives new numbers to library items that share one KodiBridge ID. One item of each group keeps its number. Changed .nfo files are backed up as .repair.bak; the change can be rolled back."
+msgstr "Nadaje nowe numery pozycjom biblioteki, które mają to samo KodiBridge ID. Jedna pozycja z każdej grupy zachowuje numer. Zmienione pliki .nfo dostają kopię .repair.bak; zmianę można wycofać."

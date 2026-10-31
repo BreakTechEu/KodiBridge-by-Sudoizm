@@ -525,7 +525,7 @@ def build_mapped_native_lock_factory(shared_base_path, native_shared_path,
 
 def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
                      client_id, client_name, max_records=100000,
-                     abort_requested=None, sudosync_only=False):
+                     abort_requested=None, sudosync_only=False, renumbered_ids=None):
     """Wire v2 adapters and runners without enabling any library writes.
 
     ``sudosync_only`` (bool or callable) restricts cross-client matching to the
@@ -563,6 +563,7 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
         max_records=max_records,
         abort_requested=abort_requested,
         sudosync_only=sudosync_only,
+        renumbered_ids=renumbered_ids,
     )
     service_runtime = V2ServiceRuntime(client_id, recovery, engine, abort_requested=abort_requested)
     transaction_runner = TransactionRunner(
@@ -586,7 +587,8 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
 def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
                           lock_factory, client_id, client_name, vfs_module=None,
                           max_records=100000, abort_requested=None,
-                          cache_path=None, on_nfo_cached=None, sudosync_only=False):
+                          cache_path=None, on_nfo_cached=None, sudosync_only=False,
+                          renumbered_ids=None):
     """Compose a Kodi runtime with JSON-RPC and NFO reads provided by Kodi VFS.
 
     A process-local lock follows the project's single-active-Kodi operating
@@ -611,4 +613,5 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
         max_records=max_records,
         abort_requested=abort_requested,
         sudosync_only=sudosync_only,
+        renumbered_ids=renumbered_ids,
     )

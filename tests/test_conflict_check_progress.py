@@ -132,6 +132,9 @@ class NfoRefreshOnlyAfterChangesTests(unittest.TestCase):
         dialog.yesno.return_value = True
         with patch.object(sys, "argv", ["default.py", "rollbackids"]), \
                 patch.object(default_module.xbmcgui, "Dialog", return_value=dialog), \
+                patch.object(sudosync_core, "latest_rollback_manifests",
+                             return_value=[("assign", "/p/assign_ids_manifest.json", "2026-10-31T10:00:00Z")]), \
+                patch.object(sudosync_core, "publish_kodibridge_id_change"), \
                 patch.object(sudosync_core, "rollback_sudosync_ids", return_value=res), \
                 patch.object(sudosync_core, "request_nfo_cache_refresh") as request:
             default_module.main()
@@ -144,6 +147,56 @@ class NfoRefreshOnlyAfterChangesTests(unittest.TestCase):
     def test_refresh_after_real_changes(self):
         request = self._rollback({"rolled_back": 2, "restored": 2, "deleted": 0, "errors": 0})
         request.assert_called_once()
+
+
+class RepairDialogTests(unittest.TestCase):
+    def _repair(self, result, rollback_kind=None):
+        default_module._NFO_CHANGES["count"] = 0
+        dialog = MagicMock()
+        dialog.yesno.return_value = True
+        dialog.select.return_value = 0
+        with patch.object(sys, "argv", ["default.py", "repairids"]), \
+                patch.object(default_module, "addon_settings", return_value={"sudosync_id_enabled": True}), \
+                patch.object(default_module.xbmcgui, "Dialog", return_value=dialog), \
+                patch.object(default_module.xbmcgui, "DialogProgress", return_value=MagicMock()), \
+                patch.object(sudosync_core, "repair_duplicate_sudosync_ids", return_value=result), \
+                patch.object(sudosync_core, "request_nfo_cache_refresh") as request:
+            default_module.main()
+        return dialog, request
+
+    def test_summary_lists_changes_and_refreshes(self):
+        dialog, request = self._repair({
+            "groups": 1, "renumbered": 1, "changes": ["DOM-000005 → DOM-000010 — Show B S02E03"],
+            "kept": ["DOM-000005 — Show A S01E01"], "errors": [], "manifest_path": "/p/repair_ids_manifest.json"})
+        request.assert_called_once()
+        text = dialog.textviewer.call_args[0][1]
+        self.assertIn("DOM-000005 → DOM-000010 — Show B S02E03", text)
+        self.assertIn("Zachowały numer", text)
+
+    def test_no_duplicates_message_without_refresh(self):
+        dialog, request = self._repair({"groups": 0, "renumbered": 0, "errors": []})
+        request.assert_not_called()
+        self.assertIn("nie ma zdublowanych", dialog.ok.call_args[0][1])
+
+    def test_rollback_of_repair_announces_reverse_pairs(self):
+        default_module._NFO_CHANGES["count"] = 0
+        dialog = MagicMock()
+        dialog.yesno.return_value = True
+        dialog.select.return_value = 0
+        with patch.object(sys, "argv", ["default.py", "rollbackids"]), \
+                patch.object(default_module.xbmcgui, "Dialog", return_value=dialog), \
+                patch.object(sudosync_core, "latest_rollback_manifests", return_value=[
+                    ("repair", "/p/repair_ids_manifest.json", "2026-10-31T11:00:00Z"),
+                    ("assign", "/p/assign_ids_manifest.json", "2026-10-30T10:00:00Z")]), \
+                patch.object(sudosync_core, "renumbered_pairs_from_manifest",
+                             return_value=[("DOM-000005", "DOM-000010")]), \
+                patch.object(sudosync_core, "rollback_sudosync_ids",
+                             return_value={"rolled_back": 1, "restored": 1, "deleted": 0, "errors": 0}) as rollback, \
+                patch.object(sudosync_core, "publish_kodibridge_id_change") as publish, \
+                patch.object(sudosync_core, "request_nfo_cache_refresh"):
+            default_module.main()
+        rollback.assert_called_once_with(manifest_path="/p/repair_ids_manifest.json")
+        publish.assert_called_once_with(renumbered=[("DOM-000010", "DOM-000005")])
 
 
 if __name__ == "__main__":
