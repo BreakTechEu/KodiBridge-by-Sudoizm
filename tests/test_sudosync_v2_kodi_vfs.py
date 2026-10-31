@@ -212,5 +212,19 @@ class TestKodiVFSMetadataReader(unittest.TestCase):
         self.assertIn("smb://admin:***@192.168.1.10/Share/file.json", str(err))
 
 
+class WindowsLongPathTests(unittest.TestCase):
+    def test_long_unc_path_gets_extended_prefix(self):
+        from resources.lib.sudosync_v2.kodi_vfs import _long_unc
+        long_path = "\\\\192.168.69.100\\Wideo\\" + "\\".join(["Folder name with many words " * 2] * 4) + "\\episode.nfo"
+        self.assertGreater(len(long_path), 260)
+        self.assertEqual(_long_unc(long_path), "\\\\?\\UNC\\" + long_path[2:])
+        self.assertEqual(_long_unc(_long_unc(long_path)), _long_unc(long_path))
+
+    def test_short_or_local_paths_unchanged(self):
+        from resources.lib.sudosync_v2.kodi_vfs import _long_unc
+        self.assertEqual(_long_unc("\\\\nas\\Wideo\\a.nfo"), "\\\\nas\\Wideo\\a.nfo")
+        self.assertEqual(_long_unc("C:\\" + "x" * 300), "C:\\" + "x" * 300)
+
+
 if __name__ == "__main__":
     unittest.main()

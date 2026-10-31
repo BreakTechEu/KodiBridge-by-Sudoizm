@@ -1,3 +1,8 @@
+KodiBridge by Sudoizm 2.2.9
+===========================
+
+- Naprawiono „nieczytelne .nfo” dla plików o bardzo długiej ścieżce na udziale sieciowym w Windows. Ścieżka UNC dłuższa niż ok. 260 znaków (np. długa nazwa odcinka w folderach serialu o długiej nazwie) kończyła się błędem „No such file or directory”, mimo że plik istniał. Ścieżki od 240 znaków są teraz otwierane w formie rozszerzonej `\\?\UNC\…`, która nie ma tego limitu.
+
 KodiBridge by Sudoizm 2.2.8
 ===========================
 

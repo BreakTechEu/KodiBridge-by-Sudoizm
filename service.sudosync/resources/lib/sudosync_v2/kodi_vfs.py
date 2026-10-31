@@ -65,7 +65,21 @@ def _resolve_win_unc(path, allow_win_unc=False):
             accessible = False
         if accessible:
             _WIN_UNC_SHARE_CACHE[cache_key] = True
-    return unc_path if accessible else None
+    return _long_unc(unc_path) if accessible else None
+
+
+# Windows refuses classic paths of MAX_PATH (260) characters or more, e.g. a long
+# episode .nfo name under long series folders; the extended-length form
+# \\?\UNC\host\share\... has no such limit (backslashes only, no "." parts).
+WIN_LONG_PATH_THRESHOLD = 240
+
+
+def _long_unc(unc_path):
+    if not isinstance(unc_path, str) or len(unc_path) < WIN_LONG_PATH_THRESHOLD:
+        return unc_path
+    if unc_path.startswith("\\\\?\\") or not unc_path.startswith("\\\\"):
+        return unc_path
+    return "\\\\?\\UNC\\" + unc_path[2:]
 
 
 _MASK_CRED_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@:\s]+):([^/@\s]+)@")
