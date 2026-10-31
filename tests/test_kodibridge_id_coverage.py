@@ -76,6 +76,15 @@ class CoverageCountTests(unittest.TestCase):
                   {"movieid": 2, "title": "A", "file": "a.mkv", "uniqueid": {"sudosync": "MAZURY-000001"}}]
         self.assertEqual(kodibridge_id_coverage(movies, [])["movie"]["duplicates"], 0)
 
+    def test_same_file_under_case_variant_paths_is_not_a_duplicate_id(self):
+        # Series scanned twice on a case-insensitive SMB share (third Kodi, 2026-10-31).
+        episodes = [ep(1, 1, 4, "smb://nas/Wideo/My Sister Is Unusual/s01e04.mp4", sudosync="MAZURY-003627"),
+                    ep(2, 1, 4, "smb://nas/Wideo/My Sister is Unusual/s01e04.mp4", sudosync="MAZURY-003627")]
+        coverage = kodibridge_id_coverage([], episodes)["episode"]
+        self.assertEqual((coverage["duplicates"], coverage["repeated"]), (0, 1))
+        self.assertIn("My Sister is Unusual", coverage["examples"]["repeated"][0])
+        self.assertTrue(snapshot_module.coverage_has_problems({"episode": coverage}))
+
     def test_complete_library(self):
         coverage = kodibridge_id_coverage(
             [{"movieid": 1, "uniqueid": {"sudosync": "MAZURY-000001"}}], [])
@@ -216,11 +225,20 @@ class CoverageNotificationTests(unittest.TestCase):
 
     def test_summary_message(self):
         key, message = sudosync_service.coverage_problem_summary(self.coverage(5, 2, 1, 1))
-        self.assertEqual(key, (5, 1, 2, 1))
+        self.assertEqual(key, (5, 1, 2, 1, 0))
         self.assertEqual(message, "Pozycje biblioteki: bez KodiBridge ID: 5, zdublowane ID: 1, "
                                   "blokujące synchronizację: 2, nieczytelne .nfo: 1. "
                                   "Szczegóły w oknie statusu KodiBridge.")
         self.assertEqual(sudosync_service.coverage_problem_summary(self.coverage()), (None, None))
+
+    def test_summary_mentions_file_listed_twice(self):
+        coverage = {"movie": {}, "episode": {"repeated": 16}, "unreadable_nfo": 0}
+        key, message = sudosync_service.coverage_problem_summary(coverage)
+        self.assertEqual(key, (0, 0, 0, 0, 16))
+        self.assertIn("ten sam plik dwa razy w bibliotece: 16", message)
+        text = default_module._coverage_text(coverage)
+        self.assertIn("usuń zbędny wpis", text)
+        self.assertNotIn("Napraw zdublowane", text)
 
     def test_notified_at_first_check_and_again_only_when_counts_change(self):
         self.check(self.coverage(5, 2))

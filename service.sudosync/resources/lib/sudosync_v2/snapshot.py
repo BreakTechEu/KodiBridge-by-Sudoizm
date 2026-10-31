@@ -427,13 +427,15 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
     ``missing`` (no KodiBridge ID), ``duplicates`` (one KodiBridge ID on several
     items that are not parts of one multi-episode file) and ``ambiguous``
     (an IMDb/TMDb/TVDB/Trakt ID shared by several items when at least one of
-    them has no KodiBridge ID - the case that stops synchronization), each
+    them has no KodiBridge ID - the case that stops synchronization) and
+    ``repeated`` (one media file listed under paths differing only in letter
+    case, e.g. a series scanned twice on a case-insensitive SMB share), each
     with a few examples.
     """
     result = {}
     for media_type, source in (("movie", movies), ("episode", episodes)):
         total = with_id = 0
-        missing, by_sid, ext_owners = [], {}, {}
+        missing, by_sid, ext_owners, spellings = [], {}, {}, {}
         for item in source if isinstance(source, list) else []:
             if not isinstance(item, dict):
                 continue
@@ -444,9 +446,13 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
                 ids = {}
             label = _item_label(item)
             sid = ids.get("sudosync")
+            media_file = item.get("file") or ""
+            file_key = same_file_key(media_file) if media_file else "#{}".format(total)
+            if media_file:
+                spellings.setdefault(file_key, {}).setdefault(media_file, label)
             if sid:
                 with_id += 1
-                by_sid.setdefault(sid, []).append((item.get("file") or "#{}".format(total), label))
+                by_sid.setdefault(sid, []).append((file_key, label))
             else:
                 missing.append(label)
             for kind, value in ids.items():
@@ -459,6 +465,10 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
             if len({media_file for media_file, _ in entries}) < 2:
                 continue
             duplicates.append("{} ({})".format(sid, "; ".join(label for _, label in entries[:3])))
+        repeated = []
+        for file_key, paths in sorted(spellings.items()):
+            if len(paths) > 1:
+                repeated.append(" | ".join(sorted(paths)[:3]))
         ambiguous = []
         for (kind, value), owners in sorted(ext_owners.items()):
             if len(owners) > 1 and not all(has_sid for has_sid, _ in owners):
@@ -469,19 +479,27 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
             "missing": len(missing),
             "duplicates": len(duplicates),
             "ambiguous": len(ambiguous),
+            "repeated": len(repeated),
             "examples": {
                 "missing": sorted(missing)[:max_examples],
                 "duplicates": duplicates[:max_examples],
                 "ambiguous": ambiguous[:max_examples],
+                "repeated": repeated[:max_examples],
             },
         }
     return result
 
 
+def same_file_key(path):
+    """Comparable media file path: SMB shares and Windows paths ignore letter case."""
+    return str(path or "").replace("\\", "/").casefold()
+
+
 def coverage_has_problems(coverage):
     return any(
         isinstance(coverage.get(t), dict)
-        and (coverage[t].get("missing") or coverage[t].get("duplicates") or coverage[t].get("ambiguous"))
+        and (coverage[t].get("missing") or coverage[t].get("duplicates") or coverage[t].get("ambiguous")
+             or coverage[t].get("repeated"))
         for t in ("movie", "episode")
     ) or bool(coverage.get("unreadable_nfo"))
 
@@ -496,9 +514,10 @@ def report_kodibridge_id_coverage(client_id, coverage):
     lines = []
     for media_type, name in (("movie", "movies"), ("episode", "episodes")):
         c = coverage.get(media_type) or {}
-        lines.append("{}: {}/{} with KodiBridge ID, missing {}, duplicate IDs {}, ambiguous external IDs {}".format(
-            name, c.get("with_id", 0), c.get("total", 0), c.get("missing", 0), c.get("duplicates", 0),
-            c.get("ambiguous", 0)))
+        lines.append("{}: {}/{} with KodiBridge ID, missing {}, duplicate IDs {}, ambiguous external IDs {}, "
+                     "files listed under several paths {}".format(
+                         name, c.get("with_id", 0), c.get("total", 0), c.get("missing", 0), c.get("duplicates", 0),
+                         c.get("ambiguous", 0), c.get("repeated", 0)))
     if coverage.get("unreadable_nfo"):
         lines.append("unreadable .nfo files: {}".format(coverage["unreadable_nfo"]))
     if not coverage_has_problems(coverage):
@@ -507,7 +526,7 @@ def report_kodibridge_id_coverage(client_id, coverage):
     examples = []
     for media_type in ("movie", "episode"):
         ex = (coverage.get(media_type) or {}).get("examples") or {}
-        for kind in ("missing", "duplicates", "ambiguous"):
+        for kind in ("missing", "duplicates", "ambiguous", "repeated"):
             for entry in ex.get(kind) or []:
                 examples.append("{} {} {}".format(media_type, kind, entry))
     logger.warning("KodiBridge ID coverage incomplete: %s. Examples: %s",

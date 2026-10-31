@@ -240,7 +240,7 @@ def coverage_problem_summary(coverage):
     if not isinstance(coverage, dict):
         return None, None
     totals = {}
-    for key in ("missing", "duplicates", "ambiguous"):
+    for key in ("missing", "duplicates", "ambiguous", "repeated"):
         totals[key] = sum(int((coverage.get(t) or {}).get(key) or 0) for t in ("movie", "episode"))
     unreadable = int(coverage.get("unreadable_nfo") or 0)
     parts = []
@@ -250,11 +250,13 @@ def coverage_problem_summary(coverage):
         parts.append("zdublowane ID: {}".format(totals["duplicates"]))
     if totals["ambiguous"]:
         parts.append("blokujące synchronizację: {}".format(totals["ambiguous"]))
+    if totals["repeated"]:
+        parts.append("ten sam plik dwa razy w bibliotece: {}".format(totals["repeated"]))
     if unreadable:
         parts.append("nieczytelne .nfo: {}".format(unreadable))
     if not parts:
         return None, None
-    key = (totals["missing"], totals["duplicates"], totals["ambiguous"], unreadable)
+    key = (totals["missing"], totals["duplicates"], totals["ambiguous"], unreadable, totals["repeated"])
     return key, "Pozycje biblioteki: " + ", ".join(parts) + ". Szczegóły w oknie statusu KodiBridge."
 
 

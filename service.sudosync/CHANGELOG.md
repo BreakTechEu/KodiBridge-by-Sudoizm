@@ -1,3 +1,9 @@
+KodiBridge by Sudoizm 2.2.10
+============================
+
+- Ten sam plik wpisany do biblioteki Kodi pod dwiema ścieżkami różniącymi się tylko wielkością liter (np. serial zeskanowany dwa razy: „My Sister Is Unusual” i „My Sister is Unusual” na udziale SMB, który nie rozróżnia wielkości liter) nie jest już liczony jako zdublowane KodiBridge ID. Okno statusu i powiadomienie pokazują go osobno jako „ten sam plik dwa razy w bibliotece” z podpowiedzią, żeby usunąć zbędny wpis z biblioteki Kodi. Kodi.log wymienia przykładowe ścieżki.
+- „Napraw zdublowane KodiBridge ID” porównuje ścieżki plików bez rozróżniania wielkości liter i nie nadaje już nowego numeru drugiemu wpisowi tego samego pliku. Wcześniej nowy numer trafiał do tego samego pliku .nfo, więc duplikat zostawał, a każda naprawa zużywała kolejne numery z licznika. Podsumowanie naprawy wymienia takie wpisy osobno.
+
 KodiBridge by Sudoizm 2.2.9
 ===========================
 

@@ -2323,8 +2323,11 @@ def find_duplicate_sudosync_id_groups(movies, episodes):
             if not sid:
                 continue
             group = groups.setdefault(_sid_key(sid), {"sudosync_id": sid, "files": {}})
+            # One physical file may be listed under paths differing only in
+            # letter case (series scanned twice on a case-insensitive share):
+            # it has one .nfo, so it is not a duplicate ID.
             entry = group["files"].setdefault(
-                record["file"],
+                _same_file_key(record["file"]),
                 {"file": record["file"], "type": kind, "sudosync_id": sid, "records": []},
             )
             entry["records"].append(record)
@@ -2336,6 +2339,30 @@ def find_duplicate_sudosync_id_groups(movies, episodes):
         files = sorted(group["files"].values(), key=lambda entry: entry["file"].lower())
         result.append({"sudosync_id": group["sudosync_id"], "files": files})
     return result
+
+
+def _same_file_key(path):
+    return str(path or "").replace("\\", "/").casefold()
+
+
+def find_repeated_library_files(movies, episodes):
+    """Media files listed in the library under several paths differing only in letter case.
+
+    Returns ["label: path1 | path2", ...]; such entries are fixed by removing
+    the extra entry from the Kodi library, not by changing KodiBridge IDs.
+    """
+    spellings = {}
+    for collection in (movies, episodes):
+        for record in collection or []:
+            if isinstance(record, dict) and record.get("file"):
+                paths = spellings.setdefault(_same_file_key(record["file"]), {})
+                paths.setdefault(record["file"], _record_label(record))
+    found = []
+    for key in sorted(spellings):
+        paths = spellings[key]
+        if len(paths) > 1:
+            found.append("{}: {}".format(next(iter(paths.values())), " | ".join(sorted(paths))))
+    return found
 
 
 def _load_network_snapshot_ids(base_path, exclude_client_id=None):
@@ -2572,6 +2599,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             return result
         groups = find_duplicate_sudosync_id_groups(movies, episodes)
         result["groups"] = len(groups)
+        result["repeated"] = find_repeated_library_files(movies, episodes)
         if not groups:
             return result
 

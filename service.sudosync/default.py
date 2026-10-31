@@ -188,7 +188,8 @@ def _coverage_text(coverage):
     )]
     problems = []
     for key, label in (("missing", "bez ID"), ("duplicates", "zdublowane ID"),
-                       ("ambiguous", "wspólne ID zewnętrzne bez KodiBridge ID")):
+                       ("ambiguous", "wspólne ID zewnętrzne bez KodiBridge ID"),
+                       ("repeated", "ten sam plik dwa razy w bibliotece")):
         count = int(movie.get(key) or 0) + int(episode.get(key) or 0)
         if count:
             problems.append("{}: {}".format(label, count))
@@ -198,6 +199,9 @@ def _coverage_text(coverage):
         lines.append("UWAGA – " + ", ".join(problems) + " (przykłady w kodi.log: „KodiBridge ID coverage”)")
         if int(movie.get("duplicates") or 0) + int(episode.get("duplicates") or 0):
             lines.append("Zdublowane ID naprawia przycisk „Napraw zdublowane KodiBridge ID” w ustawieniach.")
+        if int(movie.get("repeated") or 0) + int(episode.get("repeated") or 0):
+            lines.append("Ten sam plik jest w bibliotece pod dwiema ścieżkami różniącymi się wielkością liter: "
+                         "usuń zbędny wpis (np. drugi serial) z biblioteki Kodi.")
     else:
         lines.append("Wszystkie pozycje mają KodiBridge ID.")
     return "\n".join(lines)
@@ -279,8 +283,19 @@ def repair_ids_dialog():
     if result.get("busy"):
         xbmcgui.Dialog().ok("KodiBridge", "Przypisywanie KodiBridge ID jest już wykonywane w tle. Poczekaj na zakończenie i spróbuj ponownie.")
         return
+    repeated = result.get("repeated") or []
+    repeated_lines = []
+    if repeated:
+        repeated_lines = ["", "Ten sam plik dwa razy w bibliotece (ścieżki różnią się tylko wielkością liter; "
+                              "to nie jest zdublowane ID – usuń zbędny wpis z biblioteki Kodi):"]
+        repeated_lines += ["  " + mask_vfs_credentials(line) for line in repeated]
     if not result.get("groups"):
-        xbmcgui.Dialog().ok("KodiBridge", "W bibliotece tego Kodi nie ma zdublowanych KodiBridge ID.")
+        if repeated_lines:
+            xbmcgui.Dialog().textviewer(
+                "KodiBridge — naprawa zdublowanych ID",
+                "\n".join(["W bibliotece tego Kodi nie ma zdublowanych KodiBridge ID."] + repeated_lines))
+        else:
+            xbmcgui.Dialog().ok("KodiBridge", "W bibliotece tego Kodi nie ma zdublowanych KodiBridge ID.")
         return
 
     lines = [
@@ -295,6 +310,7 @@ def repair_ids_dialog():
         lines += ["", "Nowe numery:"] + ["  " + line for line in result["changes"]]
     if result.get("kept"):
         lines += ["", "Zachowały numer:"] + ["  " + line for line in result["kept"]]
+    lines += repeated_lines
     if result.get("errors"):
         lines += ["", "Pominięte:"] + ["  " + mask_vfs_credentials(line) for line in result["errors"]]
     lines += ["", "Raport: {}. Zmianę wycofuje przycisk „Wycofaj ostatnio przypisane ID”.".format(

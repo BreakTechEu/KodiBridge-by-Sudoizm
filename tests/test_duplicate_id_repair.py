@@ -211,6 +211,18 @@ class DuplicateRepairTests(RepairFixture):
             self.assertFalse(sudosync_core.take_nfo_id_epoch_change({"nfo_id_epoch": "e1"}))
             self.assertTrue(sudosync_core.take_nfo_id_epoch_change({"nfo_id_epoch": "e2"}))
 
+    def test_case_variant_paths_of_one_file_are_not_renumbered(self):
+        self.episodes.append(dict(self.episodes[0], episodeid=9, file="smb://nas/wideo/SERIALE/a/A1.mkv",
+                                  uniqueid={"tvdb": "111", "sudosync": "DOM-000005"}))
+        # The share ignores letter case, like SMB on the NAS.
+        self.vfs.files = {k.lower(): v for k, v in self.vfs.files.items()}
+        self.vfs.dirs = {d.lower() for d in self.vfs.dirs}
+        self.vfs._norm = lambda path: str(path).replace("\\", "/").lower()
+        result, _ = self._repair()
+        self.assertEqual(result["renumbered"], 1)  # only the real duplicate (B), one number used
+        self.assertEqual(len(result["repeated"]), 1)
+        self.assertIn("SERIALE/a/A1.mkv", result["repeated"][0])
+
 
 class RepairSafetyTests(RepairFixture):
     """Findings of the external audit of 2.2.7 (backups, failures, rollback, keeper)."""
