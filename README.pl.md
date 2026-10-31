@@ -3,8 +3,8 @@
 ---
 
 > [!NOTE]
-> **Wydanie produkcyjne (KodiBridge by Sudoizm 2.2.8):**
-> KodiBridge by Sudoizm 2.2.8 jest **stabilnym wydaniem produkcyjnym** nowej architektury v2 z transakcyjnym dziennikiem zmian, obsługą identyfikatorów KodiBridge ID dla prywatnych wideo i sieci lokalnej, strażnikiem pojedynczej aktywnej sesji Kodi oraz wymuszaniem zgodności wersji między urządzeniami. Starsza linia **SudoSync 1.0.0** pozostaje dostępna na zamrożonej gałęzi [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
+> **Wydanie produkcyjne (KodiBridge by Sudoizm 2.2.9):**
+> KodiBridge by Sudoizm 2.2.9 jest **stabilnym wydaniem produkcyjnym** nowej architektury v2 z transakcyjnym dziennikiem zmian, obsługą identyfikatorów KodiBridge ID dla prywatnych wideo i sieci lokalnej, strażnikiem pojedynczej aktywnej sesji Kodi oraz wymuszaniem zgodności wersji między urządzeniami. Starsza linia **SudoSync 1.0.0** pozostaje dostępna na zamrożonej gałęzi [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
 > Obie wersje są dostępne do pobrania w sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)**.
 
 # KodiBridge by Sudoizm
@@ -48,7 +48,7 @@ Synchronizacja opiera się na wspólnym zasobie sieciowym (SMB, NFS lub zasób l
 ## Instalacja i konfiguracja
 
 1. **Źródło instalacji:**
-   - **KodiBridge by Sudoizm 2.2.8 (Produkcyjna):** Pobierz plik `kodibridge-by-sudoizm-2.2.8.zip` z sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** (zalecane wydanie produkcyjne z architekturą v2 i KodiBridge ID).
+   - **KodiBridge by Sudoizm 2.2.9 (Produkcyjna):** Pobierz plik `kodibridge-by-sudoizm-2.2.9.zip` z sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** (zalecane wydanie produkcyjne z architekturą v2 i KodiBridge ID).
    - **SudoSync 1.0.0 (Starsza wersja stabilna):** Pobierz plik `service.sudosync-1.0.0.zip` z sekcji **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)**.
 
 2. **Instalacja w Kodi:**
