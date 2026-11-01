@@ -129,7 +129,7 @@ msgid "This Kodi is the base device for the first synchronization"
 msgstr "Set THIS Kodi as the base device for the first synchronization"
 
 msgctxt "#32046"
-msgid "Available until initialization is completed. The device must have an explicit name. Selection is stored in the shared .SudoSync configuration."
+msgid "Available until initialization is completed. The device must have an explicit name. Selection is stored in the shared .KodiBridge configuration."
 msgstr "Explicitly selects this Kodi as the base device. If another device is already selected, clear the base-device selection first."
 
 msgctxt "#32047"
@@ -266,5 +266,5 @@ msgid "Repair duplicate KodiBridge IDs"
 msgstr "Repair duplicate KodiBridge IDs"
 
 msgctxt "#32087"
-msgid "Gives new numbers to library items that share one KodiBridge ID. One item of each group keeps its number. Changed .nfo files are backed up as .repair.bak; the change can be rolled back."
-msgstr "Gives new numbers to library items that share one KodiBridge ID. One item of each group keeps its number. Changed .nfo files are backed up as .repair.bak; the change can be rolled back."
+msgid "Gives new KodiBridge IDs to library items that share one KodiBridge ID. One item of each group keeps its ID. Changed .nfo files are backed up as .repair.bak; the change can be rolled back."
+msgstr "Gives new KodiBridge IDs to library items that share one KodiBridge ID. One item of each group keeps its ID. Changed .nfo files are backed up as .repair.bak; the change can be rolled back."

@@ -78,15 +78,7 @@ def show_status():
 
     import xbmcaddon
     addon_version = xbmcaddon.Addon("service.sudosync").getAddonInfo("version")
-    try:
-        from resources.lib.sudosync_core import get_network_sudosync_id_last_number
-        last_sudosync_num = get_network_sudosync_id_last_number(settings.get("base_path"))
-    except Exception:
-        last_sudosync_num = int(status.get("sudosync_id_last_number") or settings.get("sudosync_id_last_number") or 0)
-    sudosync_id_state = "WŁĄCZONE (prefiks: {}, ostatni użyty numer: {})".format(
-        settings.get("sudosync_id_prefix") or "NAS",
-        last_sudosync_num,
-    ) if settings.get("sudosync_id_enabled") else "WYŁĄCZONE (ostatni użyty numer w sieci: {})".format(last_sudosync_num)
+    sudosync_id_state = "WŁĄCZONE" if settings.get("sudosync_id_enabled") else "WYŁĄCZONE"
 
     coverage_text = _coverage_text(status.get("kodibridge_id_coverage"))
     text = (
@@ -238,8 +230,8 @@ def repair_ids_dialog():
         return
     if not xbmcgui.Dialog().yesno(
         "KodiBridge — zdublowane ID",
-        "Pozycje biblioteki, które mają to samo KodiBridge ID, dostaną nowe numery. "
-        "Jedna pozycja z każdej grupy zachowuje numer (ta, którą zna synchronizacja). "
+        "Pozycje biblioteki, które mają to samo KodiBridge ID, dostaną nowe KodiBridge ID. "
+        "Jedna pozycja z każdej grupy zachowuje swoje ID (ta, którą zna synchronizacja). "
         "Zmienione pliki .nfo dostają kopię .repair.bak, a zmianę można wycofać.\n"
         "Odczyt biblioteki może potrwać kilka minut. Kontynuować?",
         yeslabel="Napraw",
@@ -267,7 +259,7 @@ def repair_ids_dialog():
         if is_canceled():
             return
         pct = int(min(100, max(0, current * 100 // max(1, total))))
-        dialog.update(pct, "Nadaję nowe numery ({}/{})\n{}".format(current, total, label))
+        dialog.update(pct, "Nadaję nowe ID ({}/{})\n{}".format(current, total, label))
 
     dialog.create(heading, "Odczyt biblioteki i plików .nfo…")
     try:
@@ -299,7 +291,7 @@ def repair_ids_dialog():
         return
 
     lines = [
-        "Grupy z tym samym ID: {}. Nadano nowe numery: {}. Pominięte: {}.".format(
+        "Grupy z tym samym ID: {}. Nadano nowe ID: {}. Pominięte: {}.".format(
             result.get("groups", 0), result.get("renumbered", 0), len(result.get("errors") or [])),
     ]
     if result.get("cancelled"):
@@ -307,9 +299,9 @@ def repair_ids_dialog():
     if result.get("fatal_error"):
         lines.append("Przerwano: {}".format(mask_vfs_credentials(result["fatal_error"])))
     if result.get("changes"):
-        lines += ["", "Nowe numery:"] + ["  " + line for line in result["changes"]]
+        lines += ["", "Nowe ID:"] + ["  " + line for line in result["changes"]]
     if result.get("kept"):
-        lines += ["", "Zachowały numer:"] + ["  " + line for line in result["kept"]]
+        lines += ["", "Zachowały ID:"] + ["  " + line for line in result["kept"]]
     lines += repeated_lines
     if result.get("errors"):
         lines += ["", "Pominięte:"] + ["  " + mask_vfs_credentials(line) for line in result["errors"]]
@@ -451,12 +443,10 @@ def main():
                 if not preview:
                     sync_res = assign_sudosync_ids(show_notification=False, auto_mode=True, is_canceled=is_canceled)
                     _note_nfo_changes(sync_res)
-                    last_num = sync_res.get("last_number", 0) if isinstance(sync_res, dict) else 0
                     dialog.close()
                     xbmcgui.Dialog().ok(
                         "KodiBridge",
-                        "Nie znaleziono żadnych nowych plików wymagających przypisania ID.\n"
-                        "Ostatni użyty numer KodiBridge ID w sieci: {}".format(last_num),
+                        "Nie znaleziono żadnych nowych plików wymagających przypisania ID.",
                     )
                     return
 
@@ -518,11 +508,9 @@ def main():
                 xbmcgui.Dialog().ok(
                     "KodiBridge",
                     "Zmodyfikowano lub utworzono: filmy: {}, odcinki: {}.\n"
-                    "Ostatni numer KodiBridge ID w sieci: {}.\n"
                     "Raport z operacji zapisano w profilu ({})".format(
                         result.get("movies", 0),
                         result.get("episodes", 0),
-                        result.get("last_number", 0),
                         manifest_name,
                     ),
                 )

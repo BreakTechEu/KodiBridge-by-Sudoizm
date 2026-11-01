@@ -9,7 +9,38 @@
 from __future__ import absolute_import
 import re
 import unicodedata
-from . import IDENTIFIER_TYPES
+import uuid
+from . import IDENTIFIER_TYPES, KODIBRIDGE_ID_TYPE, LEGACY_ID_TYPE
+
+
+def internal_id_kind(external_type):
+    """Map a <uniqueid> type from .nfo or Kodi to the internal identifier kind.
+
+    Returns None for the legacy ``sudosync`` type, which is no longer read.
+    """
+    kind = str(external_type or "").strip().lower()
+    if kind == LEGACY_ID_TYPE:
+        return None
+    if kind == KODIBRIDGE_ID_TYPE:
+        return "sudosync"
+    return kind
+
+
+def internal_ids_from_external(mapping):
+    """Return a copy of a Kodi/.nfo uniqueid mapping keyed by internal kinds."""
+    if not isinstance(mapping, dict):
+        return {}
+    result = {}
+    for key, value in mapping.items():
+        kind = internal_id_kind(key)
+        if kind:
+            result[kind] = value
+    return result
+
+
+def new_kodibridge_id():
+    """Return a new random KodiBridge ID (lower-case UUID4)."""
+    return str(uuid.uuid4())
 
 def normalize_identifier(kind, value):
     """Return a canonical strong identifier, or None for empty/invalid input."""

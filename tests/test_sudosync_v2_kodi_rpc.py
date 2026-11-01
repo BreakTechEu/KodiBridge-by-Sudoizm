@@ -72,7 +72,7 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
         def read_nfo(path, max_bytes):
             reads.append((path, max_bytes))
             if path.endswith("Example.nfo"):
-                return '<movie><uniqueid type="tmdb">123</uniqueid><uniqueid type="sudosync">nas:film-7</uniqueid></movie>'
+                return '<movie><uniqueid type="tmdb">123</uniqueid><uniqueid type="kodibridge">nas:film-7</uniqueid></movie>'
             return None
 
         item = KodiJsonRpcAdapter(transport, nfo_reader=read_nfo).get_movies()[0]
@@ -97,7 +97,7 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
 
         def read_nfo(path, max_bytes):
             reads.append(path)
-            return '<episodedetails><uniqueid type="sudosync">MAZURY-001200</uniqueid></episodedetails>'
+            return '<episodedetails><uniqueid type="kodibridge">MAZURY-001200</uniqueid></episodedetails>'
 
         adapter = KodiJsonRpcAdapter(transport, nfo_reader=read_nfo)
         ep1 = adapter.get_episodes()[0]

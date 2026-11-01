@@ -181,7 +181,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
             assign_res = sudosync_core.assign_sudosync_ids(show_notification=False)
             self.assertEqual(assign_res["movies"], 1)
             self.assertTrue(self.vfs.exists(nfo_path + ".bak"))
-            self.assertIn(b'type="sudosync"', self.vfs.files[nfo_path])
+            self.assertIn(b'type="kodibridge"', self.vfs.files[nfo_path])
 
             rb_res = sudosync_core.rollback_sudosync_ids(assign_res["manifest_path"])
             self.assertEqual(rb_res["rolled_back"], 1)
@@ -219,7 +219,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
             self.assertIsNone(entry["backup"])
             self.assertEqual(entry["action"], "created")
             self.assertTrue(entry["created"])
-            self.assertTrue(entry["sudosync_id"].startswith("DOM-"))
+            self.assertRegex(entry["sudosync_id"], r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
             self.assertEqual(len(entry["content_sha256"]), 64)
 
             rb_res = sudosync_core.rollback_sudosync_ids(assign_res["manifest_path"])
@@ -273,11 +273,12 @@ class TestSudoSyncIdRollback(unittest.TestCase):
             b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
             b"<movie>\n"
             b"  <title>Stary Manifest</title>\n"
-            b'  <uniqueid type="sudosync" default="true">DOM-112233445566</uniqueid>\n'
+            b'  <uniqueid type="kodibridge" default="true">DOM-112233445566</uniqueid>\n'
             b"</movie>\n"
         )
         manifest_path = "/profile/assign_ids_manifest.json"
         legacy_manifest = {
+            "id_scheme": "kodibridge-uuid",
             "generated_at": "2026-10-16T12:00:00.000Z",
             "modified": [
                 {"file": nfo_path, "backup": None, "title": "Stary Manifest"}
@@ -308,10 +309,10 @@ class TestSudoSyncIdRollback(unittest.TestCase):
         file_ok_created = "smb://nas/movies/CreatedOk.nfo"
         file_edited_created = "smb://nas/movies/CreatedEdited.nfo"
 
-        self.vfs.files[file_ok_mod] = b"<movie><title>ModOk</title><uniqueid type=\"sudosync\">DOM-1</uniqueid></movie>"
+        self.vfs.files[file_ok_mod] = b"<movie><title>ModOk</title><uniqueid type=\"kodibridge\">DOM-1</uniqueid></movie>"
         self.vfs.files[file_ok_mod + ".bak"] = b"<movie><title>ModOk</title></movie>"
 
-        self.vfs.files[file_missing_bak] = b"<movie><title>ModMissingBak</title><uniqueid type=\"sudosync\">DOM-2</uniqueid></movie>"
+        self.vfs.files[file_missing_bak] = b"<movie><title>ModMissingBak</title><uniqueid type=\"kodibridge\">DOM-2</uniqueid></movie>"
 
         created_ok_bytes = sudosync_core._build_created_nfo_xml("movie", "CreatedOk", "DOM-333333333333").encode("utf-8")
         self.vfs.files[file_ok_created] = created_ok_bytes
@@ -321,6 +322,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
 
         manifest_path = "/profile/assign_ids_manifest.json"
         manifest = {
+            "id_scheme": "kodibridge-uuid",
             "generated_at": "2026-10-16T12:00:00.000Z",
             "modified": [
                 {
@@ -393,7 +395,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
         nfo_path = "smb://nas/movies/Film.nfo"
         bak_path = nfo_path + ".bak"
         original_nfo = b"<movie><title>Film</title><plot>Kopia zapasowa</plot></movie>"
-        sudosync_written_nfo = b"<movie><title>Film</title><uniqueid type=\"sudosync\">DOM-123</uniqueid></movie>"
+        sudosync_written_nfo = b"<movie><title>Film</title><uniqueid type=\"kodibridge\">DOM-123</uniqueid></movie>"
         scraper_modified_nfo = b"<movie><title>Film</title><plot>Nowy opis pobrany przez scraper</plot></movie>"
 
         self.vfs.files[nfo_path] = scraper_modified_nfo
@@ -401,6 +403,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
 
         manifest_path = "/profile/assign_ids_manifest.json"
         manifest = {
+            "id_scheme": "kodibridge-uuid",
             "generated_at": "2026-10-16T12:00:00.000Z",
             "modified": [
                 {
@@ -439,6 +442,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
 
         manifest_path = "/profile/assign_ids_manifest.json"
         manifest = {
+            "id_scheme": "kodibridge-uuid",
             "generated_at": "2026-10-16T12:00:00.000Z",
             "modified": [
                 {
@@ -476,6 +480,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
 
         manifest_path = "/profile/assign_ids_manifest.json"
         manifest = {
+            "id_scheme": "kodibridge-uuid",
             "generated_at": "2026-10-16T12:00:00.000Z",
             "modified": [
                 {
@@ -509,10 +514,10 @@ class TestSudoSyncIdRollback(unittest.TestCase):
         file_b = "smb://nas/movies/B.nfo"
         file_c = "smb://nas/movies/C.nfo"
 
-        content_a_sudosync = b"<movie><title>A</title><uniqueid type=\"sudosync\">DOM-A</uniqueid></movie>"
+        content_a_sudosync = b"<movie><title>A</title><uniqueid type=\"kodibridge\">DOM-A</uniqueid></movie>"
         content_a_edited = b"<movie><title>A</title><plot>Scraped plot</plot></movie>"
-        content_b = b"<movie><title>B</title><uniqueid type=\"sudosync\">DOM-B</uniqueid></movie>"
-        content_c = b"<movie><title>C</title><uniqueid type=\"sudosync\">DOM-C</uniqueid></movie>"
+        content_b = b"<movie><title>B</title><uniqueid type=\"kodibridge\">DOM-B</uniqueid></movie>"
+        content_c = b"<movie><title>C</title><uniqueid type=\"kodibridge\">DOM-C</uniqueid></movie>"
 
         self.vfs.files[file_a] = content_a_edited
         self.vfs.files[file_a + ".bak"] = b"<movie><title>A-Backup</title></movie>"
@@ -525,6 +530,7 @@ class TestSudoSyncIdRollback(unittest.TestCase):
 
         manifest_path = "/profile/assign_ids_manifest.json"
         manifest = {
+            "id_scheme": "kodibridge-uuid",
             "generated_at": "2026-10-16T12:00:00.000Z",
             "modified": [
                 {

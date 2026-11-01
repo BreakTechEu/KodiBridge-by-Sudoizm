@@ -15,6 +15,11 @@ import xbmcvfs
 import xbmcaddon
 
 ADDON_ID = "service.sudosync"
+# Shared folder on the network share. 2.2.12 replaced the sequential
+# <uniqueid type="sudosync"> with <uniqueid type="kodibridge"> (UUID) and starts
+# the shared state from scratch in .KodiBridge next to the old .SudoSync.
+SHARED_DIR_NAME = ".KodiBridge"
+LEGACY_SHARED_DIR_NAME = ".SudoSync"
 _VFS_CRED_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@\s]+@)")
 
 def mask_vfs_credentials(text):
@@ -115,7 +120,7 @@ def test_vfs_rw(test_dir):
 
         if not _b_exists(test_dir):
             if not _b_mkdirs(test_dir):
-                return False, "Nie można utworzyć katalogu .SudoSync"
+                return False, "Nie można utworzyć folderu współdzielonego"
         
         test_file = test_dir + "rw_test.tmp"
         f = xbmcvfs.File(test_file, 'w')
@@ -288,6 +293,64 @@ def read_sudosync_cfg(base_path):
 def write_sudosync_cfg(base_path, config_data):
     cfg_path = base_path + "SudoSync.cfg"
     return _write_json_file(cfg_path, config_data)
+
+def kodibridge_shared_path(base_path):
+    """Return the .KodiBridge folder for a base path ending in .SudoSync, else None."""
+    path = str(base_path or "").rstrip("/\\")
+    cut = max(path.rfind("/"), path.rfind("\\"))
+    if path[cut + 1:] != LEGACY_SHARED_DIR_NAME:
+        return None
+    sep = path[cut] if cut >= 0 else "/"
+    return path[:cut + 1] + SHARED_DIR_NAME + sep
+
+
+def migrate_legacy_shared_folder(old_base, new_base):
+    """Create the .KodiBridge configuration from the old .SudoSync one.
+
+    Only the network settings are carried over; snapshots, transactions and the
+    sequential ID counter stay behind, because they refer to the old IDs. The
+    old folder gets min_addon_version of this version, so older add-ons stop
+    synchronizing there and offer the update. Returns True when a new
+    configuration was written.
+    """
+    old_base = old_base.rstrip("/") + "/"
+    new_base = new_base.rstrip("/") + "/"
+    local_version = _get_local_addon_version()
+    written = False
+    new_status, _new_cfg = read_sudosync_cfg(new_base)
+    old_status, old_cfg = read_sudosync_cfg(old_base)
+    if new_status != "VALID" and old_status == "VALID" and isinstance(old_cfg, dict):
+        old_net = old_cfg.get("network_settings") if isinstance(old_cfg.get("network_settings"), dict) else {}
+        net = {
+            "sudosync_id_enabled": bool(old_net.get("sudosync_id_enabled", False)),
+            "sudosync_id_prefix": str(old_net.get("sudosync_id_prefix") or ""),
+            "sudosync_id_last_number": 0,
+        }
+        if local_version:
+            net["min_addon_version"] = local_version
+        new_cfg = {
+            "format": "SudoSync configuration",
+            "schema_version": 1,
+            "configuration": {
+                "completed": True,
+                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "migrated_from": mask_vfs_credentials(old_base),
+            },
+            "network_settings": net,
+        }
+        written = bool(write_sudosync_cfg(new_base, new_cfg))
+    if local_version and old_status == "VALID":
+        try:
+            update_network_min_version(old_base, local_version)
+        except Exception as exc:
+            log("Cannot raise min_addon_version in {}: {}".format(mask_vfs_credentials(old_base), exc))
+    try:
+        # The local counter refers to the old sequential IDs.
+        xbmcaddon.Addon(ADDON_ID).setSetting("sudosync_id_last_number", "0")
+    except Exception:
+        pass
+    return written
+
 
 def is_legacy_installation(base_path):
     # Sprawdzamy czy istnieje system/config.json oraz clients/
@@ -740,8 +803,7 @@ def run_new_config_wizard(base_path):
         sudosync_id_prefix = ""
     else:
         sudosync_id_enabled = True
-        prefix = dialog.input("Podaj krótki prefiks dla tej sieci (np. NAS lub DOM):", type=xbmcgui.INPUT_ALPHANUM)
-        sudosync_id_prefix = prefix.strip() if prefix.strip() else "NAS"
+        sudosync_id_prefix = ""
     local_version = _get_local_addon_version()
     net_settings = {
         "sudosync_id_enabled": sudosync_id_enabled,
@@ -765,7 +827,7 @@ def run_new_config_wizard(base_path):
         xbmcgui.Dialog().ok("Błąd", "Nie udało się zapisać nowej konfiguracji do SudoSync.cfg")
         return False
         
-    dialog.ok("Sukces", "Środowisko .SudoSync skonfigurowane poprawnie!\nTeraz synchronizacja może się rozpocząć.")
+    dialog.ok("Sukces", "Środowisko .KodiBridge skonfigurowane poprawnie!\nTeraz synchronizacja może się rozpocząć.")
     return True
 
 def apply_network_settings(cfg):
@@ -833,11 +895,11 @@ def run_bootstrap(force_select_path=False):
         if not selected_path.endswith('/'):
             selected_path += '/'
             
-        # Zabezpieczenie przed zagnieżdżaniem .SudoSync/.SudoSync
-        if selected_path.endswith(".SudoSync/"):
+        # Zabezpieczenie przed zagnieżdżaniem folderów współdzielonych
+        if selected_path.endswith(SHARED_DIR_NAME + "/") or selected_path.endswith(LEGACY_SHARED_DIR_NAME + "/"):
             base_path = selected_path
         else:
-            base_path = selected_path + ".SudoSync/"
+            base_path = selected_path + SHARED_DIR_NAME + "/"
             
         if old_base_path and old_base_path.rstrip("/") != base_path.rstrip("/"):
             release_network_active_kodi_lease(old_base_path)
@@ -846,13 +908,36 @@ def run_bootstrap(force_select_path=False):
         base_path += "/"
         set_base_path(base_path)
         
+    # 1a. PRZEJŚCIE Z .SudoSync NA .KodiBridge (2.2.12: nowy KodiBridge ID, stan od zera)
+    migrated_from = None
+    new_shared = kodibridge_shared_path(base_path)
+    if new_shared:
+        migrated_from = base_path
+        release_network_active_kodi_lease(base_path)
+        base_path = new_shared
+        set_base_path(base_path)
+        log("Folder współdzielony zmieniony z {} na {}".format(
+            mask_vfs_credentials(migrated_from), mask_vfs_credentials(base_path)))
+
     # 2. TEST DOSTĘPU I READ/WRITE
     log("Testowanie dostępu R/W do {}".format(base_path))
     success, msg = test_vfs_rw(base_path)
     if not success:
         xbmcgui.Dialog().ok("KodiBridge - Brak Dostępu", "Nie udało się zapisać plików w wybranym folderze:\n{}\n\nSprawdź uprawnienia do zapisu lub wskaż inny udział w ustawieniach.".format(msg))
         return False
-        
+
+    if migrated_from:
+        migrate_legacy_shared_folder(migrated_from, base_path)
+        try:
+            xbmcgui.Dialog().notification(
+                "KodiBridge",
+                "Nowy folder wspólny {}: synchronizacja zaczyna się od nowa".format(SHARED_DIR_NAME),
+                xbmcgui.NOTIFICATION_INFO,
+                8000,
+            )
+        except Exception:
+            pass
+
     # 3. SPRAWDZENIE SUDOSYNC.CFG
     status, cfg = read_sudosync_cfg(base_path)
     if status == "VALID":

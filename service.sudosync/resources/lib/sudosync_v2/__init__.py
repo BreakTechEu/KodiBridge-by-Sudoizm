@@ -15,3 +15,10 @@ SCHEMA_VERSION = 1
 FORMAT_NAME = "SudoSync v2 snapshot"
 SYNC_FIELDS = ("playcount", "lastplayed", "resume", "userrating")
 IDENTIFIER_TYPES = ("imdb", "tmdb", "tvdb", "trakt", "sudosync")
+# The KodiBridge ID is stored in .nfo files and in the Kodi database as
+# <uniqueid type="kodibridge"> (a random UUID). Inside the add-on and in the
+# shared snapshots it keeps the internal identifier kind "sudosync". The old
+# <uniqueid type="sudosync"> (sequential numbers) is ignored everywhere.
+KODIBRIDGE_ID_TYPE = "kodibridge"
+LEGACY_ID_TYPE = "sudosync"
+ID_SCHEME = "kodibridge-uuid"

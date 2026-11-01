@@ -58,7 +58,8 @@
           <control type="toggle"/>
         </setting>
         <setting id="sudosync_id_prefix" type="string" label="32063" help="32064">
-          <level>0</level>
+          <level>4</level>
+          <visible>false</visible>
           <default/>
           <constraints><allowempty>true</allowempty></constraints>
           <control type="edit" format="string"><heading>32063</heading></control>

@@ -9,6 +9,7 @@
 """Tests for multi-Kodi partial/broader library access, sequential SudoSync IDs, and shared ID counter."""
 import json
 import os
+import re
 import sys
 import unittest
 from unittest.mock import MagicMock, patch
@@ -37,6 +38,14 @@ from resources.lib.sudosync_v2.kodi_rpc import KodiJsonRpcAdapter
 from resources.lib.sudosync_v2.runtime import ProcessLocalLockFactory, build_v2_runtime
 from tests.test_audit_v2_service_and_rollback import VirtualXbmcVfs
 from tests.test_sudosync_v2_runtime import InMemorySharedBackend
+
+UUID_RE = r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+
+
+def _id_sequence(first):
+    """Deterministic stand-in for the random KodiBridge IDs (UUIDs)."""
+    numbers = iter(range(first, first + 100))
+    return patch.object(sudosync_core, "new_kodibridge_id", side_effect=lambda: "DOM-{:06d}".format(next(numbers)))
 
 
 class RichVirtualVfs(VirtualXbmcVfs):
@@ -234,20 +243,17 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.active_profile = "/profile_kodi1"
         p1 = self._patch_env(addon_kodi1)
         with p1[0], p1[1], p1[2], p1[3], p1[4], p1[5], p1[6], p1[7], p1[8], p1[9], p1[10], p1[11], p1[12], \
-                patch.object(sudosync_core, "rpc", side_effect=fake_kodi1_rpc):
+                patch.object(sudosync_core, "rpc", side_effect=fake_kodi1_rpc), _id_sequence(1):
             res1 = sudosync_core.assign_sudosync_ids(show_notification=False)
 
         self.assertEqual(res1["movies"], 2)
         self.assertEqual(res1["episodes"], 0)
-        self.assertEqual(res1["last_number"], 2)
         self.assertIn(b"DOM-000001", self.vfs.files["smb://nas/wideo/dzieci/Bajka1.nfo"])
         self.assertIn(b"DOM-000002", self.vfs.files["smb://nas/wideo/dzieci/Bajka2.nfo"])
 
-        # Verify shared counter in SudoSync.cfg and system/config.json was updated to 2
+        # 2.2.12: IDs are UUIDs; the shared sequential counter is not used.
         cfg_after_kodi1 = json.loads(self.vfs.files[self.base_path + "SudoSync.cfg"].decode("utf-8"))
-        self.assertEqual(cfg_after_kodi1["network_settings"]["sudosync_id_last_number"], 2)
-        shared_after_kodi1 = json.loads(self.vfs.files[self.base_path + "system/config.json"].decode("utf-8"))
-        self.assertEqual(shared_after_kodi1["sudosync_id_last_number"], 2)
+        self.assertEqual(cfg_after_kodi1["network_settings"].get("sudosync_id_last_number", 0), 0)
 
         # Now Kodi 2 (Salon) has broader access:
         # - FilmDorosli1.mkv (appears BEFORE Bajka1 in Kodi 2's list!)
@@ -326,7 +332,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.active_profile = "/profile_kodi2"
         p2 = self._patch_env(addon_kodi2)
         with p2[0], p2[1], p2[2], p2[3], p2[4], p2[5], p2[6], p2[7], p2[8], p2[9], p2[10], p2[11], p2[12], \
-                patch.object(sudosync_core, "rpc", side_effect=fake_kodi2_rpc):
+                patch.object(sudosync_core, "rpc", side_effect=fake_kodi2_rpc), _id_sequence(3):
             # Preview on Kodi 2 must list only the 3 unindexed movies (skipping Bajka1 and Bajka2)
             preview2 = sudosync_core.preview_sudosync_ids()
             self.assertEqual(len(preview2), 3)
@@ -335,7 +341,6 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
 
         self.assertEqual(res2["movies"], 3)
         self.assertEqual(res2["episodes"], 0)
-        self.assertEqual(res2["last_number"], 5)
 
         # Bajka1 and Bajka2 kept their original IDs DOM-000001 and DOM-000002 untouched
         self.assertIn(b"DOM-000001", self.vfs.files["smb://nas/wideo/dzieci/Bajka1.nfo"])
@@ -347,13 +352,6 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.assertIn(b"DOM-000003", self.vfs.files["smb://nas/wideo/dorosli/FilmDorosli1.nfo"])
         self.assertIn(b"DOM-000004", self.vfs.files["smb://nas/wideo/domowe/DomoweWideo.nfo"])
         self.assertIn(b"DOM-000005", self.vfs.files["special://profile/local_videos/LokalnyTylkoSalon.nfo"])
-
-        # Shared config on NAS now reflects sudosync_id_last_number == 5, and Kodi 1 learns it
-        cfg_after_kodi2 = json.loads(self.vfs.files[self.base_path + "SudoSync.cfg"].decode("utf-8"))
-        self.assertEqual(cfg_after_kodi2["network_settings"]["sudosync_id_last_number"], 5)
-        with patch.object(sudosync_bootstrap.xbmcaddon, "Addon", return_value=addon_kodi1):
-            sudosync_bootstrap.apply_network_settings(cfg_after_kodi2)
-        self.assertEqual(addon_kodi1.getSetting("sudosync_id_last_number"), "5")
 
 
     def test_03_v2_kodi_rpc_enriches_details_with_nfo_ids_preventing_transaction_error(self):
@@ -409,7 +407,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
                     '<?xml version="1.0" encoding="UTF-8"?>\n'
                     "<movie>\n"
                     "  <title>Bajka 1</title>\n"
-                    '  <uniqueid type="sudosync" default="true">DOM-000001</uniqueid>\n'
+                    '  <uniqueid type="kodibridge" default="true">DOM-000001</uniqueid>\n'
                     "</movie>\n"
                 )
             return None
@@ -474,7 +472,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
             b"<movie>\n"
             b"  <title>Film z istniejacym SudoSync</title>\n"
             b'  <uniqueid type="imdb">tt7654321</uniqueid>\n'
-            b'  <uniqueid type="sudosync" default="true">DOM-000007</uniqueid>\n'
+            b'  <uniqueid type="kodibridge" default="true">DOM-000007</uniqueid>\n'
             b"</movie>\n"
         )
         # Episode C: has TVDb without default="true"
@@ -497,7 +495,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
                 "movieid": 102,
                 "title": "Film z istniejacym SudoSync",
                 "file": "smb://nas/wideo/filmy/FilmB.mkv",
-                "uniqueid": {"imdb": "tt7654321", "sudosync": "DOM-000007"},
+                "uniqueid": {"imdb": "tt7654321", "kodibridge": "DOM-000007"},
             },
         ]
         rpc_episodes = [
@@ -519,7 +517,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.active_profile = "/profile_kodi1"
         p = self._patch_env(addon_kodi)
         with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
-                patch.object(sudosync_core, "rpc", side_effect=fake_rpc):
+                patch.object(sudosync_core, "rpc", side_effect=fake_rpc), _id_sequence(8):
             # Preview must list Film A and Episode C, but NOT Film B
             preview = sudosync_core.preview_sudosync_ids()
             self.assertEqual(len(preview), 2)
@@ -533,13 +531,12 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
 
         self.assertEqual(res["movies"], 1)
         self.assertEqual(res["episodes"], 1)
-        self.assertEqual(res["last_number"], 9)
 
         # Verify Film A: IMDb and TMDb are preserved, sudosync ID DOM-000008 is added with default="false"
         nfo_a = self.vfs.files["smb://nas/wideo/filmy/FilmA.nfo"].decode("utf-8")
         self.assertIn('tt1234567', nfo_a)
         self.assertIn('99999', nfo_a)
-        self.assertIn('<uniqueid type="sudosync" default="false">DOM-000008</uniqueid>', nfo_a)
+        self.assertIn('<uniqueid type="kodibridge" default="false">DOM-000008</uniqueid>', nfo_a)
 
         # Verify Film B: unchanged DOM-000007
         nfo_b = self.vfs.files["smb://nas/wideo/filmy/FilmB.nfo"].decode("utf-8")
@@ -550,7 +547,7 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         # Verify Episode C: TVDb preserved, sudosync ID DOM-000009 added with default="true"
         nfo_c = self.vfs.files["smb://nas/wideo/seriale/EpisodeC.nfo"].decode("utf-8")
         self.assertIn('112233', nfo_c)
-        self.assertIn('<uniqueid type="sudosync" default="true">DOM-000009</uniqueid>', nfo_c)
+        self.assertIn('<uniqueid type="kodibridge" default="true">DOM-000009</uniqueid>', nfo_c)
 
     def test_06_default_assignids_uses_foreground_progress_dialog_with_auto_close_notice(self):
         """Action 'assignids' displays a foreground DialogProgress with auto-close note and progresses."""
@@ -757,8 +754,8 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         self.assertNotIn("sudosync", nfo_2)
 
 
-    def test_07_assign_sudosync_ids_crash_mid_loop_preserves_counter_for_other_kodi(self):
-        """Failure or crash while writing 2nd film NFO still preserves pre-persisted counter >= 1 on NAS so 2nd Kodi avoids ID collisions."""
+    def test_07_assign_sudosync_ids_crash_mid_loop_keeps_ids_unique_for_other_kodi(self):
+        """A failed .nfo write on one Kodi leaves the written IDs intact; another Kodi gets a different UUID without a shared counter."""
         addon_kodi1 = FakeAddon({
             "base_path": self.base_path,
             "client_name": "Kodi 1",
@@ -818,18 +815,10 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         # Film 1 was successfully modified, Film 2 failed during write
         self.assertEqual(res_kodi1["movies"], 1)
 
-        # Verify counter was pre-persisted on NAS (SudoSync.cfg and system/config.json >= 1)
-        cfg_raw = json.loads(self.vfs.files[self.base_path + "SudoSync.cfg"].decode("utf-8"))
-        cfg_num = cfg_raw.get("network_settings", {}).get("sudosync_id_last_number", 0)
-        self.assertGreaterEqual(cfg_num, 1)
-
-        sys_raw = json.loads(self.vfs.files[self.base_path + "system/config.json"].decode("utf-8"))
-        sys_num = sys_raw.get("sudosync_id_last_number", 0)
-        self.assertGreaterEqual(sys_num, 1)
-
-        # Film 1 has DOM-000001
+        # Film 1 has a UUID, Film 2 is unchanged
         nfo_1 = self.vfs.files["smb://nas/wideo1/Film1.nfo"].decode("utf-8")
-        self.assertIn("DOM-000001", nfo_1)
+        id_1 = re.search(r'type="kodibridge"[^>]*>(' + UUID_RE + ')<', nfo_1).group(1)
+        self.assertNotIn("kodibridge", self.vfs.files["smb://nas/wideo1/Film2.nfo"].decode("utf-8"))
 
         # 2. Run Kodi 2 (does not see wideo1 share)
         self.active_profile = "/profile_kodi2"
@@ -840,13 +829,10 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
 
         self.assertEqual(res_kodi2["movies"], 1)
 
-        # Film 3 receives candidate number > cfg_num (no collision with DOM-000001 or reserved DOM-000002)
+        # Film 3 receives its own UUID, different from Film 1
         nfo_3 = self.vfs.files["smb://nas/wideo2/Film3.nfo"].decode("utf-8")
-        self.assertNotIn("DOM-000001", nfo_3)
-        self.assertTrue("DOM-000002" in nfo_3 or "DOM-000003" in nfo_3)
-        # End result on NAS reflects the newly assigned ID
-        cfg_final = json.loads(self.vfs.files[self.base_path + "SudoSync.cfg"].decode("utf-8"))
-        self.assertGreater(cfg_final.get("network_settings", {}).get("sudosync_id_last_number", 0), cfg_num)
+        id_3 = re.search(r'type="kodibridge"[^>]*>(' + UUID_RE + ')<', nfo_3).group(1)
+        self.assertNotEqual(id_1, id_3)
 
     def test_08_assign_sudosync_ids_concurrency_lock_blocks_parallel_run(self):
         """When concurrency lock is held, parallel assign_sudosync_ids (auto and manual) safely returns 0, and finally block releases lock."""

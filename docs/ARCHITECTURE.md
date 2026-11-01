@@ -28,7 +28,7 @@ Cała synchronizacja działa w jednym silniku: modułowym podsystemie v2 (`sudos
 
 ### 2.1. Strażnik pojedynczego aktywnego Kodi w sieci (`active_kodi_lock.json`)
 W celu uniknięcia konfliktów zapisu w środowisku współdzielonego zasobu sieciowego (SMB/NFS), SudoSync realizuje model pracy jednego aktywnego urządzenia:
-- W katalogu systemowym udziału (`<base_path>/.SudoSync/system/`) tworzony jest plik dzierżawy `active_kodi_lock.json`.
+- W katalogu systemowym udziału (`<base_path>/.KodiBridge/system/`, do wersji 2.2.11 `.SudoSync`) tworzony jest plik dzierżawy `active_kodi_lock.json`.
 - **Dzierżawa czasowa (TTL):** Ważność dzierżawy wynosi 180 sekund.
 - **Odświeżanie pulsu (Heartbeat):** Aktywna usługa odświeża dzierżawę co 60 sekund (`refresh_network_active_kodi_lease`).
 - Jeśli inne urządzenie Kodi posiada aktywną dzierżawę, nowo uruchomione Kodi wstrzymuje wykonywanie operacji sieciowych. Po wygaśnięciu TTL (np. po nagłym zaniku zasilania poprzedniego urządzenia) dzierżawa może zostać bezpiecznie przejęta.
@@ -52,24 +52,28 @@ Chroni procedurę skanowania biblioteki i nadawania identyfikatorów SudoSync ID
 
 ### 3.1. Zasada uniwersalnej identyfikacji
 W SudoSync 2.x identyfikacja nie ogranicza się do pozycji posiadających zewnętrzne identyfikatory z internetowych baz danych (IMDb, TMDb, TVDb, Trakt). W celu zapewnienia niezawodnej synchronizacji filmów domowych, nagrań prywatnych oraz pozycji z niepełnymi metadanymi, wdrożono uniwersalny system **SudoSync ID**:
-- Wszystkie pozycje wideo w bibliotece (filmy, odcinki seriali, teledyski) otrzymują unikalny, równoległy identyfikator w formacie:
-  `{prefix}-{num:06d}` (np. `NAS-000042`).
-- Wstrzykiwanie do plików `.nfo`: Znacznik `<uniqueid type="sudosync" default="...">` jest trwale zapisywany w pliku `.nfo` danego wideo (lub tworzony jest minimalny `.nfo` w razie jego braku).
-- **Zasada nieingerencji w istniejące ID:** Jedynym wyjątkiem od nadania nowego identyfikatora są pozycje posiadające już niepusty identyfikator typu `sudosync` w Kodi lub w pliku `.nfo`. Zapobiega to nadpisywaniu już ustalonych tożsamości.
+- Wszystkie pozycje wideo w bibliotece (filmy, odcinki seriali, teledyski) otrzymują unikalny, równoległy identyfikator: losowy UUID w wersji 4 zapisany małymi literami (np. `3f9c2a7e-5b1d-4e8a-9c0f-7d2e1b6a4c90`).
+- Wstrzykiwanie do plików `.nfo`: Znacznik `<uniqueid type="kodibridge" default="...">` jest trwale zapisywany w pliku `.nfo` danego wideo (lub tworzony jest minimalny `.nfo` w razie jego braku).
+- **Stary znacznik:** Do wersji 2.2.11 identyfikator miał postać `{prefix}-{num:06d}` w `<uniqueid type="sudosync">`. Od 2.2.12 ten typ jest pomijany przy odczycie `.nfo` i bazy Kodi. Wewnątrz dodatku i w migawkach na NAS identyfikator nadal ma rodzaj `sudosync`; mapowanie `kodibridge` → `sudosync` wykonują `internal_id_kind` i `internal_ids_from_external` w `sudosync_v2/identity.py`.
+- **Zasada nieingerencji w istniejące ID:** Jedynym wyjątkiem od nadania nowego identyfikatora są pozycje posiadające już niepusty identyfikator typu `kodibridge` w Kodi lub w pliku `.nfo`. Zapobiega to nadpisywaniu już ustalonych tożsamości.
 - **Zachowanie atrybutu domyślnego:** Jeśli plik `.nfo` posiadał już znacznik domyślny (`default="true"`), wstrzykiwany tag otrzymuje `default="false"`. Gdy plik nie posiadał żadnego taga z atrybutem domyślnym, nowy identyfikator otrzymuje `default="true"`.
 
-### 3.2. Wspólny licznik sieciowy (`sudosync_id_last_number`)
-Aby zapobiec kolizjom numeracji pomiędzy różnymi urządzeniami Kodi w tej samej sieci domowej (szczególnie w scenariuszu, gdy poszczególne Kodi mają dostęp do różnych podzbiorów udziałów NAS):
-- Bieżący stan licznika przechowywany jest we wspólnym pliku `SudoSync.cfg` (`network_settings.sudosync_id_last_number`) oraz `system/config.json`.
-- **Atomowa pre-alokacja (Fail-Closed):** Przed dotknięciem i modyfikacją jakiegokolwiek pliku `.nfo` na dysku, kolejny numer ID jest trwale rezerwowany na udziale sieciowym pod blokadą zapisu. W razie awarii sieci lub zasilania operacja natychmiast przerywa działanie, uniemożliwiając rozbieżność liczników i duplikację identyfikatorów.
-- **Ochrona przed cofaniem licznika:** Aktualizacje licznika są ściśle monotoniczne (`max(existing, target)`), a wstępny skan istniejących `.nfo` automatycznie przesuwa licznik powyżej najwyższego wykrytego numeru w sieci.
+### 3.2. Nadawanie ID bez wspólnego licznika
+- Każde Kodi nadaje UUID samodzielnie (`new_kodibridge_id`); wspólny licznik `sudosync_id_last_number` z wersji do 2.2.11 nie jest już używany przy nadawaniu ani naprawie.
+- Blokada `system/assign_ids.lock` na NAS nadal szereguje przypisywanie, żeby dwa Kodi nie zapisywały jednocześnie tych samych plików `.nfo`.
+- Duplikat może powstać tylko przez skopiowanie `.nfo` razem z plikiem wideo; naprawa nadaje wtedy nowy UUID.
+
+### 3.3. Przejście z `.SudoSync` na `.KodiBridge` (2.2.12)
+- Przy starcie bootstrap zamienia ścieżkę kończącą się na `.SudoSync` na sąsiedni folder `.KodiBridge` (`kodibridge_shared_path`).
+- `migrate_legacy_shared_folder` przenosi tylko ustawienia sieciowe z `SudoSync.cfg` (bez licznika), ustawia `min_addon_version` nowej wersji w obu folderach, a lokalny licznik zeruje. Migawki i transakcje zostają w starym folderze, bo odnoszą się do starych ID.
+- Lokalna pamięć identyfikatorów `.nfo` (`nfo_id_cache.json`) ma wersję 2; starsza jest odrzucana. Raporty przypisania i naprawy bez `"id_scheme": "kodibridge-uuid"` nie są używane do wycofania ani do zasilenia pamięci.
 
 ---
 
 ## 4. Separacja konfiguracji i mechanizmy aktualizacji
 
 ### 4.1. Separacja konfiguracji sieciowej od lokalnej
-- **Konfiguracja sieciowa (`SudoSync.cfg` / `system/config.json`):** Przechowuje parametry wspólne dla całej sieci lokalnej: prefiks sieciowy ID, licznik `sudosync_id_last_number`, wersję schematu oraz wymaganą minimalną wersję dodatku (`min_addon_version`).
+- **Konfiguracja sieciowa (`SudoSync.cfg` / `system/config.json`):** Przechowuje parametry wspólne dla całej sieci lokalnej: włączenie KodiBridge ID, wersję schematu oraz wymaganą minimalną wersję dodatku (`min_addon_version`).
 - **Konfiguracja lokalna klienta (`settings.xml` w profilu dodatku):** Przechowuje unikalny UUID klienta, lokalną przyjazną nazwę (alias wyświetlany w UI), lokalną ścieżkę do udziału oraz preferencje powiadomień. Ustawienia lokalne nigdy nie są współdzielone ani nadpisywane przez inne urządzenia.
 
 ### 4.2. Bezpieczny mechanizm aktualizacji

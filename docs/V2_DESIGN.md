@@ -21,7 +21,7 @@ KodiBridge by Sudoizm 2.x (dawniej SudoSync) jest kolejną wersją tego samego d
 1. Konserwatywna synchronizacja stanu odtwarzania pomiędzy instancjami Kodi.
 2. Bezpieczna inicjalizacja nowej sieci i jawny podgląd przed pierwszym zapisem.
 3. Rozstrzyganie konfliktów deterministycznie, bez cichego nadpisywania niejednoznacznych danych.
-4. Identyfikacja pozycji przez KodiBridge ID (dawniej SudoSync ID, w `.nfo` jako `uniqueid type="sudosync"`): przy włączonej opcji jest to jedyny klucz dopasowania między urządzeniami; IMDb/TMDb/TVDb/Trakt tylko przy wyłączonej opcji. Nigdy dopasowanie po tytule.
+4. Identyfikacja pozycji przez KodiBridge ID (dawniej SudoSync ID; od 2.2.12 w `.nfo` jako `uniqueid type="kodibridge"` z UUID, stary `uniqueid type="sudosync"` jest pomijany): przy włączonej opcji jest to jedyny klucz dopasowania między urządzeniami; IMDb/TMDb/TVDb/Trakt tylko przy wyłączonej opcji. Nigdy dopasowanie po tytule.
 5. Odporny na przerwanie zapis plików współdzielonych i jawna obsługa błędów I/O.
 6. Weryfikowalny, testowalny mechanizm aktualizacji oraz regresyjne testy bezpieczeństwa.
 7. Czytelne komunikaty PL/EN i przewidywalne logowanie bez ujawniania sekretów.

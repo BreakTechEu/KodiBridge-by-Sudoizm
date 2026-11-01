@@ -178,7 +178,7 @@ class RepairDialogTests(unittest.TestCase):
         request.assert_called_once()
         text = dialog.textviewer.call_args[0][1]
         self.assertIn("DOM-000005 → DOM-000010 — Show B S02E03", text)
-        self.assertIn("Zachowały numer", text)
+        self.assertIn("Zachowały ID", text)
 
     def test_no_duplicates_message_without_refresh(self):
         dialog, request = self._repair({"groups": 0, "renumbered": 0, "errors": []})

@@ -180,6 +180,7 @@ class NfoCacheTests(unittest.TestCase):
             cache_file = os.path.join(temp_dir, "nfo_id_cache.json")
             manifest_file = os.path.join(temp_dir, "assign_ids_manifest.json")
             manifest_data = {
+                "id_scheme": "kodibridge-uuid",
                 "modified": [
                     {"file": "smb://nas/m/1/film.nfo", "type": "movie", "sudosync_id": "MAZURY-000042"}
                 ]

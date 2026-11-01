@@ -1,3 +1,12 @@
+KodiBridge by Sudoizm 2.2.12 (niewydane)
+========================================
+
+- Nowy znacznik KodiBridge ID w plikach .nfo: `<uniqueid type="kodibridge">` z losowym identyfikatorem UUID (np. `3f9c2a7e-5b1d-4e8a-9c0f-7d2e1b6a4c90`) zamiast kolejnych numerów `PREFIKS-000123`. Każde Kodi nadaje ID samodzielnie, bez wspólnego licznika na NAS-ie, więc nie zużywa już numerów i nie musi rezerwować ich przed zapisem. Blokada przypisywania na NAS-ie zostaje.
+- Stary znacznik `<uniqueid type="sudosync">` jest pomijany w plikach .nfo i w bazie Kodi. Pozycja, która ma tylko stary numer, jest traktowana jak pozycja bez KodiBridge ID i dostanie nowe ID przy przypisywaniu.
+- Folder wspólny na NAS-ie: przy pierwszym uruchomieniu wtyczka przechodzi z `.SudoSync` na nowy folder `.KodiBridge` obok niego. Przenosi ustawienia sieciowe, a stan synchronizacji zaczyna od nowa, bo stare migawki odnoszą się do starych numerów. Stan obejrzenia zostaje w bibliotece każdego Kodi i trafia do nowego folderu przy pierwszej synchronizacji. W starym folderze wtyczka ustawia minimalną wersję 2.2.12, więc Kodi ze starszą wersją dostaje prośbę o aktualizację zamiast synchronizować się osobno.
+- Lokalna pamięć identyfikatorów .nfo (`nfo_id_cache.json`) ze starszej wersji jest odrzucana i budowana od nowa. „Wycofaj ostatnio przypisane ID” nie proponuje operacji sprzed 2.2.12.
+- „Napraw zdublowane KodiBridge ID” nadaje nowe UUID. Okno statusu i podsumowania nie pokazują już „ostatniego numeru”, a ustawienie „Nazwa sieci (prefiks KodiBridge ID)” jest ukryte, bo nie jest już używane.
+
 KodiBridge by Sudoizm 2.2.11
 ============================
 

@@ -34,7 +34,7 @@ MULTI_EPISODE_NFO = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <episode>2</episode>
   <uniqueid default="true" type="tmdb">1002</uniqueid>
   <uniqueid default="false" type="imdb">tt0001002</uniqueid>
-  <uniqueid default="false" type="sudosync">MAZURY-000500</uniqueid>
+  <uniqueid default="false" type="kodibridge">MAZURY-000500</uniqueid>
 </episodedetails>
 """
 
@@ -48,7 +48,7 @@ class TestMultiEpisodeNfoAndSudoSyncIdentity(unittest.TestCase):
         uids = root.findall(".//uniqueid")
         self.assertEqual(len(uids), 5)
         types = [u.attrib.get("type") for u in uids]
-        self.assertIn("sudosync", types)
+        self.assertIn("kodibridge", types)
         self.assertIn("tmdb", types)
 
     def test_nfo_raw_helpers_with_multi_episode(self):
@@ -206,7 +206,7 @@ class TestMultiEpisodeNfoAndSudoSyncIdentity(unittest.TestCase):
                             "movies": [{
                                 "movieid": 1,
                                 "file": "smb://nas/Films/Movie.mkv",
-                                "uniqueid": {"sudosync": "MAZURY-000001", "tmdb": "100"},
+                                "uniqueid": {"kodibridge": "MAZURY-000001", "tmdb": "100"},
                             }],
                             "limits": {"total": 1},
                         }
@@ -214,7 +214,7 @@ class TestMultiEpisodeNfoAndSudoSyncIdentity(unittest.TestCase):
                 return json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": {}})
 
         def fake_reader(path, max_bytes):
-            return '<movie><uniqueid type="sudosync">MAZURY-000002</uniqueid><uniqueid type="tmdb">200</uniqueid></movie>'
+            return '<movie><uniqueid type="kodibridge">MAZURY-000002</uniqueid><uniqueid type="tmdb">200</uniqueid></movie>'
 
         adapter = KodiJsonRpcAdapter(FakeTransport(), nfo_reader=fake_reader)
         with self.assertLogs("resources.lib.sudosync_v2.kodi_rpc", level="WARNING") as cm:

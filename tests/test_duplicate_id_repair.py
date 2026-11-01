@@ -33,7 +33,7 @@ def _episode_nfo(entries):
     body = b"".join(
         b"<episodedetails>\n  <title>" + title + b"</title>\n  <season>" + season + b"</season>\n"
         b"  <episode>" + episode + b"</episode>\n  <uniqueid type=\"tvdb\">" + tvdb + b"</uniqueid>\n"
-        b"  <uniqueid type=\"sudosync\" default=\"false\">" + sid + b"</uniqueid>\n</episodedetails>\n"
+        b"  <uniqueid type=\"kodibridge\" default=\"false\">" + sid + b"</uniqueid>\n</episodedetails>\n"
         for title, season, episode, tvdb, sid in entries
     )
     return b'<?xml version="1.0" encoding="UTF-8"?>\n' + body
@@ -113,6 +113,9 @@ class RepairFixture(unittest.TestCase):
         stack.enter_context(patch.object(sudosync_core, "_read_local_json", side_effect=read_local))
         stack.enter_context(patch.object(sudosync_core, "_addon_profile_path", side_effect=lambda: self.profile))
         stack.enter_context(patch.object(sudosync_core, "get_or_create_client_id", return_value=CLIENT))
+        # Deterministic stand-ins for the random UUIDs given by the repair.
+        new_ids = iter("DOM-{:06d}".format(n) for n in range(10, 100))
+        stack.enter_context(patch.object(sudosync_core, "new_kodibridge_id", side_effect=lambda: next(new_ids)))
         return stack.enter_context(patch.object(sudosync_core, "rpc", side_effect=fake_rpc))
 
     def _snapshot_knows(self, tvdb):
@@ -152,7 +155,8 @@ class DuplicateRepairTests(RepairFixture):
         self.assertIn(b"DOM-000005", self.vfs.files["smb://nas/wideo/seriale/A/a1.nfo.repair.bak"])
         rpc.assert_any_call("VideoLibrary.RefreshEpisode", {"episodeid": 1})
         shared = self._shared()
-        self.assertEqual(shared["sudosync_id_last_number"], 10)
+        # 2.2.12: the repair gives UUIDs and no longer touches the sequential counter.
+        self.assertEqual(shared["sudosync_id_last_number"], 9)
         self.assertEqual(shared["kodibridge_id_renumbered"], {"dom-000005": ["dom-000010"]})
         self.assertTrue(shared["nfo_id_epoch"])
         manifest = json.loads(self.vfs.files[PROFILE + "/repair_ids_manifest.json"].decode("utf-8"))
@@ -194,7 +198,7 @@ class DuplicateRepairTests(RepairFixture):
         )
 
     def test_replace_only_matching_value(self):
-        raw = (b'<movie><uniqueid type="sudosync">DOM-000001</uniqueid>'
+        raw = (b'<movie><uniqueid type="kodibridge">DOM-000001</uniqueid>'
                b'<uniqueid type="tmdb">DOM-000001</uniqueid></movie>')
         new, count = sudosync_core._replace_sudosync_id_in_nfo(raw, "dom-000001", "DOM-000002")
         self.assertEqual(count, 1)
@@ -337,12 +341,12 @@ class RepairSafetyTests(RepairFixture):
         self.assertIn(b">DOM-000005</uniqueid>", self.vfs.files[self.B])
 
     def test_commented_out_id_is_not_touched(self):
-        raw = (b'<episodedetails><!-- <uniqueid type="sudosync">DOM-000005</uniqueid> -->'
-               b'<uniqueid type="sudosync">DOM-000005</uniqueid></episodedetails>')
+        raw = (b'<episodedetails><!-- <uniqueid type="kodibridge">DOM-000005</uniqueid> -->'
+               b'<uniqueid type="kodibridge">DOM-000005</uniqueid></episodedetails>')
         new, count = sudosync_core._replace_sudosync_id_in_nfo(raw, "DOM-000005", "DOM-000010")
         self.assertEqual(count, 1)
-        self.assertIn(b'<!-- <uniqueid type="sudosync">DOM-000005</uniqueid> -->', new)
-        self.assertIn(b'<uniqueid type="sudosync">DOM-000010</uniqueid></episodedetails>', new)
+        self.assertIn(b'<!-- <uniqueid type="kodibridge">DOM-000005</uniqueid> -->', new)
+        self.assertIn(b'<uniqueid type="kodibridge">DOM-000010</uniqueid></episodedetails>', new)
 
     def test_epoch_marker_restored_when_publishing_fails(self):
         self.profile = self.tmp

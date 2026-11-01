@@ -40,6 +40,9 @@ import xbmcaddon
 import xbmcgui
 import xbmcvfs
 
+from resources.lib.sudosync_v2 import ID_SCHEME, KODIBRIDGE_ID_TYPE
+from resources.lib.sudosync_v2.identity import internal_id_kind, new_kodibridge_id
+
 ADDON_ID = "service.sudosync"
 SCHEMA_VERSION = 2
 
@@ -1078,11 +1081,12 @@ def _normalize_ids(uniqueid, imdbnumber=None):
     ids = {}
     if isinstance(uniqueid, dict):
         for key, value in uniqueid.items():
-            if value is None:
+            kind = internal_id_kind(key)
+            if value is None or not kind:
                 continue
             val = str(value).strip()
             if val:
-                ids[str(key).strip().lower()] = val
+                ids[kind] = val
     if imdbnumber:
         val = str(imdbnumber).strip()
         if val and "imdb" not in ids and val.startswith("tt"):
@@ -1188,7 +1192,7 @@ def _find_best_nfo(media_file, kind):
         ids = {}
         find_target = ".//uniqueid" if root.tag == "root" else "uniqueid"
         for node in root.findall(find_target):
-            typ = (node.attrib.get("type") or "").strip().lower()
+            typ = internal_id_kind(node.attrib.get("type"))
             val = (node.text or "").strip()
             if typ and val and typ not in ids:
                 ids[typ] = val
@@ -1653,12 +1657,13 @@ def _nfo_raw_has_sudosync_id(raw_bytes, kind=None):
         raw_lower = text.encode("utf-8", errors="replace").lower()
     root = _safe_parse_nfo_xml(text)
     if root is None:
-        return (b'type="sudosync"' in raw_lower or b"type='sudosync'" in raw_lower), {}
+        marker = KODIBRIDGE_ID_TYPE.encode("ascii")
+        return (b'type="' + marker + b'"' in raw_lower or b"type='" + marker + b"'" in raw_lower), {}
 
     ids = {}
     find_target = ".//uniqueid" if root.tag == "root" else "uniqueid"
     for node in root.findall(find_target):
-        typ = (node.attrib.get("type") or "").strip().lower()
+        typ = internal_id_kind(node.attrib.get("type"))
         val = (node.text or "").strip()
         if typ and val and typ not in ids:
             ids[typ] = val
@@ -1886,13 +1891,6 @@ def get_or_sync_network_id_and_alias(base_path=None):
     
     local_prefix = addon.getSetting("sudosync_id_prefix").strip()
     last_synced = addon.getSetting("sudosync_id_prefix_last_synced").strip()
-    try:
-        known_last_num = get_network_sudosync_id_last_number(base)
-        if known_last_num > 0:
-            persist_network_sudosync_id_last_number(known_last_num, base)
-    except Exception:
-        pass
-    
     network_id = config.get("sudosync_network_id")
     if not network_id:
         if local_prefix:
@@ -1949,7 +1947,7 @@ def _build_created_nfo_xml(kind, title_text, full_id):
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
         '<{root}>\n'
         '  <title>{title}</title>\n'
-        '  <uniqueid type="sudosync" default="true">{id}</uniqueid>\n'
+        '  <uniqueid type="kodibridge" default="true">{id}</uniqueid>\n'
         '</{root}>\n'
     ).format(root=root_tag, id=escaped_full_id, title=escaped_title)
 
@@ -2009,7 +2007,7 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
         )
 
     uid_el = children[1]
-    if uid_el.attrib.get("type") != "sudosync" or uid_el.attrib.get("default") != "true":
+    if uid_el.attrib.get("type") != KODIBRIDGE_ID_TYPE or uid_el.attrib.get("default") != "true":
         return (
             False,
             "file_modified",
@@ -2079,6 +2077,8 @@ def rollback_sudosync_ids(manifest_path=None):
     manifest = _read_local_json(manifest_path)
     if not isinstance(manifest, dict) or not isinstance(manifest.get("modified"), list):
         raise RuntimeError("Nieprawidłowy format pliku manifestu: {}".format(manifest_path))
+    if manifest.get("id_scheme") != ID_SCHEME:
+        raise RuntimeError("Manifest {} pochodzi ze starszej wersji (stary KodiBridge ID); nie można go wycofać.".format(manifest_path))
 
     rollbacks = 0
     restored = 0
@@ -2271,7 +2271,7 @@ SHARED_RENUMBERED_IDS_KEY = "kodibridge_id_renumbered"
 MAX_SHARED_RENUMBERED_IDS = 5000
 _EXTERNAL_ID_KINDS = ("imdb", "tmdb", "tvdb", "trakt")
 _SUDOSYNC_UNIQUEID_RE = re.compile(
-    rb"(<uniqueid\b[^>]*?\btype\s*=\s*[\"']sudosync[\"'][^>]*>)(\s*)([^<]*?)(\s*)(</uniqueid>)",
+    rb"(<uniqueid\b[^>]*?\btype\s*=\s*[\"']kodibridge[\"'][^>]*>)(\s*)([^<]*?)(\s*)(</uniqueid>)",
     re.IGNORECASE,
 )
 _XML_COMMENT_RE = re.compile(rb"<!--.*?-->", re.DOTALL)
@@ -2542,6 +2542,9 @@ def latest_rollback_manifests():
             data = None
         if not isinstance(data, dict) or data.get("rolled_back_at"):
             continue
+        if data.get("id_scheme") != ID_SCHEME:
+            # Made before 2.2.12 for the old <uniqueid type="sudosync">.
+            continue
         stamp = str(data.get("generated_at") or "")
         found.append((kind, path, stamp))
     found.sort(key=lambda item: item[2], reverse=True)
@@ -2564,10 +2567,9 @@ def renumbered_pairs_from_manifest(manifest_path):
 def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base_path=None, collected_items=None):
     """Give a new KodiBridge ID to every extra media file that shares one ID.
 
-    In each group one file keeps the number: the one a client snapshot on the
+    In each group one file keeps its ID: the one a client snapshot on the
     NAS knows under this ID (by an external ID), otherwise the first by path.
-    The other .nfo files get the next numbers of the network counter, reserved
-    before each change. Every changed .nfo is backed up as .repair.bak and
+    The other .nfo files get new random KodiBridge IDs (UUIDs). Every changed .nfo is backed up as .repair.bak and
     listed in repair_ids_manifest.json, so the change can be rolled back.
     """
     settings = addon_settings()
@@ -2604,13 +2606,14 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             return result
 
         snapshot_ids = _load_network_snapshot_ids(base, exclude_client_id=get_or_create_client_id())
-        prefix = get_or_sync_network_id_and_alias(base)
+        get_or_sync_network_id_and_alias(base)
         last_number = get_network_sudosync_id_last_number(base, list(movies) + list(episodes))
         manifest_path = os.path.join(_addon_profile_path(), REPAIR_IDS_MANIFEST_NAME)
         generated_at = utc_now_precise()
         manifest = {
             "operation": "repair_duplicate_ids",
             "generated_at": generated_at,
+            "id_scheme": ID_SCHEME,
             "groups": len(groups),
             "last_number": last_number,
             "kept": [],
@@ -2671,7 +2674,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             })
             note = ""
             if known_elsewhere > 1:
-                note = " (UWAGA: inne Kodi synchronizują pod tym ID {} różne pozycje; numer zachowała ta, którą zna najwięcej urządzeń)".format(known_elsewhere)
+                note = " (UWAGA: inne Kodi synchronizują pod tym ID {} różne pozycje; ID zachowała ta, którą zna najwięcej urządzeń)".format(known_elsewhere)
             result["kept"].append("{} — {}{}".format(keeper["sudosync_id"], keeper_label, note))
             for entry in files:
                 if entry is keeper:
@@ -2700,19 +2703,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
                     _error(entry, label, "plik .nfo nie zawiera ID {} (ID pochodzi z bazy Kodi)".format(old_id))
                     continue
 
-                candidate = last_number + 1
-                try:
-                    persisted = persist_network_sudosync_id_last_number(candidate, base)
-                    if not persisted or persisted < candidate:
-                        raise IOError("Rezerwacja licznika zwróciła nieprawidłową wartość: {}".format(persisted))
-                    candidate = persisted
-                except Exception as exc:
-                    _fatal(entry, label, "rezerwacja licznika nie powiodła się: {}".format(exc))
-                    stop = True
-                    break
-                last_number = candidate
-
-                new_id = "{}-{:06d}".format(prefix, candidate)
+                new_id = new_kodibridge_id()
                 new_raw, _count = _replace_sudosync_id_in_nfo(raw, old_id, new_id)
                 bak_path = _backup_path(best_path)
                 new_path = best_path + ".new"
@@ -3127,7 +3118,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                 "cancelled": True,
             }
 
-        prefix = get_or_sync_network_id_and_alias(settings.get("base_path"))
+        get_or_sync_network_id_and_alias(settings.get("base_path"))
 
         modified_movies = 0
         modified_episodes = 0
@@ -3187,6 +3178,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
 
         manifest = {
             "generated_at": utc_now_precise(),
+            "id_scheme": ID_SCHEME,
             "silent": bool(silent),
             "checked_movies": len(movies),
             "checked_episodes": len(episodes),
@@ -3223,16 +3215,6 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                     pass
 
         _write_manifest()
-
-        # Persist discovered highest number if higher than before
-        try:
-            persisted = persist_network_sudosync_id_last_number(last_number, settings.get("base_path"))
-            if persisted and persisted > last_number:
-                last_number = persisted
-            manifest["last_number"] = last_number
-            _write_manifest()
-        except Exception as exc:
-            log("Nie udało się zsynchronizować początkowego licznika z NAS: {}".format(exc), xbmc.LOGWARNING)
 
         def _process_item(item, kind):
             nonlocal last_number
@@ -3286,33 +3268,13 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                     if pos < 0:
                         return False, False
 
-                    candidate_number = last_number + 1
-
-                    # Atomowa rezerwacja licznika na NAS PRZED modyfikacją pliku .nfo
-                    try:
-                        persisted_num = persist_network_sudosync_id_last_number(candidate_number, settings.get("base_path"))
-                        if not persisted_num or persisted_num < candidate_number:
-                            raise IOError("Rezerwacja licznika zwróciła nieprawidłową wartość: {}".format(persisted_num))
-                        candidate_number = persisted_num
-                    except Exception as exc:
-                        log("Błąd rezerwacji licznika SudoSync ID na NAS dla '{}': {}. Przerywanie operacji.".format(best_path, exc), xbmc.LOGERROR)
-                        manifest["errors"].append({"file": best_path, "error": "Rezerwacja licznika nie powiodła się: {}".format(exc)})
-                        fatal_errors.append(str(exc))
-                        manifest["last_number"] = last_number
-                        _write_manifest()
-                        return False, True
-
-                    last_number = candidate_number
-                    manifest["last_number"] = last_number
-                    _write_manifest()
-
-                    full_id = "{}-{:06d}".format(prefix, candidate_number)
+                    full_id = new_kodibridge_id()
                     escaped_full_id = xml.sax.saxutils.escape(full_id)
 
                     has_default_true = bool(re.search(rb'default\s*=\s*["\']true["\']', raw, re.IGNORECASE))
                     default_attr = 'default="false"' if has_default_true else 'default="true"'
 
-                    insert = ('    <uniqueid type="sudosync" ' + default_attr + '>' + escaped_full_id + '</uniqueid>\n').encode("utf-8")
+                    insert = ('    <uniqueid type="kodibridge" ' + default_attr + '>' + escaped_full_id + '</uniqueid>\n').encode("utf-8")
                     new_raw = raw[:pos] + insert + raw[pos:]
                     new_raw_bytes = bytes(new_raw)
 
@@ -3355,26 +3317,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                     _write_manifest()
                     return False, False
             else:
-                candidate_number = last_number + 1
-
-                # Atomowa rezerwacja licznika na NAS PRZED utworzeniem pliku .nfo
-                try:
-                    persisted_num = persist_network_sudosync_id_last_number(candidate_number, settings.get("base_path"))
-                    if not persisted_num or persisted_num < candidate_number:
-                        raise IOError("Rezerwacja licznika zwróciła nieprawidłową wartość: {}".format(persisted_num))
-                    candidate_number = persisted_num
-                except Exception as exc:
-                    log("Błąd rezerwacji licznika SudoSync ID na NAS dla '{}': {}. Przerywanie operacji.".format(best_path, exc), xbmc.LOGERROR)
-                    manifest["errors"].append({"file": best_path, "error": "Rezerwacja licznika nie powiodła się: {}".format(exc)})
-                    manifest["last_number"] = last_number
-                    _write_manifest()
-                    return False, True
-
-                last_number = candidate_number
-                manifest["last_number"] = last_number
-                _write_manifest()
-
-                full_id = "{}-{:06d}".format(prefix, candidate_number)
+                full_id = new_kodibridge_id()
                 raw_title = item.get("title") or item.get("originaltitle") or "Nieznany"
                 xml_content = _build_created_nfo_xml(kind, raw_title, full_id)
                 xml_bytes = xml_content.encode("utf-8")

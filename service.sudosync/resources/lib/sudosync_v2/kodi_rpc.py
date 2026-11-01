@@ -21,7 +21,8 @@ import re
 import time
 import xml.etree.ElementTree as ET
 
-from .identity import normalize_identifier
+from . import ID_SCHEME
+from .identity import internal_id_kind, internal_ids_from_external, normalize_identifier
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,11 @@ def invoke_with_abort(fn, abort_requested, *args, **kwargs):
         kwargs["abort_requested"] = abort_requested
     return fn(*args, **kwargs)
 
+
+
+# 2: identifiers read from <uniqueid type="kodibridge"> (2.2.12). Older caches
+# hold the legacy sequential IDs and are discarded.
+NFO_CACHE_VERSION = 2
 
 class OperationAborted(RuntimeError):
     """Operation was aborted by abortRequested signal."""
@@ -155,7 +161,7 @@ class KodiJsonRpcAdapter(object):
                     os.makedirs(parent, exist_ok=True)
                 tmp_path = self._cache_path + ".tmp"
                 with open(tmp_path, "w", encoding="utf-8") as f:
-                    json.dump({"version": 1, "items": []}, f)
+                    json.dump({"version": NFO_CACHE_VERSION, "items": []}, f)
                 os.replace(tmp_path, self._cache_path)
             except Exception:
                 try:
@@ -176,7 +182,8 @@ class KodiJsonRpcAdapter(object):
                 if os.path.isfile(manifest_path):
                     with open(manifest_path, "r", encoding="utf-8") as f:
                         data = json.load(f)
-                    if not isinstance(data, dict) or data.get("rolled_back_at"):
+                    if (not isinstance(data, dict) or data.get("rolled_back_at")
+                            or data.get("id_scheme") != ID_SCHEME):
                         return
                     now = time.time()
                     for item in data.get("modified") or []:
@@ -198,7 +205,11 @@ class KodiJsonRpcAdapter(object):
             with open(self._cache_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             now = time.time()
-            items = data.get("items") if isinstance(data, dict) else []
+            if not isinstance(data, dict) or data.get("version") != NFO_CACHE_VERSION:
+                # A cache from before 2.2.12 holds the old sequential IDs.
+                self._dirty_cache = True
+                return
+            items = data.get("items") or []
             for item in items:
                 if not isinstance(item, dict):
                     continue
@@ -231,7 +242,7 @@ class KodiJsonRpcAdapter(object):
                         })
             tmp_path = self._cache_path + ".tmp"
             with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump({"version": 1, "items": entries}, f, ensure_ascii=False, indent=2)
+                json.dump({"version": NFO_CACHE_VERSION, "items": entries}, f, ensure_ascii=False, indent=2)
             os.replace(tmp_path, self._cache_path)
             self._dirty_cache = False
         except Exception as exc:
@@ -301,7 +312,9 @@ class KodiJsonRpcAdapter(object):
         identifiers = {}
         find_target = "uniqueid" if target_scope != root else (".//uniqueid" if root.tag == "root" else "uniqueid")
         for node in target_scope.findall(find_target):
-            kind = (node.attrib.get("type") or "").strip().lower()
+            kind = internal_id_kind(node.attrib.get("type"))
+            if not kind:
+                continue
             value = normalize_identifier(kind, node.text)
             if value is not None:
                 if kind in identifiers and identifiers[kind] != value:
@@ -324,7 +337,7 @@ class KodiJsonRpcAdapter(object):
 
         if "sudosync" not in identifiers and target_scope != root:
             for node in root.findall(".//uniqueid"):
-                if (node.attrib.get("type") or "").strip().lower() == "sudosync":
+                if internal_id_kind(node.attrib.get("type")) == "sudosync":
                     v = normalize_identifier("sudosync", node.text)
                     if v is not None:
                         identifiers["sudosync"] = v
@@ -414,7 +427,13 @@ class KodiJsonRpcAdapter(object):
 
     def _enrich_with_nfo(self, items, media_type, abort_requested=None, progress_callback=None):
         if self._nfo_reader is None:
-            return items
+            mapped = []
+            for item in items:
+                if isinstance(item, dict):
+                    item = dict(item)
+                    item["uniqueid"] = internal_ids_from_external(item.get("uniqueid"))
+                mapped.append(item)
+            return mapped
         enriched = []
         total = len(items)
         try:
@@ -426,8 +445,7 @@ class KodiJsonRpcAdapter(object):
                 if not isinstance(item, dict):
                     raise KodiRpcError("Kodi returned an invalid {} library record".format(media_type))
                 record = dict(item)
-                kodi_ids = record.get("uniqueid")
-                kodi_ids = dict(kodi_ids) if isinstance(kodi_ids, dict) else {}
+                kodi_ids = internal_ids_from_external(record.get("uniqueid"))
                 if record.get("imdbnumber"):
                     imdb = normalize_identifier("imdb", record.get("imdbnumber"))
                     if imdb is not None:

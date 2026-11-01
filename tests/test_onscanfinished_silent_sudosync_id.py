@@ -337,7 +337,7 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
         self.assertEqual(manifest.get("newly_assigned"), 1)
         self.assertEqual(manifest.get("checked_items"), 1)
         self.assertEqual(len(manifest.get("modified")), 1)
-        self.assertTrue(manifest["modified"][0]["sudosync_id"].startswith("MAZURY-"))
+        self.assertRegex(manifest["modified"][0]["sudosync_id"], r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 
     def test_07_assign_sudosync_ids_silent_mode_suppresses_progress_callback(self):
         """assign_sudosync_ids(..., silent=True) never executes progress_callback even if provided."""
