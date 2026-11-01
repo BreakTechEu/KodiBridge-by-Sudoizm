@@ -1,5 +1,5 @@
-KodiBridge by Sudoizm 2.2.13 (niewydane)
-========================================
+KodiBridge by Sudoizm 2.2.13
+============================
 
 Poprawki po audycie zewnętrznym 2.2.8–2.2.12 (Gemini/Argon i ChatGPT):
 
