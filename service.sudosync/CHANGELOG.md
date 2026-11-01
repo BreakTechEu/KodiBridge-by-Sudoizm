@@ -1,3 +1,18 @@
+KodiBridge by Sudoizm 2.2.13 (niewydane)
+========================================
+
+Poprawki po audycie zewnętrznym 2.2.8–2.2.12 (Gemini/Argon i ChatGPT):
+
+- Przejście z `.SudoSync` na `.KodiBridge` zmienia ustawienie folderu dopiero po udanym teście zapisu i migracji. Wcześniej, gdy NAS przy starcie jeszcze nie odpowiadał, ustawienie było już zmienione, a migracja (przeniesienie ustawień i minimalna wersja w starym folderze) nie wykonywała się nigdy. Teraz nieudana próba jest powtarzana przy następnym starcie.
+- Folder `.SudoSync` jest rozpoznawany bez względu na wielkość liter, także w kreatorze wyboru folderu. Ścieżki UNC zakończone ukośnikiem wstecznym nie dostają już mieszanego separatora `\/` przy odczycie konfiguracji.
+- Gdy stary `SudoSync.cfg` jest uszkodzony albo go nie ma, nowa konfiguracja powstaje z ustawień tego Kodi zamiast kreatora przy starcie.
+- Przypisywanie i naprawa KodiBridge ID nie odczytują ani nie zapisują już na NAS-ie pozostałości po wspólnym liczniku (numer sieci i ostatni numer).
+- Ten sam plik w bibliotece pod ścieżkami różniącymi się danymi logowania w adresie albo zapisem `\\host\udział` i `smb://host/udział` jest traktowany jak jeden plik, tak jak przy różnej wielkości liter. Przykłady w oknie statusu i w `status.json` nie zawierają danych logowania.
+- Kopia `.repair-<data>.bak` z tej samej sekundy nie jest używana drugi raz; kolejna dostaje numer.
+- Pamięć identyfikatorów .nfo nie jest odtwarzana z raportu przypisania, jeśli po nim była naprawa duplikatów.
+- Wycofanie rozpoznaje plik przywrócony wcześniej, gdy nie udało się zapisać postępu, i nie zgłasza go jako błędu.
+- Ścieżki z elementami `.` i `..` są porządkowane przed użyciem długiej formy `\\?\UNC\`. Dłuższe łańcuchy zmian KodiBridge ID (do 64 kroków) są rozpoznawane.
+
 KodiBridge by Sudoizm 2.2.12
 ============================
 

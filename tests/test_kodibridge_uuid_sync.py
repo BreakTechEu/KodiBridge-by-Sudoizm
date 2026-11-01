@@ -245,12 +245,65 @@ class LegacyStateIsIgnoredTests(unittest.TestCase):
         self.assertEqual(sudosync_core._normalize_ids({"sudosync": "DOM-1", "kodibridge": "u-1"}), {"sudosync": "u-1"})
 
 
+class AuditFollowUpTests(unittest.TestCase):
+    def test_uuid_with_episode_qualifier_is_a_valid_id(self):
+        from resources.lib.sudosync_v2.identity import normalize_identifier
+        value = new_kodibridge_id() + ":s01e02"
+        self.assertEqual(normalize_identifier("sudosync", value.upper()), value)
+
+    def test_same_file_key_ignores_credentials_and_unc_form(self):
+        from resources.lib.sudosync_v2.snapshot import same_file_key
+        key = same_file_key("smb://nas/Wideo/Serial/s01e01.mkv")
+        self.assertEqual(same_file_key("smb://user:secret@NAS/wideo/Serial/S01E01.mkv"), key)
+        self.assertEqual(same_file_key("\\\\nas\\Wideo\\Serial\\s01e01.mkv"), key)
+        self.assertNotEqual(same_file_key("smb://nas/Wideo/Serial/s01e02.mkv"), key)
+
+    def test_repeated_examples_hide_credentials(self):
+        from resources.lib.sudosync_v2.snapshot import kodibridge_id_coverage
+        movies = [
+            {"movieid": 1, "file": "smb://user:secret@nas/Wideo/Film.mkv", "uniqueid": {}},
+            {"movieid": 2, "file": "smb://nas/wideo/film.mkv", "uniqueid": {}},
+        ]
+        coverage = kodibridge_id_coverage(movies, [])
+        self.assertEqual(coverage["movie"]["repeated"], 1)
+        self.assertNotIn("secret", json.dumps(coverage))
+
+    def test_renumbering_chain_longer_than_eight_steps(self):
+        from resources.lib.sudosync_v2.snapshot import _is_renumbered
+        chain = {"id-{}".format(n): ["id-{}".format(n + 1)] for n in range(20)}
+        self.assertTrue(_is_renumbered(chain, "id-0", "id-20"))
+        self.assertFalse(_is_renumbered(chain, "id-0", "id-99"))
+
+    def test_long_unc_path_has_no_dot_segments(self):
+        from resources.lib.sudosync_v2.kodi_vfs import _smb_to_unc_parts
+        parts = _smb_to_unc_parts("smb://nas/wideo//./Seriale/../Filmy/x.nfo")
+        self.assertEqual(parts[3], "\\\\nas\\wideo\\Filmy\\x.nfo")
+
+    def test_cache_is_not_seeded_from_assignment_older_than_a_repair(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for name, stamp in (("assign_ids_manifest.json", "2026-11-01T10:00:00Z"),
+                                ("repair_ids_manifest.json", "2026-11-01T11:00:00Z")):
+                with open(os.path.join(temp_dir, name), "w", encoding="utf-8") as f:
+                    json.dump({"id_scheme": "kodibridge-uuid", "generated_at": stamp, "modified": [
+                        {"file": "smb://nas/wideo/Film.nfo", "type": "movie", "sudosync_id": "old-uuid-1"}]}, f)
+            reads = []
+            kodi = FakeKodi([_movie(1, "smb://nas/wideo/Film.mkv", "DOM-000001")])
+            adapter = KodiJsonRpcAdapter(kodi, nfo_reader=lambda p, m: reads.append(p),
+                                         cache_path=os.path.join(temp_dir, "nfo_id_cache.json"))
+            self.assertNotIn("sudosync", adapter.get_movies()[0]["uniqueid"])
+            self.assertTrue(reads)
+
+
 class SharedFolderMigrationTests(unittest.TestCase):
     def test_kodibridge_shared_path(self):
         f = sudosync_bootstrap.kodibridge_shared_path
         self.assertEqual(f("smb://nas/wideo/.SudoSync/"), "smb://nas/wideo/.KodiBridge/")
         self.assertEqual(f("smb://nas/wideo/.SudoSync"), "smb://nas/wideo/.KodiBridge/")
-        self.assertEqual(f("\\\\NAS\\wideo\\.SudoSync\\"), "\\\\NAS\\wideo\\.KodiBridge\\")
+        self.assertEqual(f("\\\\NAS\\wideo\\.SudoSync\\"), "\\\\NAS\\wideo\\.KodiBridge/")
+        self.assertEqual(f("smb://nas/wideo/.sudosync/"), "smb://nas/wideo/.KodiBridge/")
+        self.assertTrue(sudosync_bootstrap._is_shared_dir("smb://nas/wideo/.kodibridge/"))
+        self.assertTrue(sudosync_bootstrap._is_shared_dir("\\\\NAS\\wideo\\.SudoSync\\"))
+        self.assertFalse(sudosync_bootstrap._is_shared_dir("smb://nas/wideo/"))
         self.assertIsNone(f("smb://nas/wideo/.KodiBridge/"))
         self.assertIsNone(f("smb://nas/wideo/SudoSyncData/"))
         self.assertIsNone(f(""))
@@ -287,6 +340,48 @@ class SharedFolderMigrationTests(unittest.TestCase):
             "sudosync_id_last_number": 0, "min_addon_version": "2.2.12",
         })
         raise_min.assert_called_once_with("smb://nas/wideo/.SudoSync/", "2.2.12")
+
+    def test_unc_path_with_trailing_backslash_and_missing_old_configuration(self):
+        written = {}
+        addon = MagicMock()
+        addon.getSetting.side_effect = lambda key: {"sudosync_id_enabled": "true"}.get(key, "")
+        with patch.object(sudosync_bootstrap, "read_sudosync_cfg", return_value=("MISSING", None)) as read_cfg, \
+                patch.object(sudosync_bootstrap, "write_sudosync_cfg",
+                             side_effect=lambda base, data: written.setdefault(base, data) is not None), \
+                patch.object(sudosync_bootstrap, "update_network_min_version") as raise_min, \
+                patch.object(sudosync_bootstrap.xbmcaddon, "Addon", return_value=addon), \
+                patch.object(sudosync_bootstrap, "_get_local_addon_version", return_value="2.2.12"):
+            self.assertTrue(sudosync_bootstrap.migrate_legacy_shared_folder(
+                "\\\\NAS\\wideo\\.SudoSync\\", "\\\\NAS\\wideo\\.KodiBridge/"))
+        read_paths = [call.args[0] for call in read_cfg.call_args_list]
+        self.assertIn("\\\\NAS\\wideo\\.SudoSync/", read_paths)
+        self.assertEqual(list(written), ["\\\\NAS\\wideo\\.KodiBridge/"])
+        self.assertTrue(written["\\\\NAS\\wideo\\.KodiBridge/"]["network_settings"]["sudosync_id_enabled"])
+        raise_min.assert_not_called()  # a missing old configuration cannot be raised
+
+    def _bootstrap(self, rw_ok):
+        calls = []
+        with patch.object(sudosync_bootstrap, "get_base_path", return_value="smb://nas/wideo/.SudoSync/"), \
+                patch.object(sudosync_bootstrap, "set_base_path", side_effect=lambda p: calls.append(("set", p))), \
+                patch.object(sudosync_bootstrap, "test_vfs_rw", return_value=(rw_ok, "x")), \
+                patch.object(sudosync_bootstrap, "release_network_active_kodi_lease",
+                             side_effect=lambda p=None: calls.append(("release", p))), \
+                patch.object(sudosync_bootstrap, "migrate_legacy_shared_folder",
+                             side_effect=lambda old, new: calls.append(("migrate", old, new))), \
+                patch.object(sudosync_bootstrap, "read_sudosync_cfg", return_value=("INVALID", None)), \
+                patch.object(sudosync_bootstrap.xbmcvfs, "exists", return_value=False):
+            sudosync_bootstrap.run_bootstrap()
+        return calls
+
+    def test_failed_write_test_keeps_old_folder_for_next_start(self):
+        self.assertEqual(self._bootstrap(False), [])
+
+    def test_successful_switch_migrates_before_changing_the_setting(self):
+        self.assertEqual(self._bootstrap(True), [
+            ("migrate", "smb://nas/wideo/.SudoSync/", "smb://nas/wideo/.KodiBridge/"),
+            ("release", "smb://nas/wideo/.SudoSync/"),
+            ("set", "smb://nas/wideo/.KodiBridge/"),
+        ])
 
     def test_existing_new_configuration_is_kept(self):
         with patch.object(sudosync_bootstrap, "read_sudosync_cfg",

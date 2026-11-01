@@ -298,10 +298,16 @@ def kodibridge_shared_path(base_path):
     """Return the .KodiBridge folder for a base path ending in .SudoSync, else None."""
     path = str(base_path or "").rstrip("/\\")
     cut = max(path.rfind("/"), path.rfind("\\"))
-    if path[cut + 1:] != LEGACY_SHARED_DIR_NAME:
+    if path[cut + 1:].casefold() != LEGACY_SHARED_DIR_NAME.casefold():
         return None
-    sep = path[cut] if cut >= 0 else "/"
-    return path[:cut + 1] + SHARED_DIR_NAME + sep
+    # The rest of the add-on appends "/" to the base path, so do the same.
+    return path[:cut + 1] + SHARED_DIR_NAME + "/"
+
+
+def _is_shared_dir(path):
+    """True when the folder name at the end of path is .KodiBridge or .SudoSync (any case)."""
+    name = str(path or "").rstrip("/\\").replace("\\", "/").rsplit("/", 1)[-1].casefold()
+    return name in (SHARED_DIR_NAME.casefold(), LEGACY_SHARED_DIR_NAME.casefold())
 
 
 def migrate_legacy_shared_folder(old_base, new_base):
@@ -313,14 +319,26 @@ def migrate_legacy_shared_folder(old_base, new_base):
     synchronizing there and offer the update. Returns True when a new
     configuration was written.
     """
-    old_base = old_base.rstrip("/") + "/"
-    new_base = new_base.rstrip("/") + "/"
+    old_base = old_base.rstrip("/\\") + "/"
+    new_base = new_base.rstrip("/\\") + "/"
     local_version = _get_local_addon_version()
     written = False
     new_status, _new_cfg = read_sudosync_cfg(new_base)
     old_status, old_cfg = read_sudosync_cfg(old_base)
-    if new_status != "VALID" and old_status == "VALID" and isinstance(old_cfg, dict):
-        old_net = old_cfg.get("network_settings") if isinstance(old_cfg.get("network_settings"), dict) else {}
+    if new_status != "VALID":
+        if old_status == "VALID" and isinstance(old_cfg, dict) and isinstance(old_cfg.get("network_settings"), dict):
+            old_net = old_cfg["network_settings"]
+        else:
+            # Old SudoSync.cfg missing or damaged: use this Kodi's settings
+            # instead of starting the configuration wizard.
+            try:
+                addon = xbmcaddon.Addon(ADDON_ID)
+                old_net = {
+                    "sudosync_id_enabled": addon.getSetting("sudosync_id_enabled").strip().lower() == "true",
+                    "sudosync_id_prefix": addon.getSetting("sudosync_id_prefix").strip(),
+                }
+            except Exception:
+                old_net = {}
         net = {
             "sudosync_id_enabled": bool(old_net.get("sudosync_id_enabled", False)),
             "sudosync_id_prefix": str(old_net.get("sudosync_id_prefix") or ""),
@@ -896,7 +914,7 @@ def run_bootstrap(force_select_path=False):
             selected_path += '/'
             
         # Zabezpieczenie przed zagnieżdżaniem folderów współdzielonych
-        if selected_path.endswith(SHARED_DIR_NAME + "/") or selected_path.endswith(LEGACY_SHARED_DIR_NAME + "/"):
+        if _is_shared_dir(selected_path):
             base_path = selected_path
         else:
             base_path = selected_path + SHARED_DIR_NAME + "/"
@@ -909,15 +927,14 @@ def run_bootstrap(force_select_path=False):
         set_base_path(base_path)
         
     # 1a. PRZEJŚCIE Z .SudoSync NA .KodiBridge (2.2.12: nowy KodiBridge ID, stan od zera)
+    # Ustawienie zmienia się dopiero po udanym teście zapisu i migracji, więc
+    # nieudana próba (np. NAS jeszcze niegotowy) zostanie powtórzona przy
+    # następnym starcie.
     migrated_from = None
     new_shared = kodibridge_shared_path(base_path)
     if new_shared:
         migrated_from = base_path
-        release_network_active_kodi_lease(base_path)
         base_path = new_shared
-        set_base_path(base_path)
-        log("Folder współdzielony zmieniony z {} na {}".format(
-            mask_vfs_credentials(migrated_from), mask_vfs_credentials(base_path)))
 
     # 2. TEST DOSTĘPU I READ/WRITE
     log("Testowanie dostępu R/W do {}".format(base_path))
@@ -928,6 +945,10 @@ def run_bootstrap(force_select_path=False):
 
     if migrated_from:
         migrate_legacy_shared_folder(migrated_from, base_path)
+        release_network_active_kodi_lease(migrated_from)
+        set_base_path(base_path)
+        log("Folder współdzielony zmieniony z {} na {}".format(
+            mask_vfs_credentials(migrated_from), mask_vfs_credentials(base_path)))
         try:
             xbmcgui.Dialog().notification(
                 "KodiBridge",

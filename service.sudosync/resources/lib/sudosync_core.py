@@ -2069,6 +2069,10 @@ def _safe_restore_modified_nfo(bak_path, target_path):
         raise exc
 
 
+def _bytes_of(raw):
+    return raw.encode("utf-8") if isinstance(raw, str) else bytes(raw or b"")
+
+
 def rollback_sudosync_ids(manifest_path=None):
     if not manifest_path:
         manifest_path = os.path.join(_addon_profile_path(), "assign_ids_manifest.json")
@@ -2173,6 +2177,17 @@ def rollback_sudosync_ids(manifest_path=None):
                 _record_error(best_path, "delete_failed", "Nie udało się usunąć utworzonego pliku .nfo.")
         else:
             if not bak_path or not xbmcvfs.exists(bak_path):
+                original_hash = entry.get("original_sha256")
+                if original_hash and xbmcvfs.exists(best_path):
+                    try:
+                        current_hash = hashlib.sha256(_bytes_of(_read_vfs_all(best_path))).hexdigest()
+                    except Exception:
+                        current_hash = ""
+                    if current_hash == original_hash:
+                        # Restored earlier, but the progress was not saved.
+                        already += 1
+                        _mark_done(entry)
+                        continue
                 errors += 1
                 _record_error(
                     best_path,
@@ -2342,7 +2357,8 @@ def find_duplicate_sudosync_id_groups(movies, episodes):
 
 
 def _same_file_key(path):
-    return str(path or "").replace("\\", "/").casefold()
+    from resources.lib.sudosync_v2.snapshot import same_file_key
+    return same_file_key(path)
 
 
 def find_repeated_library_files(movies, episodes):
@@ -2361,7 +2377,9 @@ def find_repeated_library_files(movies, episodes):
     for key in sorted(spellings):
         paths = spellings[key]
         if len(paths) > 1:
-            found.append("{}: {}".format(next(iter(paths.values())), " | ".join(sorted(paths))))
+            found.append("{}: {}".format(
+                mask_vfs_credentials(next(iter(paths.values()))),
+                " | ".join(sorted(mask_vfs_credentials(p) for p in paths))))
     return found
 
 
@@ -2606,8 +2624,8 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             return result
 
         snapshot_ids = _load_network_snapshot_ids(base, exclude_client_id=get_or_create_client_id())
-        get_or_sync_network_id_and_alias(base)
-        last_number = get_network_sudosync_id_last_number(base, list(movies) + list(episodes))
+        # 2.2.12: new IDs are UUIDs; the sequential counter is not read or written.
+        last_number = 0
         manifest_path = os.path.join(_addon_profile_path(), REPAIR_IDS_MANIFEST_NAME)
         generated_at = utc_now_precise()
         manifest = {
@@ -2646,8 +2664,11 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
         def _backup_path(best_path):
             # Never overwrite an earlier backup (an earlier repair or assignment).
             candidate = best_path + REPAIR_BACKUP_SUFFIX
-            if xbmcvfs.exists(candidate):
-                candidate = "{}.repair-{}.bak".format(best_path, stamp)
+            serial = 0
+            while xbmcvfs.exists(candidate):
+                serial += 1
+                suffix = stamp if serial == 1 else "{}-{}".format(stamp, serial)
+                candidate = "{}.repair-{}.bak".format(best_path, suffix)
             return candidate
 
         if not _write_manifest():
@@ -3118,15 +3139,14 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                 "cancelled": True,
             }
 
-        get_or_sync_network_id_and_alias(settings.get("base_path"))
 
         modified_movies = 0
         modified_episodes = 0
         refreshed_existing = 0
         fatal_errors = []
 
-        all_items = list(movies) + list(episodes)
-        last_number = get_network_sudosync_id_last_number(settings.get("base_path"), all_items)
+        # 2.2.12: new IDs are UUIDs; the sequential counter is not read or written.
+        last_number = 0
 
         def _refresh_item(item, kind):
             try:
@@ -3308,6 +3328,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                         "type": kind,
                         "sudosync_id": full_id,
                         "content_sha256": hashlib.sha256(new_raw_bytes).hexdigest(),
+                        "original_sha256": hashlib.sha256(bytes(raw)).hexdigest(),
                         "title": item.get("title"),
                     })
                     _write_manifest()

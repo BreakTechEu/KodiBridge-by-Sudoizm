@@ -244,6 +244,19 @@ class RepairSafetyTests(RepairFixture):
         self.assertEqual(len(new_backups), 1)
         self.assertEqual(self.vfs.files[new_backups[0]], original)
 
+    def test_dated_backup_from_the_same_second_is_not_reused(self):
+        self.vfs.files[self.B + ".repair.bak"] = b"earlier backup"
+        self.vfs.files[self.B + ".repair-20261101120000.bak"] = b"backup from the same second"
+        original = self.vfs.files[self.B]
+        with ExitStack() as stack:
+            self._env(stack)
+            stack.enter_context(patch.object(sudosync_core, "utc_now_precise",
+                                             return_value="2026-11-01T12:00:00.000Z"))
+            result = sudosync_core.repair_duplicate_sudosync_ids()
+        self.assertEqual(result["renumbered"], 1)
+        self.assertEqual(self.vfs.files[self.B + ".repair-20261101120000.bak"], b"backup from the same second")
+        self.assertEqual(self.vfs.files[self.B + ".repair-20261101120000-2.bak"], original)
+
     def test_failed_swap_restores_original(self):
         original = self.vfs.files[self.B]
         real_rename = self.vfs.rename

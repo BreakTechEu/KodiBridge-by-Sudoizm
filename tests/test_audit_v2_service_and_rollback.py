@@ -298,6 +298,31 @@ class TestSudoSyncIdRollback(unittest.TestCase):
             self.assertEqual(rb_res["error_details"][0]["reason"], "unverifiable_created_file")
             self.assertTrue(self.vfs.exists(nfo_path))
 
+    def test_04b_restored_file_without_saved_progress_is_not_an_error(self):
+        # A rollback restored the file, but writing its progress failed; the
+        # second run finds the original content and no backup.
+        nfo_path = "smb://nas/movies/Restored.nfo"
+        original = b"<movie><title>Restored</title></movie>"
+        self.vfs.files[nfo_path] = original
+        manifest_path = "/profile/assign_ids_manifest.json"
+        manifest = {
+            "id_scheme": "kodibridge-uuid",
+            "generated_at": "2026-11-01T12:00:00.000Z",
+            "modified": [{
+                "file": nfo_path, "backup": nfo_path + ".bak", "action": "modified", "created": False,
+                "sudosync_id": "3f9c2a7e-5b1d-4e8a-9c0f-7d2e1b6a4c90",
+                "content_sha256": hashlib.sha256(b"<movie>changed</movie>").hexdigest(),
+                "original_sha256": hashlib.sha256(original).hexdigest(),
+            }],
+            "errors": [],
+        }
+        patches = self._patch_vfs_and_json()
+        with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6]:
+            sudosync_core._write_local_json(manifest_path, manifest)
+            rb_res = sudosync_core.rollback_sudosync_ids(manifest_path)
+        self.assertEqual(rb_res["errors"], 0)
+        self.assertEqual(self.vfs.files[nfo_path], original)
+
     def test_05_missing_backup_and_partial_rollback_failure_with_error_reporting(self):
         # 4 entries in one manifest:
         # 1) Pre-existing file with valid .bak -> restored

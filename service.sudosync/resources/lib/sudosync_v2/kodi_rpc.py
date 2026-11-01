@@ -185,6 +185,17 @@ class KodiJsonRpcAdapter(object):
                     if (not isinstance(data, dict) or data.get("rolled_back_at")
                             or data.get("id_scheme") != ID_SCHEME):
                         return
+                    # A later duplicate repair changed some of these IDs.
+                    repair_path = os.path.join(profile_dir, "repair_ids_manifest.json")
+                    if os.path.isfile(repair_path):
+                        try:
+                            with open(repair_path, "r", encoding="utf-8") as f:
+                                repair = json.load(f)
+                        except Exception:
+                            return
+                        if (not isinstance(repair, dict)
+                                or str(repair.get("generated_at") or "") >= str(data.get("generated_at") or "")):
+                            return
                     now = time.time()
                     for item in data.get("modified") or []:
                         if not isinstance(item, dict) or item.get("rolled_back"):

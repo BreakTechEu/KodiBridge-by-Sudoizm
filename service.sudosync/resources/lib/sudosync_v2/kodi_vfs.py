@@ -34,7 +34,17 @@ def _smb_to_unc_parts(path):
     if not clean.lower().startswith("smb://"):
         return None
     rest = clean[6:].lstrip("/")
-    parts = [p for p in rest.replace("\\", "/").split("/") if p]
+    parts = []
+    for part in rest.replace("\\", "/").split("/"):
+        # The extended-length form \\?\UNC\ used for long paths takes no
+        # "." or ".." parts, so resolve them here.
+        if not part or part == ".":
+            continue
+        if part == "..":
+            if len(parts) > 2:
+                parts.pop()
+            continue
+        parts.append(part)
     if len(parts) < 2:
         return None
     host, share = parts[0], parts[1]

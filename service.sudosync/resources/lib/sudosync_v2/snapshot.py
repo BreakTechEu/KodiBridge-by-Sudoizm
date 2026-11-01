@@ -15,6 +15,7 @@ from __future__ import absolute_import
 from datetime import datetime, timezone
 import logging
 import math
+import re
 import uuid
 
 from . import FORMAT_NAME, SCHEMA_VERSION, SYNC_FIELDS
@@ -349,7 +350,7 @@ def _sudosync_qualifier(value):
     return parts[1] if len(parts) > 1 else ""
 
 
-RENUMBER_CHAIN_LIMIT = 8
+RENUMBER_CHAIN_LIMIT = 64
 
 
 def _is_renumbered(renumbered_ids, old_value, new_value):
@@ -410,7 +411,7 @@ _LAST_COVERAGE_REPORT = {}
 
 
 def _item_label(item):
-    label = item.get("file") or item.get("label") or item.get("title") or ""
+    label = strip_path_credentials(item.get("file")) or item.get("label") or item.get("title") or ""
     if item.get("showtitle") and item.get("season") is not None and item.get("episode") is not None:
         try:
             return "{} S{:02d}E{:02d} [{}]".format(item["showtitle"], int(item["season"]), int(item["episode"]), label)
@@ -468,7 +469,7 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
         repeated = []
         for file_key, paths in sorted(spellings.items()):
             if len(paths) > 1:
-                repeated.append(" | ".join(sorted(paths)[:3]))
+                repeated.append(" | ".join(sorted(strip_path_credentials(p) for p in paths)[:3]))
         ambiguous = []
         for (kind, value), owners in sorted(ext_owners.items()):
             if len(owners) > 1 and not all(has_sid for has_sid, _ in owners):
@@ -490,9 +491,24 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
     return result
 
 
+_URL_CREDENTIALS_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\s]+@")
+
+
+def strip_path_credentials(path):
+    """Path without user:password@ of a VFS URL (smb://user:pass@host/...)."""
+    return _URL_CREDENTIALS_RE.sub(r"\1", str(path or ""))
+
+
 def same_file_key(path):
-    """Comparable media file path: SMB shares and Windows paths ignore letter case."""
-    return str(path or "").replace("\\", "/").casefold()
+    """Comparable media file path.
+
+    SMB shares and Windows paths ignore letter case; credentials in the URL
+    and the \\\\host\\share form of smb://host/share do not change the file.
+    """
+    text = strip_path_credentials(path).replace("\\", "/")
+    if text.startswith("//"):
+        text = "smb:" + text
+    return text.casefold()
 
 
 def coverage_has_problems(coverage):
