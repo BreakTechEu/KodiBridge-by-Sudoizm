@@ -1,5 +1,5 @@
-KodiBridge by Sudoizm 2.2.12 (niewydane)
-========================================
+KodiBridge by Sudoizm 2.2.12
+============================
 
 - Nowy znacznik KodiBridge ID w plikach .nfo: `<uniqueid type="kodibridge">` z losowym identyfikatorem UUID (np. `3f9c2a7e-5b1d-4e8a-9c0f-7d2e1b6a4c90`) zamiast kolejnych numerów `PREFIKS-000123`. Każde Kodi nadaje ID samodzielnie, bez wspólnego licznika na NAS-ie, więc nie zużywa już numerów i nie musi rezerwować ich przed zapisem. Blokada przypisywania na NAS-ie zostaje.
 - Stary znacznik `<uniqueid type="sudosync">` jest pomijany w plikach .nfo i w bazie Kodi. Pozycja, która ma tylko stary numer, jest traktowana jak pozycja bez KodiBridge ID i dostanie nowe ID przy przypisywaniu.
