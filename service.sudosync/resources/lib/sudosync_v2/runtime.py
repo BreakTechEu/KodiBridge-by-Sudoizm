@@ -13,10 +13,12 @@ owned by the separately guarded transaction runner.
 """
 from __future__ import absolute_import
 
+import logging
 import os
 import threading
 
 from .catalog import SnapshotCatalog
+from .copies import CopyAwareKodiAdapter
 from .engine import SyncEngine
 from .native_shared_lock import NativeSharedFileLockFactory
 from .planning import apply_plan_to_snapshot
@@ -28,6 +30,8 @@ from .transaction_store import TransactionStore
 from .kodi_rpc import KodiJsonRpcAdapter, invoke_with_abort
 from .kodi_vfs import KodiVFSMetadataReader
 
+
+logger = logging.getLogger(__name__)
 
 class V2RuntimeError(RuntimeError):
     """The v2 runtime could not safely enter its preview cycle."""
@@ -164,6 +168,18 @@ class V2RuntimeComponents(object):
             raise V2RuntimeError("Recovery runner returned an unsupported startup status: " + status)
         return {"status": "ready", "recovery": recovery, "preview": None}
 
+    def _align_copies(self):
+        """Give copies of one video the state synchronized for it (local Kodi only)."""
+        kodi = getattr(self.sync_engine, "_kodi", None)
+        align = getattr(kodi, "align_copies", None)
+        if not callable(align):
+            return 0
+        try:
+            return align()
+        except Exception as exc:
+            logger.warning("Copies of one video not aligned: %s", exc)
+            return 0
+
     def sync_cycle(self, abort_requested=None, suppress_local_changes=False, publish_local=True):
         """Execute one complete v2 sync cycle: recover -> preview -> transact -> publish."""
         startup = self.start(
@@ -198,6 +214,7 @@ class V2RuntimeComponents(object):
         client_id = self.client_id or candidate["client"]["id"]
 
         if not changes:
+            self._align_copies()
             published_path = None
             previous = self.catalog.load(client_id, abort_requested=abort_requested)
             if publish_local or previous is None:
@@ -237,6 +254,7 @@ class V2RuntimeComponents(object):
 
         post_snapshot = apply_plan_to_snapshot(candidate, plan, max_records=self.max_records)
         published_path = self.catalog.publish(post_snapshot)
+        self._align_copies()
         return {
             "status": "committed",
             "recovery": startup.get("recovery"),
@@ -595,14 +613,14 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
     rule. Supply a verified shared lock only if concurrent Kodi clients are
     explicitly added to the supported operating model.
     """
-    kodi = KodiJsonRpcAdapter(
+    kodi = CopyAwareKodiAdapter(KodiJsonRpcAdapter(
         execute_jsonrpc,
         max_records=max_records,
         nfo_reader=KodiVFSMetadataReader(vfs_module),
         abort_requested=abort_requested,
         cache_path=cache_path,
         on_nfo_cached=on_nfo_cached,
-    )
+    ))
     return build_v2_runtime(
         kodi,
         shared_backend,

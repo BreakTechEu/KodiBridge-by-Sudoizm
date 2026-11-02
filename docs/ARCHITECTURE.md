@@ -63,6 +63,11 @@ W SudoSync 2.x identyfikacja nie ogranicza się do pozycji posiadających zewnę
 - Blokada `system/assign_ids.lock` na NAS nadal szereguje przypisywanie, żeby dwa Kodi nie zapisywały jednocześnie tych samych plików `.nfo`.
 - Duplikat może powstać tylko przez skopiowanie `.nfo` razem z plikiem wideo; naprawa nadaje wtedy nowy UUID.
 
+### 3.2a. Kopie jednego wideo (2.2.14)
+- Pliki z tym samym KodiBridge ID, wspólnym identyfikatorem zewnętrznym i bez sprzecznego to kopie jednego wideo (`sudosync_v2/copies.py`: `same_video`, `find_copy_groups`).
+- `CopyAwareKodiAdapter` owija `KodiJsonRpcAdapter`: silnik widzi pierwszą kopię (według ścieżki) ze stanem scalonym ze wszystkich kopii; zapis do niej trafia do wszystkich kopii; `align_copies` (po cyklu synchronizacji, nie w trakcie odtwarzania) wyrównuje kopie zmienione lokalnie. Scalanie pól: kopia zmieniona od ostatniego odczytu wygrywa, przy pierwszym odczycie wartość bogatsza.
+- Naprawa duplikatów (`find_duplicate_sudosync_id_groups`) pomija takie grupy.
+
 ### 3.3. Przejście z `.SudoSync` na `.KodiBridge` (2.2.12)
 - Przy starcie bootstrap zamienia ścieżkę kończącą się na `.SudoSync` na sąsiedni folder `.KodiBridge` (`kodibridge_shared_path`).
 - `migrate_legacy_shared_folder` przenosi tylko ustawienia sieciowe z `SudoSync.cfg` (bez licznika), ustawia `min_addon_version` nowej wersji w obu folderach, a lokalny licznik zeruje. Migawki i transakcje zostają w starym folderze, bo odnoszą się do starych ID.

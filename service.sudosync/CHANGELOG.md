@@ -1,3 +1,10 @@
+KodiBridge by Sudoizm 2.2.14 (niewydane)
+========================================
+
+- Kopie jednego wideo: dwa różne pliki z tym samym KodiBridge ID, które mają też wspólny identyfikator zewnętrzny (IMDb/TMDb/TVDB/Trakt) i nie różnią się żadnym, nie są już zdublowanym ID. Tak bywa, gdy ten sam film leży na dysku lokalnym i na NAS-ie, a jego .nfo skopiowano razem z plikiem. Gdy identyfikatory zewnętrzne się różnią albo ich brak, to nadal zdublowane ID.
+- Synchronizacja traktuje kopie jak jedną pozycję: obejrzenie, wznowienie albo ocena dowolnej kopii trafia do pozostałych kopii na tym Kodi i do innych Kodi; zmiana z innego Kodi trafia do wszystkich kopii. Gdy przy pierwszym odczycie kopie mają różny stan, wygrywa bogatszy (większy licznik, późniejsza data); później wygrywa kopia, którą zmieniono.
+- „Napraw zdublowane KodiBridge ID” pomija kopie jednego wideo, a okno statusu nie liczy ich jako duplikatów.
+
 KodiBridge by Sudoizm 2.2.13
 ============================
 

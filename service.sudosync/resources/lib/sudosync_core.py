@@ -2325,7 +2325,8 @@ def find_duplicate_sudosync_id_groups(movies, episodes):
     """Return the KodiBridge IDs used by more than one media file.
 
     Library items of one media file (episodes of a multi-episode file) share
-    one .nfo and one ID; that is not a duplicate. Each group lists its files
+    one .nfo and one ID; that is not a duplicate. Neither are copies of one
+    video: files that also share an external ID and differ in none. Each group lists its files
     sorted by path: {"sudosync_id", "files": [{"file", "type", "sudosync_id",
     "records"}]}.
     """
@@ -2346,10 +2347,16 @@ def find_duplicate_sudosync_id_groups(movies, episodes):
                 {"file": record["file"], "type": kind, "sudosync_id": sid, "records": []},
             )
             entry["records"].append(record)
+    from resources.lib.sudosync_v2.copies import same_video
     result = []
     for key in sorted(groups):
         group = groups[key]
         if len(group["files"]) < 2:
+            continue
+        # The same external ID on every file (and no differing one): copies of
+        # one video, synchronized as one item, not a duplicate KodiBridge ID.
+        if (all(len(entry["records"]) == 1 for entry in group["files"].values())
+                and same_video([entry["records"][0].get("ids") or {} for entry in group["files"].values()])):
             continue
         files = sorted(group["files"].values(), key=lambda entry: entry["file"].lower())
         result.append({"sudosync_id": group["sudosync_id"], "files": files})
