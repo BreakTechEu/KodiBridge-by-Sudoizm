@@ -530,6 +530,101 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
             self.assertTrue(init["completed"])
 
 
+class TestActivePeerCheckedBeforeSharedWrites(unittest.TestCase):
+    """Another active Kodi must be detected before bootstrap touches the shared folder."""
+
+    CFG = {
+        "schema_version": 2,
+        "configuration": {"completed": True},
+        "network_settings": {"sudosync_id_enabled": True, "sudosync_id_prefix": "", "min_addon_version": "2.2.14"},
+    }
+
+    def _lock_reader(self, locks):
+        def read(path):
+            for suffix, doc in locks.items():
+                if path.endswith(suffix):
+                    return "VALID", dict(doc)
+            return "NOT_FOUND", None
+        return read
+
+    def _run(self, base_path, locks, wizard_cfg_missing=False):
+        dialog = MagicMock()
+        mocks = {}
+        with patch.object(bootstrap, "get_base_path", return_value=base_path), \
+                patch.object(bootstrap, "_local_client_identity", return_value=("client-PC", "PC")), \
+                patch.object(bootstrap.time, "time", return_value=1050.0), \
+                patch.object(bootstrap, "_read_json_file", side_effect=self._lock_reader(locks)), \
+                patch.object(bootstrap, "_write_json_file", return_value=True) as mocks["write"], \
+                patch.object(bootstrap, "test_vfs_rw", return_value=(True, "OK")) as mocks["rw"], \
+                patch.object(bootstrap, "migrate_legacy_shared_folder") as mocks["migrate"], \
+                patch.object(bootstrap, "release_network_active_kodi_lease") as mocks["release"], \
+                patch.object(bootstrap, "set_base_path") as mocks["set_base"], \
+                patch.object(bootstrap, "read_sudosync_cfg",
+                             return_value=("NOT_FOUND", None) if wizard_cfg_missing else ("VALID", dict(self.CFG))) as mocks["read_cfg"], \
+                patch.object(bootstrap, "enforce_network_version_guard", return_value=True) as mocks["guard"], \
+                patch.object(bootstrap, "run_new_config_wizard", return_value=False) as mocks["wizard"], \
+                patch.object(bootstrap, "run_migration_wizard", return_value=False) as mocks["migration_wizard"], \
+                patch.object(bootstrap, "apply_network_settings") as mocks["apply"], \
+                patch.object(bootstrap, "_ensure_client_enrolled_and_initialized") as mocks["enroll"], \
+                patch.object(bootstrap.xbmcgui, "Dialog", return_value=dialog):
+            result = bootstrap.run_bootstrap()
+        return result, dialog, mocks
+
+    def _assert_nothing_touched(self, mocks):
+        for name in ("write", "rw", "migrate", "release", "set_base", "read_cfg", "guard",
+                     "wizard", "migration_wizard", "apply", "enroll"):
+            mocks[name].assert_not_called()
+
+    def test_fresh_peer_lease_stops_before_rw_test_cfg_and_version_guard(self):
+        locks = {".KodiBridge/active_kodi_lock.json": {"client_id": "client-BOX", "client_name": "Box", "updated_at_epoch": 1000.0}}
+        result, dialog, mocks = self._run("smb://nas/video/.KodiBridge/", locks)
+        self.assertFalse(result)
+        dialog.ok.assert_called_once()
+        self.assertIn("Box", dialog.ok.call_args[0][1])
+        self._assert_nothing_touched(mocks)
+
+    def test_fresh_peer_lease_stops_before_new_config_wizard(self):
+        locks = {".KodiBridge/active_kodi_lock.json": {"client_id": "client-BOX", "client_name": "Box", "updated_at_epoch": 1000.0}}
+        result, dialog, mocks = self._run("smb://nas/video/.KodiBridge/", locks, wizard_cfg_missing=True)
+        self.assertFalse(result)
+        self._assert_nothing_touched(mocks)
+
+    def test_peer_lease_in_legacy_folder_stops_before_migration(self):
+        locks = {".SudoSync/active_kodi_lock.json": {"client_id": "client-OLD", "client_name": "Win10", "updated_at_epoch": 1000.0}}
+        result, dialog, mocks = self._run("smb://nas/video/.SudoSync/", locks)
+        self.assertFalse(result)
+        self.assertIn("Win10", dialog.ok.call_args[0][1])
+        self._assert_nothing_touched(mocks)
+
+    def test_expired_or_own_lease_lets_bootstrap_continue(self):
+        for doc in ({"client_id": "client-BOX", "client_name": "Box", "updated_at_epoch": 800.0},
+                    {"client_id": "client-PC", "client_name": "PC", "updated_at_epoch": 1040.0}):
+            locks = {".KodiBridge/active_kodi_lock.json": doc}
+            result, dialog, mocks = self._run("smb://nas/video/.KodiBridge/", locks)
+            self.assertTrue(result)
+            dialog.ok.assert_not_called()
+            mocks["rw"].assert_called_once()
+            mocks["guard"].assert_called_once()
+            mocks["write"].assert_called_once()  # own lease written after the version guard
+
+    def test_find_active_peer_kodi_is_read_only(self):
+        lock = {"client_id": "client-BOX", "client_name": "Box", "updated_at_epoch": 1000.0}
+        with patch.object(bootstrap, "_local_client_identity", return_value=("client-PC", "PC")), \
+                patch.object(bootstrap, "_read_json_file", return_value=("VALID", dict(lock))), \
+                patch.object(bootstrap, "_write_json_file") as mock_write, \
+                patch.object(bootstrap, "_b_delete") as mock_delete:
+            self.assertEqual(bootstrap.find_active_peer_kodi("smb://nas/video/.KodiBridge/", now_epoch=1050.0),
+                             ("client-BOX", "Box"))
+            self.assertIsNone(bootstrap.find_active_peer_kodi("smb://nas/video/.KodiBridge/", now_epoch=1300.0))
+        mock_write.assert_not_called()
+        mock_delete.assert_not_called()
+
+    def test_unreadable_lock_does_not_block_start(self):
+        with patch.object(bootstrap, "_local_client_identity", return_value=("client-PC", "PC")), \
+                patch.object(bootstrap, "_read_json_file", return_value=("IO_ERROR", None)):
+            self.assertIsNone(bootstrap.find_active_peer_kodi("smb://nas/video/.KodiBridge/", now_epoch=1050.0))
+
+
 class FakeVfs(object):
     """In-memory xbmcvfs stand-in with switchable failures."""
 

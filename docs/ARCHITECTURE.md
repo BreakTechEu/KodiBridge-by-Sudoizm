@@ -29,6 +29,7 @@ Cała synchronizacja działa w jednym silniku: modułowym podsystemie v2 (`sudos
 ### 2.1. Strażnik pojedynczego aktywnego Kodi w sieci (`active_kodi_lock.json`)
 W celu uniknięcia konfliktów zapisu w środowisku współdzielonego zasobu sieciowego (SMB/NFS), SudoSync realizuje model pracy jednego aktywnego urządzenia:
 - W katalogu systemowym udziału (`<base_path>/.KodiBridge/system/`, do wersji 2.2.11 `.SudoSync`) tworzony jest plik dzierżawy `active_kodi_lock.json`.
+- **Kolejność przy starcie (od 2.2.15):** dzierżawa jest najpierw tylko odczytywana, zaraz po ustaleniu folderu wspólnego, przed testem zapisu, przejściem z `.SudoSync`, kreatorami konfiguracji i kontrolą wersji (która może zapisać `min_addon_version`). Przy przejściu z `.SudoSync` sprawdzane są oba foldery. Własna dzierżawa jest zapisywana dopiero po kontroli wersji.
 - **Dzierżawa czasowa (TTL):** Ważność dzierżawy wynosi 180 sekund.
 - **Odświeżanie pulsu (Heartbeat):** Aktywna usługa odświeża dzierżawę co 60 sekund (`refresh_network_active_kodi_lease`).
 - Jeśli inne urządzenie Kodi posiada aktywną dzierżawę, nowo uruchomione Kodi wstrzymuje wykonywanie operacji sieciowych. Po wygaśnięciu TTL (np. po nagłym zaniku zasilania poprzedniego urządzenia) dzierżawa może zostać bezpiecznie przejęta.

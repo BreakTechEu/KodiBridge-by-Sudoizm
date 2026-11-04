@@ -615,6 +615,57 @@ def _local_client_identity():
     return client_id, client_name
 
 
+def find_active_peer_kodi(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
+    """Return (owner_id, owner_name) of another Kodi holding a fresh lease, else None.
+
+    Read-only: it never writes to the shared folder.
+    """
+    base = (base_path or get_base_path()).rstrip("/")
+    if not base:
+        return None
+    lock_path = _active_kodi_lock_path(base)
+    client_id, _ = _local_client_identity()
+    now = float(now_epoch if now_epoch is not None else time.time())
+
+    status, existing = _read_json_file(lock_path)
+    if status != "VALID" or not isinstance(existing, dict):
+        return None
+    owner_id = str(existing.get("client_id") or "").strip()
+    owner_name = str(existing.get("client_name") or owner_id or "Inne Kodi").strip()
+    try:
+        updated_at = float(existing.get("updated_at_epoch") or 0.0)
+    except Exception:
+        updated_at = 0.0
+    if owner_id and owner_id != client_id and updated_at > 0.0 and (now - updated_at) < float(ttl_seconds):
+        return owner_id, owner_name
+    return None
+
+
+def _report_active_peer_kodi(owner_id, owner_name):
+    log(
+        "Wykryto inne aktywne urządzenie Kodi w sieci ({}, id={}). Zatrzymuję start.".format(
+            owner_name, owner_id
+        ),
+        xbmc.LOGWARNING,
+    )
+    xbmcgui.Dialog().ok(
+        "KodiBridge — inne Kodi jest aktywne",
+        "W tej sieci działa już KodiBridge na urządzeniu: {}.\n"
+        "Dozwolone jest tylko jedno aktywne Kodi naraz — zamknij tamto Kodi przed uruchomieniem kolejnego.".format(
+            owner_name
+        ),
+    )
+
+
+def ensure_no_active_peer_kodi(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
+    """Read-only start check: False (after telling the user) when another Kodi is active."""
+    peer = find_active_peer_kodi(base_path, ttl_seconds=ttl_seconds, now_epoch=now_epoch)
+    if peer:
+        _report_active_peer_kodi(*peer)
+        return False
+    return True
+
+
 def acquire_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
     """Ensure only one Kodi instance runs SudoSync in the shared network at a time."""
     base = (base_path or get_base_path()).rstrip("/")
@@ -624,29 +675,10 @@ def acquire_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
     client_id, client_name = _local_client_identity()
     now = float(now_epoch if now_epoch is not None else time.time())
 
-    status, existing = _read_json_file(lock_path)
-    if status == "VALID" and isinstance(existing, dict):
-        owner_id = str(existing.get("client_id") or "").strip()
-        owner_name = str(existing.get("client_name") or owner_id or "Inne Kodi").strip()
-        try:
-            updated_at = float(existing.get("updated_at_epoch") or 0.0)
-        except Exception:
-            updated_at = 0.0
-        if owner_id and owner_id != client_id and updated_at > 0.0 and (now - updated_at) < float(ttl_seconds):
-            log(
-                "Wykryto inne aktywne urządzenie Kodi w sieci ({}, id={}). Zatrzymuję start.".format(
-                    owner_name, owner_id
-                ),
-                xbmc.LOGWARNING,
-            )
-            xbmcgui.Dialog().ok(
-                "KodiBridge — inne Kodi jest aktywne",
-                "W tej sieci działa już KodiBridge na urządzeniu: {}.\n"
-                "Dozwolone jest tylko jedno aktywne Kodi naraz — zamknij tamto Kodi przed uruchomieniem kolejnego.".format(
-                    owner_name
-                ),
-            )
-            return False
+    peer = find_active_peer_kodi(base, ttl_seconds=ttl_seconds, now_epoch=now)
+    if peer:
+        _report_active_peer_kodi(*peer)
+        return False
 
     lease_payload = {
         "client_id": client_id,
@@ -935,6 +967,16 @@ def run_bootstrap(force_select_path=False):
     if new_shared:
         migrated_from = base_path
         base_path = new_shared
+
+    # 1b. INNE AKTYWNE KODI — sprawdzane przed pierwszym zapisem do folderu
+    # wspólnego (test R/W, przejście z .SudoSync, min_addon_version w
+    # SudoSync.cfg, kreatory). Tylko odczyt; własną blokadę zapisujemy dalej,
+    # po kontroli wersji. Przy przejściu z .SudoSync starsze wersje trzymają
+    # blokadę w starym folderze, więc sprawdzamy oba.
+    log("Sprawdzanie, czy inne Kodi jest aktywne w {}".format(mask_vfs_credentials(base_path)))
+    for lease_base in ([base_path, migrated_from] if migrated_from else [base_path]):
+        if not ensure_no_active_peer_kodi(lease_base):
+            return False
 
     # 2. TEST DOSTĘPU I READ/WRITE
     log("Testowanie dostępu R/W do {}".format(base_path))
