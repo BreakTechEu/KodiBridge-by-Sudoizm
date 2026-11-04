@@ -1,3 +1,8 @@
+KodiBridge by Sudoizm 2.2.15
+============================
+
+- Strażnik pojedynczego Kodi sprawdza przy starcie, czy inne Kodi jest aktywne, zanim wtyczka cokolwiek zapisze w folderze wspólnym na NAS-ie. Wcześniej to sprawdzenie było na końcu startu: najpierw szedł test zapisu, ewentualne przejście z `.SudoSync`, kreator konfiguracji i kontrola wersji, która mogła zapisać `min_addon_version` w `SudoSync.cfg` albo zaproponować aktualizację, choć inne Kodi właśnie pracowało. Teraz przy aktywnym innym Kodi start kończy się oknem „inne Kodi jest aktywne” bez żadnego zapisu. Przy przejściu z `.SudoSync` sprawdzane są oba foldery.
+
 KodiBridge by Sudoizm 2.2.14
 ============================
 

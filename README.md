@@ -3,8 +3,8 @@
 ---
 
 > [!NOTE]
-> **Production Release (KodiBridge by Sudoizm 2.2.14):**
-> KodiBridge by Sudoizm 2.2.14 is the **production release** of the v2 architecture featuring journaled synchronization, KodiBridge ID for private videos and local networks, single-active-Kodi session guard, and cross-device version enforcement. The legacy **SudoSync 1.0.0** line remains available on the read-only branch [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
+> **Production Release (KodiBridge by Sudoizm 2.2.15):**
+> KodiBridge by Sudoizm 2.2.15 is the **production release** of the v2 architecture featuring journaled synchronization, KodiBridge ID for private videos and local networks, single-active-Kodi session guard, and cross-device version enforcement. The legacy **SudoSync 1.0.0** line remains available on the read-only branch [v1-stable](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/tree/v1-stable).
 > Both releases are available in the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section.
 
 # KodiBridge by Sudoizm
@@ -20,7 +20,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 - **No Dedicated Database Required:** Uses a shared network path accessible by your devices (NAS, local PC, or network share).
 - **Safe & Non-Destructive:** Interacts exclusively through Kodi's official JSON-RPC API. It never touches or locks internal SQLite files (`MyVideos*.db`) directly.
 - **Single Synchronization Engine:** All synchronization runs through one engine (v2: snapshots, transaction journal, recovery). The legacy 1.x engine is no longer used; old 1.x files on the NAS are left untouched.
-- **Single Active Kodi Guard:** An active session lease (`active_kodi_lock.json`) ensures only one Kodi instance runs KodiBridge in the shared network at a time, preventing concurrent write conflicts.
+- **Single Active Kodi Guard:** An active session lease (`active_kodi_lock.json`) ensures only one Kodi instance runs KodiBridge in the shared network at a time, preventing concurrent write conflicts. At startup the lease is checked first (read-only), before anything is written to the shared folder.
 - **Robust Conflict Model:** Each synchronized field maintains its own logical version (Lamport clock) and client history, preventing race conditions, feedback loops, and desynchronization due to drifting client clocks. Atomic file locking safeguards the shared NAS state.
 - **Choice on Conflicting Edits:** When the same field was changed on two Kodi devices so that neither change is newer (e.g. play count 1 on one and 2 on the other), KodiBridge shows a table: rows are the fields that differ, columns are the devices. You pick the correct value in each row (values from different devices can be combined), and the choice is saved as the newest, so it reaches every Kodi. The table works with mouse, keyboard and remote. The dialog appears once the conflict is detected; during playback it waits until the video stops. "Later" postpones the question until the next Kodi start; it can be opened at any time with "Resolve conflicts" in the add-on settings. After that click a progress bar in the screen corner shows that the check is running (with a large library on a slow NAS it can take several minutes) and stays until the result: the conflict table or "No conflicts to resolve". Until a choice is made, that field is not synchronized; all other fields keep working.
 - **Optimized for Android TV & Streaming Devices:** Every sync cycle rebuilds the local snapshot and publishes it only when it changed, which also covers platforms where Kodi occasionally fails to trigger `OnUpdate` or `OnStop` notifications.
@@ -48,7 +48,7 @@ Synchronization relies on a shared network directory (SMB, NFS, or local share) 
 ## Installation & Setup
 
 1. **Installation Package:**
-   - **KodiBridge by Sudoizm 2.2.14 (Production):** Download `kodibridge-by-sudoizm-2.2.14.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section (recommended production release with v2 architecture and KodiBridge ID).
+   - **KodiBridge by Sudoizm 2.2.15 (Production):** Download `kodibridge-by-sudoizm-2.2.15.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section (recommended production release with v2 architecture and KodiBridge ID).
    - **SudoSync 1.0.0 (Legacy Stable):** Download `service.sudosync-1.0.0.zip` from the **[Releases](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/releases)** section.
 
 2. **Install in Kodi:**
