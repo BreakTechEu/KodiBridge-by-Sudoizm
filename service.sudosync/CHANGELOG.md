@@ -1,3 +1,22 @@
+KodiBridge by Sudoizm 2.2.16
+============================
+
+Poprawki po audycie zewnętrznym 2.2.14–2.2.15 (Gemini/Argon i ChatGPT):
+
+- Kopie jednego wideo: ocena nadana kopii, która wcześniej nie miała oceny, nie ginie już przy wyrównaniu kopii (dotąd wracała do zera). Usunięcie oceny też jest zachowywane.
+- Ten sam plik w bibliotece pod dwiema pisowniami ścieżki (np. różna wielkość liter) razem z kopią na innym dysku to jedna grupa kopii. Synchronizacja traktuje je jak jedną pozycję, a „Napraw zdublowane KodiBridge ID” nie nadaje już kopii nowego ID. Plik wieloodcinkowy nadal nie jest kopią.
+- „Napraw zdublowane KodiBridge ID” bierze identyfikatory IMDb/TMDb/TVDB/Trakt najpierw z pliku .nfo, a dopiero potem z bazy Kodi, tak jak synchronizacja.
+- Strażnik pojedynczego Kodi liczy wiek blokady według zegara NAS-a (czas pliku blokady wobec czasu krótko zapisanego pliku próbnego), więc różnice zegarów urządzeń nie przepuszczają drugiego Kodi ani nie blokują startu bez końca.
+- Nieczytelny albo uszkodzony plik blokady: trzy próby co 5 s, potem start zatrzymany z komunikatem (wcześniej start szedł dalej).
+- Po zapisaniu blokady wtyczka sprawdza ją ponownie; z dwóch Kodi uruchomionych w tej samej chwili jedno ustępuje.
+- Gdy blokady nie da się odświeżyć dłużej niż 3 minuty (np. NAS nie odpowiada), usługa się zatrzymuje.
+- Zmiana folderu wspólnego w konfiguratorze: stara blokada jest zwalniana, a nowa ścieżka zapisywana dopiero po sprawdzeniu, czy inne Kodi nie pracuje.
+- Nazwa urządzenia z pliku blokady jest pokazywana bez znaczników formatowania Kodi i skrócona.
+- Pliki .nfo z deklaracją DOCTYPE albo ENTITY nie są parsowane (ochrona przed atakami rozrostu encji XML, niezależnie od wersji parsera w Kodi); są zgłaszane jako nieczytelne.
+- Limity rozmiaru: pliki JSON czytane przy starcie (8 MB) i pakiety ZIP aktualizacji (50 MB) przed pobraniem albo skopiowaniem.
+- Nadawanie KodiBridge ID: gdy podmiana pliku .nfo i przywrócenie oryginału się nie uda, błąd trafia do logu, a pliki .bak i .new zostają.
+- Login bez hasła w adresie udziału jest maskowany w komunikatach błędów.
+
 KodiBridge by Sudoizm 2.2.15
 ============================
 
