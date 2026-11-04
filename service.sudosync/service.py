@@ -574,7 +574,7 @@ def _run_service():
                             try:
                                 xbmcgui.Dialog().notification(
                                     "KodiBridge",
-                                    "Inne Kodi przejęło sesję lub wymaga nowszej wersji. Usługa wstrzymana.",
+                                    "Inne Kodi przejęło sesję, wymagana jest nowsza wersja albo NAS nie odpowiada. Usługa wstrzymana.",
                                     xbmcgui.NOTIFICATION_WARNING,
                                     5000,
                                 )

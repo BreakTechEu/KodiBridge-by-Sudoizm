@@ -30,8 +30,11 @@ Cała synchronizacja działa w jednym silniku: modułowym podsystemie v2 (`sudos
 W celu uniknięcia konfliktów zapisu w środowisku współdzielonego zasobu sieciowego (SMB/NFS), SudoSync realizuje model pracy jednego aktywnego urządzenia:
 - W katalogu systemowym udziału (`<base_path>/.KodiBridge/system/`, do wersji 2.2.11 `.SudoSync`) tworzony jest plik dzierżawy `active_kodi_lock.json`.
 - **Kolejność przy starcie (od 2.2.15):** dzierżawa jest najpierw tylko odczytywana, zaraz po ustaleniu folderu wspólnego, przed testem zapisu, przejściem z `.SudoSync`, kreatorami konfiguracji i kontrolą wersji (która może zapisać `min_addon_version`). Przy przejściu z `.SudoSync` sprawdzane są oba foldery. Własna dzierżawa jest zapisywana dopiero po kontroli wersji.
-- **Dzierżawa czasowa (TTL):** Ważność dzierżawy wynosi 180 sekund.
-- **Odświeżanie pulsu (Heartbeat):** Aktywna usługa odświeża dzierżawę co 60 sekund (`refresh_network_active_kodi_lease`).
+- **Dzierżawa czasowa (TTL):** Ważność dzierżawy wynosi 180 sekund. Od 2.2.16 wiek cudzej dzierżawy jest liczony według zegara NAS-a: czas modyfikacji pliku blokady porównywany z czasem świeżo zapisanego pliku próbnego `clock_probe_<id klienta>.tmp` (usuwanego od razu), więc różnice zegarów urządzeń nie mają znaczenia. Gdy czasu pliku nie da się odczytać, porównywane są zegary urządzeń, a dzierżawa z datą z przyszłości dalszej niż TTL nie jest uznawana za aktywną.
+- **Nieczytelna blokada (od 2.2.16):** przy starcie plik blokady uszkodzony albo nieczytelny jest odczytywany ponownie (3 próby co 5 s); potem start zostaje zatrzymany z komunikatem. Brak pliku oznacza wolną dzierżawę.
+- **Sprawdzenie po zapisie (od 2.2.16):** po zapisaniu własnej dzierżawy usługa odczytuje ją ponownie po 2 s; jeśli należy już do innego Kodi (dwa Kodi uruchomione jednocześnie), ustępuje.
+- **Zmiana folderu w konfiguratorze (od 2.2.16):** zwolnienie dzierżawy starego folderu i zapis nowej ścieżki następują dopiero po sprawdzeniu dzierżawy w nowym folderze.
+- **Odświeżanie pulsu (Heartbeat):** Aktywna usługa odświeża dzierżawę co 60 sekund (`refresh_network_active_kodi_lease`). Chwilowy błąd odświeżenia jest pomijany, ale gdy od ostatniego udanego odświeżenia minie TTL, usługa się zatrzymuje (od 2.2.16).
 - Jeśli inne urządzenie Kodi posiada aktywną dzierżawę, nowo uruchomione Kodi wstrzymuje wykonywanie operacji sieciowych. Po wygaśnięciu TTL (np. po nagłym zaniku zasilania poprzedniego urządzenia) dzierżawa może zostać bezpiecznie przejęta.
 - Podczas każdego odświeżenia sprawdzana jest także minimalna wersja wtyczki (`min_addon_version`). Jeśli wersja na NAS jest wyższa niż lokalna, dzierżawa zostaje przerwana i od razu pojawia się propozycja aktualizacji (podczas odtwarzania po zatrzymaniu filmu). Po odmowie usługa nie synchronizuje do następnego uruchomienia Kodi.
 - Przy normalnym zamykaniu Kodi lub zatrzymaniu wtyczki dzierżawa jest natychmiast zwalniana w bloku `finally`.
@@ -65,7 +68,9 @@ W SudoSync 2.x identyfikacja nie ogranicza się do pozycji posiadających zewnę
 - Duplikat może powstać tylko przez skopiowanie `.nfo` razem z plikiem wideo; naprawa nadaje wtedy nowy UUID.
 
 ### 3.2a. Kopie jednego wideo (2.2.14)
-- Pliki z tym samym KodiBridge ID, wspólnym identyfikatorem zewnętrznym i bez sprzecznego to kopie jednego wideo (`sudosync_v2/copies.py`: `same_video`, `find_copy_groups`).
+- Pliki z tym samym KodiBridge ID, wspólnym identyfikatorem zewnętrznym i bez sprzecznego to kopie jednego wideo (`sudosync_v2/copies.py`: `same_video`, `find_copy_groups`). Identyczny `.nfo` oznacza ten sam materiał, także przy odcinkach.
+- Od 2.2.16 wpisy jednego pliku pod różną pisownią ścieżki należą do grupy kopii razem z nim (`only_repeated_spellings`); plik wieloodcinkowy nadal nie jest kopią.
+- Identyfikatory z `.nfo` mają pierwszeństwo przed bazą Kodi także w naprawie duplikatów (`sudosync_core._record`, od 2.2.16), tak jak w silniku v2.
 - `CopyAwareKodiAdapter` owija `KodiJsonRpcAdapter`: silnik widzi pierwszą kopię (według ścieżki) ze stanem scalonym ze wszystkich kopii; zapis do niej trafia do wszystkich kopii; `align_copies` (po cyklu synchronizacji, nie w trakcie odtwarzania) wyrównuje kopie zmienione lokalnie. Scalanie pól: kopia zmieniona od ostatniego odczytu wygrywa, przy pierwszym odczycie wartość bogatsza.
 - Naprawa duplikatów (`find_duplicate_sudosync_id_groups`) pomija takie grupy.
 

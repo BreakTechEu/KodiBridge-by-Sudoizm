@@ -58,13 +58,28 @@ def _same_file_key(path):
     return same_file_key(path)
 
 
+def only_repeated_spellings(items):
+    """True when the library items of one file are the same video listed again.
+
+    One file may be in the library under paths differing in letter case or
+    credentials; such entries are one video. Several episodes of one file (a
+    multi-episode file) are not.
+    """
+    keys = set()
+    for item in items or []:
+        if not isinstance(item, dict):
+            return False
+        keys.add((str(item.get("season", "")), str(item.get("episode", ""))))
+    return len(keys) <= 1
+
+
 def find_copy_groups(items):
     """Group library items that are copies of one video.
 
     items are Kodi library records with internal identifiers (as returned by
-    KodiJsonRpcAdapter). Returns lists of items, each with two or more files;
-    a file listed under several spellings or holding several items (a
-    multi-episode file) is never treated as a copy.
+    KodiJsonRpcAdapter). Returns lists of items covering two or more files;
+    entries of one file listed under several spellings join the group, a
+    multi-episode file never does.
     """
     by_sid = {}
     for item in items or []:
@@ -84,7 +99,8 @@ def find_copy_groups(items):
         files = {}
         for item, ids in entries:
             files.setdefault(_same_file_key(item["file"]), []).append((item, ids))
-        if len(files) < 2 or any(len(records) > 1 for records in files.values()):
+        if len(files) < 2 or not all(only_repeated_spellings([item for item, _ in records])
+                                     for records in files.values()):
             continue
         if not same_video([ids for _, ids in entries]):
             continue
@@ -172,8 +188,10 @@ class CopyAwareKodiAdapter(object):
             current = [_value(item, field) for item in copies]
             changed = []
             for item, value in zip(copies, current):
-                last = seen.get(item[self._id_key(media_type)], {}).get(field)
-                if last is not None and not _same(field, last, value):
+                last_seen = seen.get(item[self._id_key(media_type)])
+                # userrating None is a real value ("no rating"), so check the
+                # key, not the value, to tell "seen before" from "first look".
+                if last_seen is not None and field in last_seen and not _same(field, last_seen[field], value):
                     changed.append(value)
             if changed:
                 merged[field] = _richer(field, changed)

@@ -93,6 +93,7 @@ def _long_unc(unc_path):
 
 
 _MASK_CRED_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@:\s]+):([^/@\s]+)@")
+_MASK_USER_RE = re.compile(r"([a-zA-Z][a-zA-Z0-9+.-]*://)([^/@:\s]+)@")
 
 
 class KodiVFSBackendError(IOError):
@@ -101,6 +102,7 @@ class KodiVFSBackendError(IOError):
     def __init__(self, message=""):
         if isinstance(message, str) and "@" in message:
             message = _MASK_CRED_RE.sub(r"\1\2:***@", message)
+            message = _MASK_USER_RE.sub(r"\1***@", message)
         super(KodiVFSBackendError, self).__init__(message)
 
 

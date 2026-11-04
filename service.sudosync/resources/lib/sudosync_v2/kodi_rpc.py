@@ -87,6 +87,22 @@ class NfoConflictError(ValueError):
     """Metadata file has conflicting identifiers."""
 
 
+class NfoDtdError(ValueError):
+    """Metadata file declares a DOCTYPE or entities; never parsed (entity expansion)."""
+
+
+# Kodi and scrapers never write DOCTYPE or ENTITY declarations into .nfo
+# files. Refusing them before parsing keeps entity-expansion payloads
+# ("billion laughs") away from expat, whatever its version on the device.
+XML_DTD_RE = re.compile(r"<!\s*(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+
+
+def has_xml_dtd(text):
+    if isinstance(text, (bytes, bytearray)):
+        text = bytes(text).decode("utf-8", errors="replace")
+    return bool(XML_DTD_RE.search(str(text or "")))
+
+
 class NfoEmptyError(ValueError):
     """Metadata file is empty."""
 
@@ -295,6 +311,8 @@ class KodiJsonRpcAdapter(object):
                 raise NfoSizeLimitError("Metadata file exceeds configured size limit: " + path)
         else:
             raise ValueError("Metadata reader returned an invalid value for " + path)
+        if has_xml_dtd(raw):
+            raise NfoDtdError("Metadata file declares DOCTYPE or ENTITY, not parsed: " + path)
         try:
             root = ET.fromstring(raw)
         except ET.ParseError:

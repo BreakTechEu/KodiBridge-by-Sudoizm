@@ -140,12 +140,18 @@ def test_vfs_rw(test_dir):
     except Exception as exc:
         return False, str(exc)
 
+MAX_BOOTSTRAP_JSON_BYTES = 8 * 1024 * 1024
+
+
 def _read_json_file(filepath):
     unc = _bootstrap_win_unc(filepath)
     if unc is not None:
         if not os.path.exists(unc):
             return "NOT_FOUND", None
         try:
+            if os.path.getsize(unc) > MAX_BOOTSTRAP_JSON_BYTES:
+                log("JSON file too large, ignored: {}".format(mask_vfs_credentials(filepath)), xbmc.LOGERROR)
+                return "INVALID", None
             with open(unc, "r", encoding="utf-8-sig") as f:
                 data = f.read()
         except Exception as exc:
@@ -162,11 +168,25 @@ def _read_json_file(filepath):
         return "NOT_FOUND", None
     try:
         f = xbmcvfs.File(filepath, 'r')
-        data = f.read()
-        f.close()
+        try:
+            try:
+                size = f.size()
+            except Exception:
+                size = None
+            if isinstance(size, int) and not isinstance(size, bool) and size > MAX_BOOTSTRAP_JSON_BYTES:
+                log("JSON file too large, ignored: {}".format(mask_vfs_credentials(filepath)), xbmc.LOGERROR)
+                return "INVALID", None
+            data = f.read()
+        finally:
+            f.close()
     except Exception as exc:
         log("Cannot read JSON {}: {}".format(filepath, exc), xbmc.LOGERROR)
         return "IO_ERROR", None
+    if isinstance(data, (bytes, bytearray)):
+        data = bytes(data).decode("utf-8-sig", errors="replace")
+    if isinstance(data, str) and len(data) > MAX_BOOTSTRAP_JSON_BYTES:
+        log("JSON file too large, ignored: {}".format(mask_vfs_credentials(filepath)), xbmc.LOGERROR)
+        return "INVALID", None
 
     try:
         obj = json.loads(data)
@@ -615,30 +635,117 @@ def _local_client_identity():
     return client_id, client_name
 
 
-def find_active_peer_kodi(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
-    """Return (owner_id, owner_name) of another Kodi holding a fresh lease, else None.
+LEASE_READ_ATTEMPTS = 3
+LEASE_READ_RETRY_SECONDS = 5
+LEASE_VERIFY_DELAY_MS = 2000
+_LEASE_STATE = {"last_ok_epoch": None}
+_KODI_TAG_RE = re.compile(r"\[/?[A-Za-z]+(?:[ =][^\]]*)?\]")
 
-    Read-only: it never writes to the shared folder.
+
+def _clean_client_name(name, fallback="Inne Kodi"):
+    """Device name from a shared file, safe to show: no Kodi markup, printable, short."""
+    text = _KODI_TAG_RE.sub("", str(name or ""))
+    text = "".join(ch for ch in text if ch.isprintable()).strip()
+    return text[:64] or fallback
+
+
+def _file_mtime(path):
+    """Modification time of a file as set by the file server, or None."""
+    try:
+        unc = _bootstrap_win_unc(path)
+        if unc is not None:
+            return float(os.stat(unc).st_mtime) if os.path.exists(unc) else None
+        value = xbmcvfs.Stat(path).st_mtime()
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            return float(value)
+    except Exception:
+        pass
+    return None
+
+
+def _write_probe(path):
+    unc = _bootstrap_win_unc(path)
+    if unc is not None:
+        with open(unc, "w", encoding="utf-8") as f:
+            f.write("probe")
+        return True
+    f = xbmcvfs.File(path, 'w')
+    try:
+        return bool(f.write("probe"))
+    finally:
+        f.close()
+
+
+def _nas_clock_age(base, lock_path):
+    """Age of the lease file measured by the NAS clock, or None when unavailable.
+
+    The lease file and a freshly written probe file both get their modification
+    time from the file server, so device clocks do not matter.
     """
+    lock_mtime = _file_mtime(lock_path)
+    if lock_mtime is None:
+        return None
+    client_id, _ = _local_client_identity()
+    probe = base.rstrip("/") + "/clock_probe_{}.tmp".format(re.sub(r"[^A-Za-z0-9-]", "", client_id) or "local")
+    try:
+        if not _write_probe(probe):
+            return None
+        server_now = _file_mtime(probe)
+    except Exception as exc:
+        log("Cannot read the NAS clock: {}".format(exc), xbmc.LOGWARNING)
+        return None
+    finally:
+        try:
+            _b_delete(probe)
+        except Exception:
+            pass
+    if server_now is None:
+        return None
+    return server_now - lock_mtime
+
+
+def _lease_is_fresh(base, lock_path, existing, ttl_seconds, now):
+    ttl = float(ttl_seconds)
+    age = _nas_clock_age(base, lock_path)
+    if age is None:
+        # Fallback: the owner's clock against this device's clock.
+        try:
+            updated_at = float(existing.get("updated_at_epoch") or 0.0)
+        except Exception:
+            updated_at = 0.0
+        if updated_at <= 0.0:
+            return False
+        age = now - updated_at
+    return -ttl < age < ttl
+
+
+def _peer_lease_state(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
+    """("peer", (id, name)), ("free", None) or ("unreadable", status). Read-only except for the NAS clock probe."""
     base = (base_path or get_base_path()).rstrip("/")
     if not base:
-        return None
+        return "free", None
     lock_path = _active_kodi_lock_path(base)
     client_id, _ = _local_client_identity()
     now = float(now_epoch if now_epoch is not None else time.time())
 
     status, existing = _read_json_file(lock_path)
+    if status == "NOT_FOUND":
+        return "free", None
     if status != "VALID" or not isinstance(existing, dict):
-        return None
+        return "unreadable", status
     owner_id = str(existing.get("client_id") or "").strip()
-    owner_name = str(existing.get("client_name") or owner_id or "Inne Kodi").strip()
-    try:
-        updated_at = float(existing.get("updated_at_epoch") or 0.0)
-    except Exception:
-        updated_at = 0.0
-    if owner_id and owner_id != client_id and updated_at > 0.0 and (now - updated_at) < float(ttl_seconds):
-        return owner_id, owner_name
-    return None
+    if not owner_id or owner_id == client_id:
+        return "free", None
+    owner_name = _clean_client_name(existing.get("client_name") or owner_id)
+    if _lease_is_fresh(base, lock_path, existing, ttl_seconds, now):
+        return "peer", (owner_id, owner_name)
+    return "free", None
+
+
+def find_active_peer_kodi(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
+    """Return (owner_id, owner_name) of another Kodi holding a fresh lease, else None."""
+    state, info = _peer_lease_state(base_path, ttl_seconds=ttl_seconds, now_epoch=now_epoch)
+    return info if state == "peer" else None
 
 
 def _report_active_peer_kodi(owner_id, owner_name):
@@ -658,12 +765,31 @@ def _report_active_peer_kodi(owner_id, owner_name):
 
 
 def ensure_no_active_peer_kodi(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
-    """Read-only start check: False (after telling the user) when another Kodi is active."""
-    peer = find_active_peer_kodi(base_path, ttl_seconds=ttl_seconds, now_epoch=now_epoch)
-    if peer:
-        _report_active_peer_kodi(*peer)
-        return False
-    return True
+    """Start check: False (after telling the user) when another Kodi is active or the lease stays unreadable."""
+    status = None
+    for attempt in range(LEASE_READ_ATTEMPTS):
+        state, info = _peer_lease_state(base_path, ttl_seconds=ttl_seconds, now_epoch=now_epoch)
+        if state == "peer":
+            _report_active_peer_kodi(*info)
+            return False
+        if state == "free":
+            return True
+        status = info
+        if attempt + 1 < LEASE_READ_ATTEMPTS:
+            log("Blokada aktywnego Kodi nieczytelna ({}), ponawiam odczyt.".format(status), xbmc.LOGWARNING)
+            xbmc.sleep(LEASE_READ_RETRY_SECONDS * 1000)
+    lock_path = mask_vfs_credentials(_active_kodi_lock_path((base_path or get_base_path()).rstrip("/")))
+    log("Nie można odczytać blokady aktywnego Kodi ({}): {}. Zatrzymuję start.".format(status, lock_path),
+        xbmc.LOGERROR)
+    xbmcgui.Dialog().ok(
+        "KodiBridge — nie można sprawdzić innych Kodi",
+        "Nie udało się odczytać pliku blokady aktywnego Kodi na NAS-ie:\n{}\n\n"
+        "KodiBridge nie wystartuje, dopóki nie sprawdzi, czy inne Kodi nie pracuje. Sprawdź połączenie z NAS-em "
+        "i uruchom Kodi ponownie. Jeśli plik jest uszkodzony, a żadne inne Kodi nie pracuje, usuń go.".format(
+            lock_path
+        ),
+    )
+    return False
 
 
 def acquire_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECONDS, now_epoch=None):
@@ -688,6 +814,18 @@ def acquire_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(now))),
     }
     _write_json_file(lock_path, lease_payload)
+
+    # Two Kodi started at the same moment may both have found no lease; the
+    # later write wins. Read the lease back after a moment and give way if it
+    # now belongs to another Kodi.
+    xbmc.sleep(LEASE_VERIFY_DELAY_MS)
+    status, current = _read_json_file(lock_path)
+    if status == "VALID" and isinstance(current, dict):
+        owner_id = str(current.get("client_id") or "").strip()
+        if owner_id and owner_id != client_id:
+            _report_active_peer_kodi(owner_id, _clean_client_name(current.get("client_name") or owner_id))
+            return False
+    _LEASE_STATE["last_ok_epoch"] = now
     return True
 
 
@@ -718,12 +856,9 @@ def refresh_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
         status, existing = _read_json_file(lock_path)
         if status == "VALID" and isinstance(existing, dict):
             owner_id = str(existing.get("client_id") or "").strip()
-            owner_name = str(existing.get("client_name") or owner_id or "Inne Kodi").strip()
-            try:
-                updated_at = float(existing.get("updated_at_epoch") or 0.0)
-            except Exception:
-                updated_at = 0.0
-            if owner_id and owner_id != client_id and updated_at > 0.0 and (now - updated_at) < float(ttl_seconds):
+            owner_name = _clean_client_name(existing.get("client_name") or owner_id)
+            if (owner_id and owner_id != client_id
+                    and _lease_is_fresh(base, lock_path, existing, ttl_seconds, now)):
                 log(
                     "Dzierżawa aktywnego Kodi została przejęta przez inne urządzenie: {} (id={}).".format(
                         owner_name, owner_id
@@ -739,11 +874,20 @@ def refresh_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
             "updated_at_epoch": now,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(now))),
         }
-        _write_json_file(lock_path, lease_payload)
+        if not _write_json_file(lock_path, lease_payload):
+            raise IOError("nie udało się zapisać dzierżawy")
+        _LEASE_STATE["last_ok_epoch"] = now
         return True
     except Exception as exc:
         log("Błąd odświeżania dzierżawy aktywnego Kodi: {}".format(exc), xbmc.LOGWARNING)
-        # Przejściowy błąd I/O sieci nie oznacza konfliktu urządzeń
+        # Przejściowy błąd I/O sieci nie oznacza konfliktu urządzeń, ale po
+        # upływie TTL inne Kodi może już uznać dzierżawę za wolną.
+        now = float(now_epoch if now_epoch is not None else time.time())
+        last_ok = _LEASE_STATE.get("last_ok_epoch")
+        if last_ok is not None and (now - last_ok) >= float(ttl_seconds):
+            log("Dzierżawa aktywnego Kodi nie była odświeżona od {:.0f} s. Zatrzymuję usługę.".format(now - last_ok),
+                xbmc.LOGERROR)
+            return False
         return True
 
 
@@ -921,6 +1065,7 @@ def run_bootstrap(force_select_path=False):
     # 1. USTALENIE BASE PATH
     # Brak ustawienia (pusty ciąg) lub ręczne wywołanie konfiguratora z ustawień uruchamia kreator wyboru folderu
     choose_new_path = not base_path
+    pending_folder_change = False
     if base_path and force_select_path:
         dialog = xbmcgui.Dialog()
         if dialog.yesno(
@@ -951,9 +1096,9 @@ def run_bootstrap(force_select_path=False):
         else:
             base_path = selected_path + SHARED_DIR_NAME + "/"
             
-        if old_base_path and old_base_path.rstrip("/") != base_path.rstrip("/"):
-            release_network_active_kodi_lease(old_base_path)
-        set_base_path(base_path)
+        # Releasing the old lease and saving the new folder wait until the
+        # active-peer check below has passed (step 1b).
+        pending_folder_change = True
     elif not base_path.endswith("/"):
         base_path += "/"
         set_base_path(base_path)
@@ -977,9 +1122,16 @@ def run_bootstrap(force_select_path=False):
     for lease_base in ([base_path, migrated_from] if migrated_from else [base_path]):
         if not ensure_no_active_peer_kodi(lease_base):
             return False
+    if pending_folder_change:
+        # A chosen .SudoSync folder is saved as chosen; the switch to
+        # .KodiBridge is saved only after a successful migration (below).
+        chosen = migrated_from or base_path
+        if old_base_path and old_base_path.rstrip("/") != chosen.rstrip("/"):
+            release_network_active_kodi_lease(old_base_path)
+        set_base_path(chosen)
 
     # 2. TEST DOSTĘPU I READ/WRITE
-    log("Testowanie dostępu R/W do {}".format(base_path))
+    log("Testowanie dostępu R/W do {}".format(mask_vfs_credentials(base_path)))
     success, msg = test_vfs_rw(base_path)
     if not success:
         xbmcgui.Dialog().ok("KodiBridge - Brak Dostępu", "Nie udało się zapisać plików w wybranym folderze:\n{}\n\nSprawdź uprawnienia do zapisu lub wskaż inny udział w ustawieniach.".format(msg))

@@ -24,6 +24,10 @@ def _safe_parse_nfo_xml(raw_or_text):
         text = bytes(raw_or_text).decode("utf-8-sig", errors="replace")
     else:
         text = str(raw_or_text)
+    from resources.lib.sudosync_v2.kodi_rpc import has_xml_dtd
+    if has_xml_dtd(text):
+        # Never parse DOCTYPE/ENTITY declarations (entity expansion attacks).
+        return None
     try:
         return ET.fromstring(text)
     except Exception:
@@ -554,6 +558,27 @@ def _copy_vfs_to_local(src, dst):
 MAX_ZIP_FILES = 500
 MAX_ZIP_TOTAL_BYTES = 50 * 1024 * 1024
 MAX_ZIP_FILE_BYTES = 20 * 1024 * 1024
+MAX_ZIP_ARCHIVE_BYTES = 50 * 1024 * 1024
+
+
+def _copy_limited(src, dst, limit=MAX_ZIP_ARCHIVE_BYTES, chunk=64 * 1024):
+    """Copy a stream, refusing more than ``limit`` bytes."""
+    total = 0
+    while True:
+        block = src.read(chunk)
+        if not block:
+            return total
+        total += len(block)
+        if total > limit:
+            raise IOError("Pakiet ZIP przekracza limit {} MB.".format(limit // (1024 * 1024)))
+        dst.write(block)
+
+
+def _check_archive_size(path):
+    size = os.path.getsize(path)
+    if size > MAX_ZIP_ARCHIVE_BYTES:
+        raise ValueError("Pakiet ZIP przekracza limit {} MB.".format(MAX_ZIP_ARCHIVE_BYTES // (1024 * 1024)))
+    return size
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -914,7 +939,7 @@ def install_github_update(update_info=None, show_dialogs=True, timeout=30):
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp, open(part_zip, "wb") as dst:
-            shutil.copyfileobj(resp, dst)
+            _copy_limited(resp, dst)
         os.replace(part_zip, local_zip)
     except Exception as exc:
         if os.path.exists(part_zip):
@@ -950,10 +975,25 @@ def install_update_from_zip_path(zip_path, allow_same_or_older=False, show_dialo
     local_zip = os.path.join(package_dir, filename)
 
     if os.path.isfile(zip_path):
+        _check_archive_size(zip_path)
         if os.path.abspath(zip_path) != os.path.abspath(local_zip):
             shutil.copyfile(zip_path, local_zip)
     else:
+        try:
+            remote_size = xbmcvfs.Stat(zip_path).st_size()
+        except Exception:
+            remote_size = None
+        if isinstance(remote_size, int) and not isinstance(remote_size, bool) and remote_size > MAX_ZIP_ARCHIVE_BYTES:
+            raise ValueError("Pakiet ZIP przekracza limit {} MB.".format(MAX_ZIP_ARCHIVE_BYTES // (1024 * 1024)))
         _copy_vfs_to_local(zip_path, local_zip)
+    try:
+        _check_archive_size(local_zip)
+    except ValueError:
+        try:
+            os.remove(local_zip)
+        except OSError:
+            pass
+        raise
 
     package_version = _validate_addon_zip_package(local_zip)
     if not allow_same_or_older and _numeric_version(package_version) < _numeric_version(current_text):
@@ -1225,9 +1265,11 @@ def _ids_from_nfo(media_file, kind):
 def _record(kind, item, first_import=True):
     db_ids = _normalize_ids(item.get("uniqueid"), item.get("imdbnumber"))
     ids = dict(db_ids)
+    # The .nfo next to the video wins over the Kodi database, as in the v2
+    # engine: a copied video usually comes with its whole folder.
     nfo_ids = _ids_from_nfo(item.get("file"), kind)
     for k, v in nfo_ids.items():
-        if k not in ids and v:
+        if v:
             ids[k] = v
     rec = {
         "type": kind,
@@ -1981,7 +2023,10 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
                 "Utworzony plik .nfo został zmodyfikowany po wygenerowaniu KodiBridge ID; zachowano plik.",
             )
 
+    from resources.lib.sudosync_v2.kodi_rpc import has_xml_dtd
     try:
+        if has_xml_dtd(raw_bytes):
+            raise ValueError("DOCTYPE/ENTITY declarations are not parsed")
         root = ET.fromstring(raw_bytes)
     except Exception:
         return (
@@ -2347,7 +2392,7 @@ def find_duplicate_sudosync_id_groups(movies, episodes):
                 {"file": record["file"], "type": kind, "sudosync_id": sid, "records": []},
             )
             entry["records"].append(record)
-    from resources.lib.sudosync_v2.copies import same_video
+    from resources.lib.sudosync_v2.copies import only_repeated_spellings, same_video
     result = []
     for key in sorted(groups):
         group = groups[key]
@@ -2355,7 +2400,7 @@ def find_duplicate_sudosync_id_groups(movies, episodes):
             continue
         # The same external ID on every file (and no differing one): copies of
         # one video, synchronized as one item, not a duplicate KodiBridge ID.
-        if (all(len(entry["records"]) == 1 for entry in group["files"].values())
+        if (all(only_repeated_spellings(entry["records"]) for entry in group["files"].values())
                 and same_video([entry["records"][0].get("ids") or {} for entry in group["files"].values()])):
             continue
         files = sorted(group["files"].values(), key=lambda entry: entry["file"].lower())
@@ -3316,9 +3361,15 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                     success_new = xbmcvfs.rename(new_path, best_path)
 
                     if not success_new:
+                        restored = True
                         if success_bak:
-                            xbmcvfs.rename(bak_path, best_path)
-                        if xbmcvfs.exists(new_path):
+                            restored = bool(xbmcvfs.rename(bak_path, best_path))
+                        if not restored:
+                            # Keep the .new file as well: together with .bak it
+                            # holds everything needed to put the .nfo back by hand.
+                            log("Nie udało się podmienić ani przywrócić pliku .nfo: {} — oryginał został w {}".format(
+                                mask_vfs_credentials(best_path), mask_vfs_credentials(bak_path)), xbmc.LOGERROR)
+                        elif xbmcvfs.exists(new_path):
                             xbmcvfs.delete(new_path)
                         return False, False
 

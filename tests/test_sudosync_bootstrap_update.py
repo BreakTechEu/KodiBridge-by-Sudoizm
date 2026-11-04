@@ -41,6 +41,8 @@ class TestSentinelPathRemoval(unittest.TestCase):
                     "network_settings": {"sudosync_id_enabled": False, "sudosync_id_prefix": ""},
                 })), \
                 patch.object(bootstrap, "apply_network_settings"), \
+                patch.object(bootstrap, "ensure_no_active_peer_kodi", return_value=True), \
+                patch.object(bootstrap, "acquire_network_active_kodi_lease", return_value=True), \
                 patch.object(bootstrap.xbmcgui, "Dialog", return_value=dialog):
             result = bootstrap.run_bootstrap()
             self.assertTrue(result)
@@ -360,8 +362,12 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
 
         # After TTL expires (e.g. 1300.0 - 1000.0 = 300s > 180s), client-B takes over the lease
         written = {}
+
+        def read_back(_path):
+            return "VALID", dict(written or lock_store)
+
         with patch.object(bootstrap, "_local_client_identity", return_value=("client-B", "Sypialnia")), \
-                patch.object(bootstrap, "_read_json_file", return_value=("VALID", dict(lock_store))), \
+                patch.object(bootstrap, "_read_json_file", side_effect=read_back), \
                 patch.object(bootstrap, "_write_json_file", side_effect=lambda _p, obj: written.update(obj) or True) as mock_write:
             allowed = bootstrap.acquire_network_active_kodi_lease("smb://nas/video/.SudoSync/", now_epoch=1300.0)
             self.assertTrue(allowed)
@@ -464,6 +470,7 @@ class TestGitHubUpdateAndNetworkVersionGuard(unittest.TestCase):
         }
         with patch.object(bootstrap, "get_base_path", return_value="smb://nas/video/.SudoSync/"), \
                 patch.object(bootstrap, "test_vfs_rw", return_value=(True, "")), \
+                patch.object(bootstrap, "ensure_no_active_peer_kodi", return_value=True), \
                 patch.object(bootstrap, "read_sudosync_cfg", return_value=("VALID", cfg)), \
                 patch.object(bootstrap, "enforce_network_version_guard", return_value=False) as mock_guard, \
                 patch.object(bootstrap, "acquire_network_active_kodi_lease") as mock_lease, \
@@ -540,12 +547,20 @@ class TestActivePeerCheckedBeforeSharedWrites(unittest.TestCase):
     }
 
     def _lock_reader(self, locks):
+        self._written = {}
+
         def read(path):
+            if path in self._written:
+                return "VALID", dict(self._written[path])
             for suffix, doc in locks.items():
                 if path.endswith(suffix):
                     return "VALID", dict(doc)
             return "NOT_FOUND", None
         return read
+
+    def _writer(self, path, obj):
+        self._written[path] = dict(obj)
+        return True
 
     def _run(self, base_path, locks, wizard_cfg_missing=False):
         dialog = MagicMock()
@@ -554,7 +569,7 @@ class TestActivePeerCheckedBeforeSharedWrites(unittest.TestCase):
                 patch.object(bootstrap, "_local_client_identity", return_value=("client-PC", "PC")), \
                 patch.object(bootstrap.time, "time", return_value=1050.0), \
                 patch.object(bootstrap, "_read_json_file", side_effect=self._lock_reader(locks)), \
-                patch.object(bootstrap, "_write_json_file", return_value=True) as mocks["write"], \
+                patch.object(bootstrap, "_write_json_file", side_effect=self._writer) as mocks["write"], \
                 patch.object(bootstrap, "test_vfs_rw", return_value=(True, "OK")) as mocks["rw"], \
                 patch.object(bootstrap, "migrate_legacy_shared_folder") as mocks["migrate"], \
                 patch.object(bootstrap, "release_network_active_kodi_lease") as mocks["release"], \
