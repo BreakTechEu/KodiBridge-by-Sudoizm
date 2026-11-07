@@ -1,3 +1,14 @@
+KodiBridge by Sudoizm 2.3.0
+===========================
+
+Komunikaty wtyczki – tylko o problemach i tylko tam, gdzie trzeba szukać:
+
+- Okno statusu przy każdym problemie z KodiBridge ID (bez ID, zdublowane ID, wspólne ID zewnętrzne, ten sam plik dwa razy w bibliotece) podaje tylko, gdzie szukać: film albo serial i sezon. Bez ścieżek i bez porad naprawy (dotychczasowa rada „usuń zbędny wpis (np. drugi serial)” bywała myląca, gdy serial był w bibliotece raz, a dwa razy tylko jego odcinki). To samo w oknie „Napraw zdublowane KodiBridge ID”. Ścieżki zostają w dzienniku Kodi.
+- Gdy nie ma problemów, wtyczka się nie odzywa: zniknęło powiadomienie „KodiBridge LIVE – Zsynchronizowano zmian z sieci”.
+- Powiadomienie o pozycjach bez KodiBridge ID nie pojawia się w trakcie skanowania biblioteki i nadawania ID po nim, tylko gdy po nadaniu czegoś nadal brakuje.
+- Nadawanie KodiBridge ID po skanowaniu biblioteki pokazuje to samo okno postępu co nadawanie ręczne (z przyciskiem Anuluj), gdy któryś plik .nfo dostaje nowe ID. Dotąd działo się to bez okna, a odświeżanie każdej zmienionej pozycji powodowało miganie i przeskakiwanie list w Kodi. Gdy nic nie trzeba nadawać, nadal nic nie widać.
+- Ręczne nadawanie KodiBridge ID uruchomione w trakcie innego (np. po skanowaniu) mówi, że nadawanie już trwa. Dotąd okno wyszukiwania zamykało się bez słowa.
+
 KodiBridge by Sudoizm 2.2.16
 ============================
 
