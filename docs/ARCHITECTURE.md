@@ -48,7 +48,8 @@ Zabezpiecza przed jednoczesnym uruchomieniem więcej niż jednej instancji usłu
 Chroni procedurę skanowania biblioteki i nadawania identyfikatorów SudoSync ID przed równoległym wywołaniem (np. automatycznym w tle i ręcznym z GUI):
 - Blokada tworzona lokalnie oraz na udziale sieciowym z czasem ważności TTL = 1800 sekund.
 - Odświeżanie znacznika czasu następuje po przetworzeniu każdej pozycji w bibliotece.
-- Wywołania równoległe w tle bezpiecznie rezygnują z pracy, a wywołania z GUI informują użytkownika o trwającej operacji.
+- Wywołania równoległe w tle bezpiecznie rezygnują z pracy, a wywołania z GUI informują użytkownika o trwającej operacji (od 2.3.0 także wtedy, gdy blokadę trzyma nadawanie po skanowaniu).
+- Nadawanie po skanowaniu (od 2.3.0): najpierw ciche sprawdzenie (`preview_sudosync_ids`, bez zmian w bibliotece); gdy któryś plik `.nfo` dostaje nowe ID, nadawanie idzie w modalnym oknie postępu z przyciskiem Anuluj, bo `VideoLibrary.Refresh*` każdej zmienionej pozycji przeładowuje listy Kodi. Od początku skanowania do końca nadawania nie ma powiadomienia o brakujących ID.
 
 ---
 

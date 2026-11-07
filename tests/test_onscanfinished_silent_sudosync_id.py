@@ -74,6 +74,87 @@ class RichTestVfs(VirtualXbmcVfs):
         return True
 
 
+def empty_preview(items=()):
+    preview = sudosync_core._PreviewResult(list(items))
+    preview.collected_items = ([], [])
+    return preview
+
+
+class AssignAfterScanWindowTests(unittest.TestCase):
+    """2.3.0: after a scan the IDs are given in the progress window of the manual action."""
+
+    def setUp(self):
+        sudosync_service._ASSIGN_AFTER_SCAN["pending"] = False
+        self.dialog = MagicMock()
+        self.dialog.iscanceled.return_value = False
+        patcher = patch.object(sudosync_service.xbmcgui, "DialogProgress", return_value=self.dialog)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_no_window_when_nothing_needs_an_id(self):
+        assign = MagicMock(return_value={"movies": 0, "episodes": 0})
+        with patch.object(sudosync_service, "preview_sudosync_ids", return_value=empty_preview()), \
+                patch.object(sudosync_service, "assign_sudosync_ids", assign):
+            sudosync_service._assign_ids_after_scan("smb://nas/x/", lambda: False)
+        self.dialog.create.assert_not_called()
+        self.assertTrue(assign.call_args[1]["silent"])
+
+    def test_window_when_new_ids_are_written(self):
+        def assign(**kwargs):
+            kwargs["progress_callback"](1, 2, "Ep 1")
+            kwargs["progress_callback"](2, 2, "Ep 2")
+            return {"movies": 0, "episodes": 2}
+
+        preview = empty_preview([{"title": "Ep 1"}, {"title": "Ep 2"}])
+        with patch.object(sudosync_service, "preview_sudosync_ids", return_value=preview), \
+                patch.object(sudosync_service, "assign_sudosync_ids", side_effect=assign) as assign_mock:
+            result = sudosync_service._assign_ids_after_scan("smb://nas/x/", lambda: False)
+        self.assertEqual(result["episodes"], 2)
+        self.dialog.create.assert_called_once()
+        self.assertEqual(self.dialog.update.call_args[0][0], 100)
+        self.dialog.close.assert_called_once()
+        kwargs = assign_mock.call_args[1]
+        self.assertFalse(kwargs["silent"])
+        self.assertIs(kwargs["collected_items"], preview.collected_items)
+
+    def test_cancel_button_stops_the_assignment(self):
+        self.dialog.iscanceled.return_value = True
+        seen = []
+
+        def assign(**kwargs):
+            seen.append(kwargs["is_canceled"]())
+            return {"movies": 0, "episodes": 0, "cancelled": True}
+
+        with patch.object(sudosync_service, "preview_sudosync_ids", return_value=empty_preview([{"title": "A"}])), \
+                patch.object(sudosync_service, "assign_sudosync_ids", side_effect=assign):
+            sudosync_service._assign_ids_after_scan("smb://nas/x/", lambda: False)
+        self.assertEqual(seen, [True])
+        self.dialog.close.assert_called_once()
+
+    def test_window_closed_when_assignment_raises(self):
+        with patch.object(sudosync_service, "preview_sudosync_ids", return_value=empty_preview([{"title": "A"}])), \
+                patch.object(sudosync_service, "assign_sudosync_ids", side_effect=RuntimeError("x")):
+            with self.assertRaises(RuntimeError):
+                sudosync_service._assign_ids_after_scan("smb://nas/x/", lambda: False)
+        self.dialog.close.assert_called_once()
+
+    def test_missing_id_notification_waits_for_the_assignment(self):
+        sudosync_service._COVERAGE_NOTIFIED["key"] = None
+        runtime = MagicMock()
+        runtime.sync_engine.last_coverage = {"movie": {}, "episode": {"missing": 5}}
+        gui = MagicMock()
+        with patch.object(sudosync_service, "record_kodibridge_id_coverage"), \
+                patch.object(sudosync_service, "_is_playing_video", return_value=False), \
+                patch.object(sudosync_service.xbmcgui, "Dialog", return_value=gui):
+            monitor = sudosync_service.SudoSyncMonitor()
+            monitor.onNotification(None, "VideoLibrary.OnScanStarted", None)
+            sudosync_service._record_coverage(runtime)
+            gui.notification.assert_not_called()
+            sudosync_service._ASSIGN_AFTER_SCAN["pending"] = False
+            sudosync_service._record_coverage(runtime)
+        gui.notification.assert_called_once()
+
+
 class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
     def setUp(self):
         sudosync_core._NFO_ID_CACHE.clear()
@@ -186,10 +267,11 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", return_value={"busy": False, "applied_items": 0}), \
                 patch.object(sudosync_service, "assign_sudosync_ids", assign_mock), \
+                patch.object(sudosync_service, "preview_sudosync_ids", return_value=empty_preview()), \
                 patch.object(sudosync_service.time, "time", return_value=1004.0):
             sudosync_service._run_service()
 
-        # Verify assign_sudosync_ids was invoked silently in background
+        # Nothing needs a new ID: assign_sudosync_ids runs silently in background
         assign_mock.assert_called_once()
         _, kwargs = assign_mock.call_args
         self.assertTrue(kwargs.get("silent"))
@@ -410,6 +492,7 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
         """When assign_sudosync_ids returns 0 (busy), main loop sets scan_assign_pending = True with backoff."""
         monitor = sudosync_service.SudoSyncMonitor()
         monitor.scan_assign_pending = True
+        sudosync_service._ASSIGN_AFTER_SCAN["pending"] = True
         monitor.scan_finished_at = 1000.0
         monitor.scanning = False
 
@@ -443,12 +526,14 @@ class TestOnScanFinishedAndSilentSudoSyncId(unittest.TestCase):
                 patch.object(sudosync_service, "_is_playing_video", return_value=False), \
                 patch.object(sudosync_service, "_execute_integrated_live_cycle", return_value={"busy": False}), \
                 patch.object(sudosync_service, "assign_sudosync_ids", return_value=0), \
+                patch.object(sudosync_service, "preview_sudosync_ids", return_value=empty_preview()), \
                 patch.object(sudosync_service.time, "time", return_value=1005.0):
             sudosync_service._run_service()
 
         # The loop must have re-armed the pending flag with 10s backoff (1005 + 10 = 1015)
         self.assertTrue(monitor.scan_assign_pending)
         self.assertEqual(monitor.scan_finished_at, 1015.0)
+        self.assertTrue(sudosync_service._ASSIGN_AFTER_SCAN["pending"])
 
 
 if __name__ == "__main__":

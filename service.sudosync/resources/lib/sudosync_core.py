@@ -2414,25 +2414,24 @@ def _same_file_key(path):
 
 
 def find_repeated_library_files(movies, episodes):
-    """Media files listed in the library under several paths differing only in letter case.
+    """Places of media files listed in the library under several paths differing only in letter case.
 
-    Returns ["label: path1 | path2", ...]; such entries are fixed by removing
-    the extra entry from the Kodi library, not by changing KodiBridge IDs.
+    Returns the movies, or series and seasons ("Series, sezon 1"), sorted and
+    without paths; such entries are fixed in the Kodi library by the user, not
+    by changing KodiBridge IDs.
     """
+    from resources.lib.sudosync_v2.snapshot import item_place
     spellings = {}
     for collection in (movies, episodes):
         for record in collection or []:
             if isinstance(record, dict) and record.get("file"):
                 paths = spellings.setdefault(_same_file_key(record["file"]), {})
-                paths.setdefault(record["file"], _record_label(record))
-    found = []
-    for key in sorted(spellings):
-        paths = spellings[key]
+                paths.setdefault(record["file"], item_place(record))
+    found = set()
+    for paths in spellings.values():
         if len(paths) > 1:
-            found.append("{}: {}".format(
-                mask_vfs_credentials(next(iter(paths.values()))),
-                " | ".join(sorted(mask_vfs_credentials(p) for p in paths))))
-    return found
+            found.update(paths.values())
+    return sorted(found, key=lambda text: (text.casefold(), text))
 
 
 def _load_network_snapshot_ids(base_path, exclude_client_id=None):

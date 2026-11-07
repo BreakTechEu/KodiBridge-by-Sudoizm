@@ -168,7 +168,10 @@ def install_local_zip_dialog():
 
 
 def _coverage_text(coverage):
-    """Describe the KodiBridge ID coverage of this Kodi's library for the status window."""
+    """Describe the KodiBridge ID coverage of this Kodi's library for the status window.
+
+    For each problem only where to look: the movie, or the series and season.
+    """
     if not isinstance(coverage, dict):
         return "Pokrycie KodiBridge ID: — (pojawi się po pierwszym cyklu synchronizacji)"
     movie = coverage.get("movie") or {}
@@ -183,20 +186,28 @@ def _coverage_text(coverage):
                        ("ambiguous", "wspólne ID zewnętrzne bez KodiBridge ID"),
                        ("repeated", "ten sam plik dwa razy w bibliotece")):
         count = int(movie.get(key) or 0) + int(episode.get(key) or 0)
-        if count:
-            problems.append("{}: {}".format(label, count))
+        if not count:
+            continue
+        places = []
+        for media in (movie, episode):
+            for place in ((media.get("places") or {}).get(key) or []):
+                if place not in places:
+                    places.append(place)
+        problems.append("{}: {}".format(label, count))
+        if places:
+            problems.extend("  – " + place for place in places)
     if coverage.get("unreadable_nfo"):
         problems.append("nieczytelne .nfo: {}".format(coverage["unreadable_nfo"]))
     if problems:
-        lines.append("UWAGA – " + ", ".join(problems) + " (przykłady w kodi.log: „KodiBridge ID coverage”)")
-        if int(movie.get("duplicates") or 0) + int(episode.get("duplicates") or 0):
-            lines.append("Zdublowane ID naprawia przycisk „Napraw zdublowane KodiBridge ID” w ustawieniach.")
-        if int(movie.get("repeated") or 0) + int(episode.get("repeated") or 0):
-            lines.append("Ten sam plik jest w bibliotece pod dwiema ścieżkami różniącymi się wielkością liter: "
-                         "usuń zbędny wpis (np. drugi serial) z biblioteki Kodi.")
+        lines.append("Do sprawdzenia:")
+        lines.extend(problems)
     else:
         lines.append("Wszystkie pozycje mają KodiBridge ID.")
     return "\n".join(lines)
+
+
+ASSIGN_BUSY_MESSAGE = ("Nadawanie KodiBridge ID jest już wykonywane (np. po aktualizacji biblioteki). "
+                       "Poczekaj na jego zakończenie i spróbuj ponownie.")
 
 
 # Number of .nfo files changed by the current settings action (assign or roll
@@ -278,9 +289,8 @@ def repair_ids_dialog():
     repeated = result.get("repeated") or []
     repeated_lines = []
     if repeated:
-        repeated_lines = ["", "Ten sam plik dwa razy w bibliotece (ścieżki różnią się tylko wielkością liter; "
-                              "to nie jest zdublowane ID – usuń zbędny wpis z biblioteki Kodi):"]
-        repeated_lines += ["  " + mask_vfs_credentials(line) for line in repeated]
+        repeated_lines = ["", "Ten sam plik dwa razy w bibliotece (to nie jest zdublowane ID):"]
+        repeated_lines += ["  – " + mask_vfs_credentials(line) for line in repeated]
     if not result.get("groups"):
         if repeated_lines:
             xbmcgui.Dialog().textviewer(
@@ -444,6 +454,9 @@ def main():
                     sync_res = assign_sudosync_ids(show_notification=False, auto_mode=True, is_canceled=is_canceled)
                     _note_nfo_changes(sync_res)
                     dialog.close()
+                    if not isinstance(sync_res, dict):
+                        xbmcgui.Dialog().ok("KodiBridge", ASSIGN_BUSY_MESSAGE)
+                        return
                     xbmcgui.Dialog().ok(
                         "KodiBridge",
                         "Nie znaleziono żadnych nowych plików wymagających przypisania ID.",
@@ -502,6 +515,8 @@ def main():
 
                 dialog.close()
                 if not isinstance(result, dict):
+                    # Another assignment (e.g. the one after a library scan) holds the lock.
+                    xbmcgui.Dialog().ok("KodiBridge", ASSIGN_BUSY_MESSAGE)
                     return
 
                 manifest_name = os.path.basename(result.get("manifest_path", "")) or "assign_ids_manifest.json"

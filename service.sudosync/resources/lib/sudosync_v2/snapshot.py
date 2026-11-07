@@ -407,7 +407,31 @@ def _report_shared_external_identities(client_id, counts):
 
 
 COVERAGE_MAX_EXAMPLES = 5
+COVERAGE_MAX_PLACES = 30
 _LAST_COVERAGE_REPORT = {}
+
+
+def item_place(item):
+    """Where to look for a library item: the movie, or the series and season (no path)."""
+    show = str(item.get("showtitle") or "").strip()
+    if show:
+        try:
+            return "{}, sezon {}".format(show, int(item.get("season")))
+        except (TypeError, ValueError):
+            return show
+    title = str(item.get("title") or item.get("label") or "").strip()
+    if not title:
+        return "?"
+    try:
+        year = int(item.get("year") or 0)
+    except (TypeError, ValueError):
+        year = 0
+    return "{} ({})".format(title, year) if year > 0 else title
+
+
+def _places(values, limit):
+    unique = sorted(set(values), key=lambda text: (text.casefold(), text))
+    return unique[:limit]
 
 
 def _item_label(item):
@@ -420,7 +444,7 @@ def _item_label(item):
     return str(label)
 
 
-def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES):
+def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES, max_places=COVERAGE_MAX_PLACES):
     """Count KodiBridge (SudoSync) IDs in the raw Kodi library items.
 
     Computed before the snapshot is built, so it is available even when the
@@ -431,12 +455,14 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
     them has no KodiBridge ID - the case that stops synchronization) and
     ``repeated`` (one media file listed under paths differing only in letter
     case, e.g. a series scanned twice on a case-insensitive SMB share), each
-    with a few examples.
+    with a few examples (for the log) and ``places``: the movies, or series and
+    seasons, holding each kind of problem (for the status window).
     """
     result = {}
     for media_type, source in (("movie", movies), ("episode", episodes)):
         total = with_id = 0
         missing, by_sid, ext_owners, spellings = [], {}, {}, {}
+        places = {"missing": [], "duplicates": [], "ambiguous": [], "repeated": []}
         for item in source if isinstance(source, list) else []:
             if not isinstance(item, dict):
                 continue
@@ -446,34 +472,39 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
             except ValueError:
                 ids = {}
             label = _item_label(item)
+            place = item_place(item)
             sid = ids.get("sudosync")
             media_file = item.get("file") or ""
             file_key = same_file_key(media_file) if media_file else "#{}".format(total)
             if media_file:
-                spellings.setdefault(file_key, {}).setdefault(media_file, label)
+                spellings.setdefault(file_key, {}).setdefault(media_file, (label, place))
             if sid:
                 with_id += 1
-                by_sid.setdefault(sid, []).append((file_key, label))
+                by_sid.setdefault(sid, []).append((file_key, label, place))
             else:
                 missing.append(label)
+                places["missing"].append(place)
             for kind, value in ids.items():
                 if kind != "sudosync":
-                    ext_owners.setdefault((kind, value), []).append((bool(sid), label))
+                    ext_owners.setdefault((kind, value), []).append((bool(sid), label, place))
         duplicates = []
         for sid, entries in sorted(by_sid.items()):
             # One media file may hold several library items (episodes of a
             # multi-episode file); one ID on several files is a duplicate.
-            if len({media_file for media_file, _ in entries}) < 2:
+            if len({media_file for media_file, _, _ in entries}) < 2:
                 continue
-            duplicates.append("{} ({})".format(sid, "; ".join(label for _, label in entries[:3])))
+            duplicates.append("{} ({})".format(sid, "; ".join(label for _, label, _ in entries[:3])))
+            places["duplicates"].extend(place for _, _, place in entries)
         repeated = []
         for file_key, paths in sorted(spellings.items()):
             if len(paths) > 1:
                 repeated.append(" | ".join(sorted(strip_path_credentials(p) for p in paths)[:3]))
+                places["repeated"].extend(place for _, place in paths.values())
         ambiguous = []
         for (kind, value), owners in sorted(ext_owners.items()):
-            if len(owners) > 1 and not all(has_sid for has_sid, _ in owners):
-                ambiguous.append("{}:{} ({})".format(kind, value, "; ".join(label for _, label in owners[:3])))
+            if len(owners) > 1 and not all(has_sid for has_sid, _, _ in owners):
+                ambiguous.append("{}:{} ({})".format(kind, value, "; ".join(label for _, label, _ in owners[:3])))
+                places["ambiguous"].extend(place for _, _, place in owners)
         result[media_type] = {
             "total": total,
             "with_id": with_id,
@@ -487,6 +518,8 @@ def kodibridge_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES)
                 "ambiguous": ambiguous[:max_examples],
                 "repeated": repeated[:max_examples],
             },
+            # Movie, or series and season, of each problem (no paths): where to look.
+            "places": {kind: _places(values, max_places) for kind, values in places.items()},
         }
     return result
 

@@ -328,8 +328,8 @@ class TestV2BusyBackoff(unittest.TestCase):
             self.assertEqual(_live_retry_delay_seconds(res, 60), 60)
             mock_dialog_cls.return_value.notification.assert_not_called()
 
-    def test_05b_v2_committed_cycle_emits_single_toast(self):
-        """Case 5b: A committed v2 cycle is not busy and emits one LIVE toast."""
+    def test_05b_v2_committed_cycle_is_silent(self):
+        """Case 5b: A committed v2 cycle is not busy and shows no toast (only problems are reported)."""
         mock_monitor = MagicMock()
         mock_monitor.abortRequested.return_value = False
         mock_v2 = MagicMock()
@@ -347,7 +347,7 @@ class TestV2BusyBackoff(unittest.TestCase):
             )
             self.assertFalse(res.get("busy"))
             self.assertEqual(res.get("applied_items"), 2)
-            mock_dialog_cls.return_value.notification.assert_called_once()
+            mock_dialog_cls.return_value.notification.assert_not_called()
 
     def test_06_runtime_deferred_transaction_still_publishes_changed_local_snapshot(self):
         """Case 6: When TransactionRunner defers because playback started after preview, runtime.sync_cycle still publishes the updated local snapshot."""

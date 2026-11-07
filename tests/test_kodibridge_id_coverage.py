@@ -197,6 +197,34 @@ class StatusCoverageTests(unittest.TestCase):
         self.assertIn("Wszystkie pozycje mają KodiBridge ID.", default_module._coverage_text(complete))
         self.assertIn("pojawi się po pierwszym cyklu", default_module._coverage_text(None))
 
+    def test_status_window_names_only_movie_or_series_and_season(self):
+        movies, episodes = library()
+        movies[1]["year"] = 2001
+        text = default_module._coverage_text(kodibridge_id_coverage(movies, episodes))
+        self.assertIn("Do sprawdzenia:", text)
+        self.assertIn("  – B (2001)", text)
+        self.assertIn("  – Show, sezon 1", text)
+        self.assertIn("  – Show, sezon 2", text)
+        self.assertNotIn(".mkv", text)
+        self.assertNotIn("usuń", text)
+
+    def test_places_are_unique_sorted_and_limited(self):
+        episodes = [ep(i, 1 + i % 3, i, "e{}.mkv".format(i)) for i in range(1, 20)]
+        places = kodibridge_id_coverage([], episodes)["episode"]["places"]["missing"]
+        self.assertEqual(places, ["Show, sezon 1", "Show, sezon 2", "Show, sezon 3"])
+        many = [dict(ep(i, 1, 1, "f{}.mkv".format(i)), showtitle="S{:03d}".format(i)) for i in range(50)]
+        self.assertEqual(len(kodibridge_id_coverage([], many)["episode"]["places"]["missing"]),
+                         snapshot_module.COVERAGE_MAX_PLACES)
+
+    def test_repeated_file_place_is_the_series_season(self):
+        episodes = [ep(1, 1, 1, "smb://nas/Serial/One (2023)/S1/e1.mkv", sudosync="u1:s01e01"),
+                    ep(2, 1, 1, "smb://nas/Serial/ONE (2023)/S1/e1.mkv", sudosync="u1:s01e01")]
+        coverage = kodibridge_id_coverage([], episodes)
+        self.assertEqual(coverage["episode"]["places"]["repeated"], ["Show, sezon 1"])
+        text = default_module._coverage_text(coverage)
+        self.assertIn("ten sam plik dwa razy w bibliotece: 1\n  – Show, sezon 1", text)
+        self.assertNotIn("smb://", text)
+
 
 
 class CoverageNotificationTests(unittest.TestCase):
@@ -237,7 +265,8 @@ class CoverageNotificationTests(unittest.TestCase):
         self.assertEqual(key, (0, 0, 0, 0, 16))
         self.assertIn("ten sam plik dwa razy w bibliotece: 16", message)
         text = default_module._coverage_text(coverage)
-        self.assertIn("usuń zbędny wpis", text)
+        self.assertIn("ten sam plik dwa razy w bibliotece: 16", text)
+        self.assertNotIn("usuń", text)
         self.assertNotIn("Napraw zdublowane", text)
 
     def test_notified_at_first_check_and_again_only_when_counts_change(self):

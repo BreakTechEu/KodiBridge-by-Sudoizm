@@ -29,6 +29,8 @@ from resources.lib.sudosync_core import (
     get_or_create_client_id,
     install_v2_log_bridge,
     log,
+    mask_vfs_credentials,
+    preview_sudosync_ids,
     maybe_check_github_update_daily,
     read_shared_config,
     record_kodibridge_id_coverage,
@@ -127,11 +129,15 @@ class SudoSyncMonitor(_MonitorBase):
             if id_enabled:
                 self.scan_assign_pending = True
                 self.scan_finished_at = time.time()
+                _ASSIGN_AFTER_SCAN["pending"] = True
                 log("SudoSyncMonitor: onScanFinished('video') — zarejestrowano zakończenie skanowania wideo (debounce 3s).", xbmc.LOGINFO)
 
     def onNotification(self, sender, method, data):
         if method == "VideoLibrary.OnScanStarted":
             self.scanning = True
+            # New items have no KodiBridge ID until the assignment after the
+            # scan: no "missing ID" notification before it has run.
+            _ASSIGN_AFTER_SCAN["pending"] = True
             return
         if method == "VideoLibrary.OnScanFinished":
             self.onScanFinished("video")
@@ -233,6 +239,8 @@ def _live_retry_delay_seconds(result, live_poll):
 
 # Problem summary already shown in a notification during this service run.
 _COVERAGE_NOTIFIED = {"key": None}
+# True from the start of a video scan until the KodiBridge ID assignment after it.
+_ASSIGN_AFTER_SCAN = {"pending": False}
 
 
 def coverage_problem_summary(coverage):
@@ -260,6 +268,77 @@ def coverage_problem_summary(coverage):
     return key, "Pozycje biblioteki: " + ", ".join(parts) + ". Szczegóły w oknie statusu KodiBridge."
 
 
+def _assign_ids_after_scan(base_path, abort_requested):
+    """Give KodiBridge IDs to library items that have none, after a video scan.
+
+    Silent when no .nfo needs a new ID. Otherwise the progress window of the
+    manual action is shown: every changed item is refreshed in the library,
+    which would make the lists behind it flicker. Returns the result of
+    assign_sudosync_ids (0 when another assignment holds the lock).
+    """
+    from resources.lib.sudosync_core import _get_localized_string
+
+    try:
+        preview = preview_sudosync_ids(is_canceled=abort_requested)
+    except Exception as exc:
+        log("Sprawdzanie KodiBridge ID po skanowaniu nieudane: {}".format(exc), xbmc.LOGWARNING)
+        return None
+    if abort_requested():
+        return None
+    collected = getattr(preview, "collected_items", None)
+    if not preview:
+        return assign_sudosync_ids(
+            show_notification=False, auto_mode=True, silent=True, base_path=base_path,
+            collected_items=collected, is_canceled=abort_requested,
+        )
+
+    dialog = xbmcgui.DialogProgress()
+    title = _get_localized_string(32076, "KodiBridge — KodiBridge ID")
+    stage = _get_localized_string(32081, "Przypisywanie KodiBridge ID...")
+    notice = _get_localized_string(32082, "To okno zamknie się automatycznie po zakończeniu operacji.")
+
+    def is_canceled():
+        try:
+            if dialog.iscanceled():
+                return True
+        except Exception:
+            pass
+        return bool(abort_requested())
+
+    def progress(current, total, item_name=""):
+        pct = int(min(100, max(0, (current / float(max(1, total))) * 100)))
+        name = " ({})".format(item_name) if item_name else ""
+        try:
+            dialog.update(pct, "{} ({}/{}){}\n\n{}".format(stage, current, total, name, notice))
+        except Exception:
+            pass
+
+    log("Nadawanie KodiBridge ID po skanowaniu: {} pozycji do zmiany, okno postępu.".format(len(preview)), xbmc.LOGINFO)
+    dialog.create(title, "{} (0/{})\n\n{}".format(stage, len(preview), notice))
+    try:
+        result = assign_sudosync_ids(
+            show_notification=False, auto_mode=True, silent=False, base_path=base_path,
+            collected_items=collected, progress_callback=progress, is_canceled=is_canceled,
+        )
+    finally:
+        try:
+            dialog.close()
+        except Exception:
+            pass
+    if isinstance(result, dict) and result.get("fatal_error"):
+        try:
+            xbmcgui.Dialog().ok(
+                "KodiBridge — błąd",
+                "Nadawanie KodiBridge ID przerwane: {}\n"
+                "Zmieniono do błędu: filmy {}, odcinki {}.".format(
+                    mask_vfs_credentials(result.get("fatal_error")),
+                    result.get("movies", 0), result.get("episodes", 0)),
+            )
+        except Exception:
+            pass
+    return result
+
+
 def _record_coverage(v2_runtime):
     """Store the KodiBridge ID coverage of the last library read and tell the user about problems.
 
@@ -275,7 +354,7 @@ def _record_coverage(v2_runtime):
     if key is None:
         _COVERAGE_NOTIFIED["key"] = None
         return
-    if key == _COVERAGE_NOTIFIED["key"] or _is_playing_video():
+    if key == _COVERAGE_NOTIFIED["key"] or _is_playing_video() or _ASSIGN_AFTER_SCAN["pending"]:
         return
     _COVERAGE_NOTIFIED["key"] = key
     log("KodiBridge ID coverage problems: {}".format(message), xbmc.LOGWARNING)
@@ -363,19 +442,8 @@ def _run_live_cycle(
         log("V2 live sync committed {} item(s).".format(v2_applied), xbmc.LOGINFO)
     update_local_status_from_v2(v2_result=v2_result)
 
-    if v2_status == "committed" and show_notification and v2_applied > 0:
-        try:
-            if receiver_notification_delay_ms and receiver_notification_delay_ms > 0:
-                xbmc.sleep(int(receiver_notification_delay_ms))
-            xbmcgui.Dialog().notification(
-                "KodiBridge LIVE",
-                "Zsynchronizowano zmian z sieci: {}.".format(v2_applied),
-                xbmcgui.NOTIFICATION_INFO,
-                5000,
-            )
-        except Exception:
-            pass
-
+    # Received changes are not announced: the add-on speaks only about problems
+    # (show_notification and receiver_notification_delay_ms are kept for callers).
     return {"busy": False, "v2": v2_result, "applied_items": v2_applied}
 
 
@@ -624,16 +692,11 @@ def _run_service():
                     id_enabled = bool(settings.get("sudosync_id_enabled") or settings.get("enable_sudosync_id"))
                     if not id_enabled:
                         monitor.scan_assign_pending = False
+                        _ASSIGN_AFTER_SCAN["pending"] = False
                     else:
                         monitor.scan_assign_pending = False
                         try:
-                            assign_res = assign_sudosync_ids(
-                                show_notification=False,
-                                auto_mode=True,
-                                silent=True,
-                                base_path=settings.get("base_path"),
-                                is_canceled=monitor.abortRequested,
-                            )
+                            assign_res = _assign_ids_after_scan(settings.get("base_path"), monitor.abortRequested)
                             if assign_res == 0:
                                 # Lock busy (another process/device is assigning IDs).
                                 # Re-arm debounce to retry shortly.
@@ -661,6 +724,8 @@ def _run_service():
                                             log("Błąd publikacji snapshotu v2 po nadaniu ID: {}".format(exc), xbmc.LOGWARNING)
                         except Exception as exc:
                             log("Błąd automatycznego nadawania SudoSync ID w usłudze: {}".format(exc), xbmc.LOGERROR)
+                        if not monitor.scan_assign_pending:
+                            _ASSIGN_AFTER_SCAN["pending"] = False
 
                 if live_active:
                     # Never alter library state while a video is actively playing.

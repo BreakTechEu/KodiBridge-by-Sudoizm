@@ -646,6 +646,37 @@ class TestMultiKodiPartialAccessAndSudoSyncIds(unittest.TestCase):
         mock_dialog.ok.assert_called_once()
         self.assertIn("Raport z operacji", mock_dialog.ok.call_args[0][1])
 
+    def test_06b2_default_assignids_says_when_another_assignment_runs(self):
+        """2.3.0: a manual assignment blocked by the one after a scan tells the user instead of closing silently."""
+        import default
+        addon_kodi = FakeAddon({
+            "base_path": self.base_path,
+            "client_name": "Kodi Salon",
+            "sudosync_id_enabled": "true",
+            "sudosync_id_prefix": "DOM",
+            "sudosync_id_prefix_last_synced": "DOM",
+            "sudosync_id_last_number": "0",
+        })
+        mock_dialog = MagicMock()
+        mock_progress = MagicMock()
+        mock_progress.iscanceled.return_value = False
+        movie_item = {"movieid": 1, "title": "Test Movie", "file": "smb://nas/wideo/filmy/TestMovie.mkv",
+                      "year": 2024, "uniqueid": {}}
+        self.vfs.files["smb://nas/wideo/filmy/TestMovie.nfo"] = b"<movie><title>Test Movie</title></movie>"
+        self.active_profile = "/profile_kodi1"
+        p = self._patch_env(addon_kodi)
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7], p[8], p[9], p[10], p[11], p[12], \
+                patch.object(default.xbmcgui, "Dialog", return_value=mock_dialog), \
+                patch.object(default.xbmcgui, "DialogProgress", return_value=mock_progress), \
+                patch.object(sudosync_core, "collect_library", return_value=([movie_item], [])), \
+                patch.object(sudosync_core, "rpc", side_effect=lambda method, params=None: {}), \
+                patch.object(sudosync_core, "_acquire_assign_ids_lock", return_value=False), \
+                patch.object(sys, "argv", ["default.py", "assignids"]):
+            default.main()
+        mock_dialog.ok.assert_called_once()
+        self.assertIn("jest już wykonywane", mock_dialog.ok.call_args[0][1])
+        self.assertNotIn("TestMovie", self.vfs.files["smb://nas/wideo/filmy/TestMovie.nfo"].decode("utf-8")[20:])
+
     def test_06c_default_assignids_user_cancellation_phase_1(self):
         """User cancels during Phase 1: Phase 2 is skipped, dialog closes, no files written."""
         import default

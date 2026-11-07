@@ -224,8 +224,7 @@ class DuplicateRepairTests(RepairFixture):
         self.vfs._norm = lambda path: str(path).replace("\\", "/").lower()
         result, _ = self._repair()
         self.assertEqual(result["renumbered"], 1)  # only the real duplicate (B), one number used
-        self.assertEqual(len(result["repeated"]), 1)
-        self.assertIn("SERIALE/a/A1.mkv", result["repeated"][0])
+        self.assertEqual(result["repeated"], ["Show A, sezon 1"])  # where to look, no paths
 
 
 class RepairSafetyTests(RepairFixture):
