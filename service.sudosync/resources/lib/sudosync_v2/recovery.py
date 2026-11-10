@@ -16,6 +16,7 @@ from copy import deepcopy
 
 from .transaction import TransactionError, _field_matches
 from .identity import identity_matches_kodi_item, is_valid_serialized_identity
+from .kodi_rpc import is_missing_item_error
 
 
 JOURNAL_FORMAT = "SudoSync v2 transaction journal"
@@ -174,7 +175,16 @@ class RecoveryRunner(object):
                     continue
                 if self._kodi.is_video_playing():
                     raise TransactionError("video playback started during recovery")
-                actual = self._details(item)
+                try:
+                    actual = self._details(item)
+                except Exception as exc:
+                    # The item was removed from this Kodi library after the
+                    # interruption (e.g. library clean): nothing can or may be
+                    # written to it, so it is skipped and the session can finish.
+                    if is_missing_item_error(exc):
+                        supersede(item, "item_missing")
+                        continue
+                    raise
                 if not isinstance(actual, dict):
                     raise TransactionError("Kodi returned invalid details during recovery")
                 if not identity_matches_kodi_item(item["identity"], actual):

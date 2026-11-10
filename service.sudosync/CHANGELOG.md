@@ -1,6 +1,7 @@
 Niewydane
 =========
 
+- Naprawa trwałej blokady synchronizacji: jeśli Kodi zostało przerwane w trakcie synchronizacji, a potem z jego biblioteki zniknęła któraś z synchronizowanych pozycji (np. po czyszczeniu biblioteki), dokończenie przerwanej operacji kończyło się błędem „VideoLibrary.GetMovieDetails failed (-32602): Invalid params” przy każdym starcie. Znacznik operacji zostawał na NAS-ie i wstrzymywał synchronizację na wszystkich Kodi. Teraz taka pozycja jest pomijana bez zapisu, a operacja zostaje dokończona.
 - Gdy synchronizację wstrzymuje niedokończona operacja innego Kodi (np. Kodi zamknięte przez Androida w trakcie synchronizacji), wtyczka pokazuje okno z nazwą tamtego urządzenia, czasem rozpoczęcia operacji i prośbą o uruchomienie na nim Kodi i zamknięcie go z menu Kodi. Dotąd informacja trafiała tylko do dziennika Kodi, a synchronizacja stała bez słowa. Okno pojawia się raz na uruchomienie Kodi, nie w trakcie odtwarzania. Cudza operacja nadal nie jest przejmowana.
 
 KodiBridge by Sudoizm 2.3.0

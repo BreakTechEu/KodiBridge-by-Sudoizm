@@ -121,7 +121,25 @@ _SYNC_FIELDS = frozenset(("playcount", "lastplayed", "resume", "userrating"))
 
 
 class KodiRpcError(RuntimeError):
-    """Kodi JSON-RPC transport, protocol, or method error."""
+    """Kodi JSON-RPC transport, protocol, or method error.
+
+    ``code`` is the JSON-RPC error code when Kodi answered with an error
+    object, otherwise None.
+    """
+
+    def __init__(self, message, code=None):
+        super(KodiRpcError, self).__init__(message)
+        self.code = code
+
+
+# Kodi answers GetMovieDetails/GetEpisodeDetails for a library ID that no
+# longer exists with "Invalid params" (the ID fails Kodi's parameter check).
+JSONRPC_INVALID_PARAMS = -32602
+
+
+def is_missing_item_error(exc):
+    """True when a details call failed because the Kodi library ID does not exist."""
+    return isinstance(exc, KodiRpcError) and getattr(exc, "code", None) == JSONRPC_INVALID_PARAMS
 
 
 class KodiJsonRpcAdapter(object):
@@ -562,7 +580,7 @@ class KodiJsonRpcAdapter(object):
                 code, message = error.get("code"), error.get("message", "unknown error")
             else:
                 code, message = None, "malformed JSON-RPC error"
-            raise KodiRpcError("Kodi JSON-RPC {} failed ({}): {}".format(method, code, message))
+            raise KodiRpcError("Kodi JSON-RPC {} failed ({}): {}".format(method, code, message), code=code)
         if "result" not in response:
             raise KodiRpcError("Kodi JSON-RPC response for {} has no result".format(method))
         return response["result"]
