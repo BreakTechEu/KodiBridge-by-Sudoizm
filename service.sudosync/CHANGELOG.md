@@ -1,3 +1,8 @@
+Niewydane
+=========
+
+- Gdy synchronizację wstrzymuje niedokończona operacja innego Kodi (np. Kodi zamknięte przez Androida w trakcie synchronizacji), wtyczka pokazuje okno z nazwą tamtego urządzenia, czasem rozpoczęcia operacji i prośbą o uruchomienie na nim Kodi i zamknięcie go z menu Kodi. Dotąd informacja trafiała tylko do dziennika Kodi, a synchronizacja stała bez słowa. Okno pojawia się raz na uruchomienie Kodi, nie w trakcie odtwarzania. Cudza operacja nadal nie jest przejmowana.
+
 KodiBridge by Sudoizm 2.3.0
 ===========================
 

@@ -239,6 +239,7 @@ def _live_retry_delay_seconds(result, live_poll):
 
 # Problem summary already shown in a notification during this service run.
 _COVERAGE_NOTIFIED = {"key": None}
+_FOREIGN_SESSION_NOTIFIED = {"session_id": None}
 # True from the start of a video scan until the KodiBridge ID assignment after it.
 _ASSIGN_AFTER_SCAN = {"pending": False}
 
@@ -339,6 +340,30 @@ def _assign_ids_after_scan(base_path, abort_requested):
     return result
 
 
+def _report_foreign_session(v2_runtime, recovery):
+    """Tell the user that another Kodi's unfinished operation blocks synchronization.
+
+    Shown once per blocking session while the service runs, never during
+    video playback (it is shown at the next blocked cycle after playback).
+    The marker is never taken over: only its owner may finish the operation.
+    """
+    if not isinstance(recovery, dict) or recovery.get("status") != "blocked":
+        return
+    session_id = recovery.get("session_id") or "?"
+    if session_id == _FOREIGN_SESSION_NOTIFIED["session_id"] or _is_playing_video():
+        return
+    from resources.lib.sudosync_v2.foreign_session import describe_foreign_session, owner_client_name
+    catalog = getattr(v2_runtime, "catalog", None)
+    name = owner_client_name(getattr(catalog, "load", None), recovery.get("owner_client_id"))
+    title, message, log_line = describe_foreign_session(recovery, name)
+    _FOREIGN_SESSION_NOTIFIED["session_id"] = session_id
+    log(log_line, xbmc.LOGERROR)
+    try:
+        xbmcgui.Dialog().ok(title, message)
+    except Exception:
+        pass
+
+
 def _record_coverage(v2_runtime):
     """Store the KodiBridge ID coverage of the last library read and tell the user about problems.
 
@@ -429,6 +454,7 @@ def _run_live_cycle(
     if v2_status == "blocked":
         log("V2 live sync blocked by unrecovered session; skipping cycle until resolved.", xbmc.LOGERROR)
         update_local_status_from_v2(error="blocked: unrecovered v2 session")
+        _report_foreign_session(v2_runtime, v2_result.get("recovery"))
         return {"busy": True, "blocked": True, "v2": v2_result, "applied_items": 0}
 
     if v2_status not in ("committed", "no_changes", "deferred"):
@@ -576,6 +602,7 @@ def _run_service():
             init = shared.get("initialization") or {}
             if v2_blocked:
                 log("Skipping startup synchronization because v2 session recovery is blocked.", xbmc.LOGERROR)
+                _report_foreign_session(v2_runtime, (v2_startup or {}).get("recovery"))
             elif v2_runtime is not None and isinstance(v2_startup, dict) and v2_startup.get("status") == "deferred":
                 log("Startup synchronization deferred: v2 session recovery is deferred.", xbmc.LOGINFO)
                 live_retry_not_before = time.time() + LIVE_BUSY_RETRY_SECONDS
