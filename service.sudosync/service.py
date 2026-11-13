@@ -89,8 +89,30 @@ class SudoSyncMonitor(_MonitorBase):
         self.user_update_dirty = False
         self.scan_assign_pending = False
         self.scan_finished_at = 0.0
+        self.id_mode = None
+
+    def _note_id_mode(self):
+        """Run a sync cycle right away when the KodiBridge ID option was switched.
+
+        The option selects the working mode (matching by KodiBridge ID, or by
+        external IDs alone); the next cycle rebuilds the snapshot in the new mode.
+        """
+        try:
+            mode = bool(addon_settings().get("sudosync_id_enabled"))
+        except Exception:
+            return
+        if self.id_mode is not None and mode != self.id_mode:
+            log("KodiBridge ID option switched {}: synchronization mode changed.".format("on" if mode else "off"),
+                xbmc.LOGINFO)
+            _COVERAGE_NOTIFIED["key"] = None
+            if not mode:
+                self.scan_assign_pending = False
+                _ASSIGN_AFTER_SCAN["pending"] = False
+            self._mark_dirty()
+        self.id_mode = mode
 
     def onSettingsChanged(self):
+        self._note_id_mode()
         try:
             from resources.lib.sudosync_core import addon_settings
             from resources.lib.sudosync_bootstrap import read_sudosync_cfg, write_sudosync_cfg
@@ -250,9 +272,29 @@ _ASSIGN_AFTER_SCAN = {"pending": False}
 
 
 def coverage_problem_summary(coverage):
-    """Return (key, message) for coverage problems, or (None, None) when complete."""
+    """Return (key, message) for coverage problems, or (None, None) when complete.
+
+    Without the KodiBridge ID option (coverage mode "external") a missing
+    KodiBridge ID is not a problem; items without an external ID are ignored
+    by design and not reported either.
+    """
     if not isinstance(coverage, dict):
         return None, None
+    if coverage.get("mode") == "external":
+        shared = sum(int((coverage.get(t) or {}).get("ambiguous") or 0) for t in ("movie", "episode"))
+        repeated = sum(int((coverage.get(t) or {}).get("repeated") or 0) for t in ("movie", "episode"))
+        unreadable = int(coverage.get("unreadable_nfo") or 0)
+        parts = []
+        if shared:
+            parts.append("niesynchronizowane (wspólny identyfikator zewnętrzny): {}".format(shared))
+        if repeated:
+            parts.append("ten sam plik dwa razy w bibliotece: {}".format(repeated))
+        if unreadable:
+            parts.append("nieczytelne .nfo: {}".format(unreadable))
+        if not parts:
+            return None, None
+        return (("external", shared, unreadable, repeated),
+                "Pozycje biblioteki: " + ", ".join(parts) + ". Szczegóły w oknie statusu KodiBridge.")
     totals = {}
     for key in ("missing", "duplicates", "ambiguous", "repeated"):
         totals[key] = sum(int((coverage.get(t) or {}).get(key) or 0) for t in ("movie", "episode"))
@@ -420,7 +462,8 @@ def _record_coverage(v2_runtime):
     _COVERAGE_NOTIFIED["key"] = key
     log("KodiBridge ID coverage problems: {}".format(message), xbmc.LOGWARNING)
     try:
-        xbmcgui.Dialog().notification("KodiBridge — KodiBridge ID", message, xbmcgui.NOTIFICATION_WARNING, 10000)
+        title = "KodiBridge" if coverage.get("mode") == "external" else "KodiBridge — KodiBridge ID"
+        xbmcgui.Dialog().notification(title, message, xbmcgui.NOTIFICATION_WARNING, 10000)
     except Exception:
         pass
 
@@ -528,6 +571,7 @@ def run_service_guarded(service_guard, runner):
 def _run_service():
     monitor = SudoSyncMonitor()
     settings = addon_settings()
+    monitor.id_mode = bool(settings.get("sudosync_id_enabled"))
     
     from resources.lib.sudosync_bootstrap import (
         enforce_network_version_guard,
@@ -584,6 +628,9 @@ def _run_service():
                 # With the network KodiBridge ID option enabled, media are matched
                 # only by KodiBridge ID; external IDs are a fallback otherwise.
                 sudosync_only=lambda: bool(addon_settings().get("sudosync_id_enabled")),
+                # With the option disabled only items with an external ID of
+                # their own are synchronized and KodiBridge IDs are not used.
+                external_only=lambda: not bool(addon_settings().get("sudosync_id_enabled")),
                 renumbered_ids=lambda: renumbered_sudosync_ids(_SHARED_VIEW["data"]),
             )
             # Recovery only: the library scan is done once, by the first sync cycle.

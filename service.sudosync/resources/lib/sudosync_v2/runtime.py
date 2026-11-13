@@ -543,11 +543,14 @@ def build_mapped_native_lock_factory(shared_base_path, native_shared_path,
 
 def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
                      client_id, client_name, max_records=100000,
-                     abort_requested=None, sudosync_only=False, renumbered_ids=None):
+                     abort_requested=None, sudosync_only=False, renumbered_ids=None,
+                     external_only=False):
     """Wire v2 adapters and runners without enabling any library writes.
 
     ``sudosync_only`` (bool or callable) restricts cross-client matching to the
-    KodiBridge ID when the network option is enabled.
+    KodiBridge ID when the network option is enabled. ``external_only`` (bool
+    or callable) is the mode with the option disabled: only items with an
+    external ID of their own are synchronized, by external IDs alone.
 
     ``lock_factory`` must serialize access according to the configured operating
     model. For the current single-active-Kodi model, ProcessLocalLockFactory is
@@ -582,6 +585,7 @@ def build_v2_runtime(kodi, shared_backend, shared_base_path, lock_factory,
         abort_requested=abort_requested,
         sudosync_only=sudosync_only,
         renumbered_ids=renumbered_ids,
+        external_only=external_only,
     )
     service_runtime = V2ServiceRuntime(client_id, recovery, engine, abort_requested=abort_requested)
     transaction_runner = TransactionRunner(
@@ -606,7 +610,7 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
                           lock_factory, client_id, client_name, vfs_module=None,
                           max_records=100000, abort_requested=None,
                           cache_path=None, on_nfo_cached=None, sudosync_only=False,
-                          renumbered_ids=None):
+                          renumbered_ids=None, external_only=False):
     """Compose a Kodi runtime with JSON-RPC and NFO reads provided by Kodi VFS.
 
     A process-local lock follows the project's single-active-Kodi operating
@@ -632,4 +636,5 @@ def build_kodi_v2_runtime(execute_jsonrpc, shared_backend, shared_base_path,
         abort_requested=abort_requested,
         sudosync_only=sudosync_only,
         renumbered_ids=renumbered_ids,
+        external_only=external_only,
     )

@@ -71,6 +71,13 @@ W SudoSync 2.x identyfikacja nie ogranicza się do pozycji posiadających zewnę
 - Blokada `system/assign_ids.lock` na NAS nadal szereguje przypisywanie, żeby dwa Kodi nie zapisywały jednocześnie tych samych plików `.nfo`.
 - Duplikat może powstać tylko przez skopiowanie `.nfo` razem z plikiem wideo; naprawa nadaje wtedy nowy UUID.
 
+### 3.2b. Tryb pracy: z KodiBridge ID albo bez (od 2.3.3)
+Opcja sieciowa `sudosync_id_enabled` wybiera tryb; usługa czyta ją w każdym cyklu, więc przełączenie działa także po pierwszym uruchomieniu (`SudoSyncMonitor._note_id_mode` wymusza cykl od razu).
+- **Z KodiBridge ID** (`sudosync_only`): dopasowanie między urządzeniami wyłącznie po KodiBridge ID; pokrycie i komunikaty dotyczą KodiBridge ID.
+- **Bez KodiBridge ID** (`external_only`): silnik widzi tylko pozycje z własnym identyfikatorem zewnętrznym (`snapshot.split_external_items`, `SyncEngine._library_view`). KodiBridge ID jest usuwany z identyfikatorów pozycji, pozycje bez identyfikatora zewnętrznego są pomijane, a pozycje dzielące identyfikator zewnętrzny w jednej bibliotece nie wchodzą do snapshotu (dotąd zatrzymywały cały snapshot błędem). Dopasowanie po `EXTERNAL_KINDS`. Pokrycie liczy `external_id_coverage` (`mode: external`): brak KodiBridge ID nie jest problemem, pozycje pominięte są tylko policzone w oknie statusu, pozycje ze wspólnym identyfikatorem są zgłaszane. Nadawanie i naprawa ID są wyłączone.
+- **Przełączenie:** rekord poprzedniego snapshotu jest odnajdywany po wspólnym identyfikatorze, więc historia pól pozycji z identyfikatorem zewnętrznym zostaje. Pozycje pominięte w trybie bez KodiBridge ID wracają po włączeniu opcji jako nowe (wersja 0): stan obejrzany na jednym Kodi przechodzi na pozostałe, a różne niepuste stany trafiają do zwykłego rozstrzygania konfliktów.
+- Grupowanie kopii (3.2a) działa przed tym filtrem także w trybie bez KodiBridge ID: kopie z tym samym KodiBridge ID są jedną pozycją.
+
 ### 3.2a. Kopie jednego wideo (2.2.14)
 - Pliki z tym samym KodiBridge ID, wspólnym identyfikatorem zewnętrznym i bez sprzecznego to kopie jednego wideo (`sudosync_v2/copies.py`: `same_video`, `find_copy_groups`). Identyczny `.nfo` oznacza ten sam materiał, także przy odcinkach.
 - Od 2.2.16 wpisy jednego pliku pod różną pisownią ścieżki należą do grupy kopii razem z nim (`only_repeated_spellings`); plik wieloodcinkowy nadal nie jest kopią.

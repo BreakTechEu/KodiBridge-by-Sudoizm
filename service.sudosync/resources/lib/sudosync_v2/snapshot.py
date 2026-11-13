@@ -19,7 +19,7 @@ import re
 import uuid
 
 from . import FORMAT_NAME, SCHEMA_VERSION, SYNC_FIELDS
-from .identity import identifiers_from_kodi_item, normalize_identifier
+from .identity import EXTERNAL_KINDS, identifiers_from_kodi_item, normalize_identifier
 from .schema import validate_snapshot
 
 
@@ -544,6 +544,76 @@ def same_file_key(path):
     return text.casefold()
 
 
+def split_external_items(items, media_type):
+    """Library view for the mode without KodiBridge ID.
+
+    Returns ``(kept, no_external, shared)``. ``kept`` are copies of the items
+    that are identified by external IDs alone (their KodiBridge ID, if any, is
+    removed). ``no_external`` have no external ID and ``shared`` share an
+    external ID with another item of this library; neither can be told apart
+    from other items without a KodiBridge ID, so both are left out of
+    synchronization. An item whose identifiers cannot be read is kept as it is
+    (the snapshot builder reports it).
+    """
+    entries, owners = [], {}
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict):
+            entries.append((item, None))
+            continue
+        try:
+            ids = identifiers_from_kodi_item(item)
+        except ValueError:
+            entries.append((item, None))
+            continue
+        external = dict((kind, ids[kind]) for kind in EXTERNAL_KINDS if kind in ids)
+        clean = dict(item)
+        clean["uniqueid"] = dict(external)
+        clean.pop("imdbnumber", None)
+        keys = tuple((media_type, kind, value) for kind, value in sorted(external.items()))
+        for key in keys:
+            owners[key] = owners.get(key, 0) + 1
+        entries.append((clean, keys))
+    kept, no_external, shared = [], [], []
+    for clean, keys in entries:
+        if keys is None:
+            kept.append(clean)
+        elif not keys:
+            no_external.append(clean)
+        elif any(owners[key] > 1 for key in keys):
+            shared.append(clean)
+        else:
+            kept.append(clean)
+    return kept, no_external, shared
+
+
+def external_id_coverage(movies, episodes, max_examples=COVERAGE_MAX_EXAMPLES, max_places=COVERAGE_MAX_PLACES):
+    """Coverage for the mode without KodiBridge ID (``mode`` = ``external``).
+
+    Same shape as kodibridge_id_coverage. ``with_id`` counts the synchronized
+    items, ``missing`` and ``duplicates`` (KodiBridge ID problems) are always 0,
+    ``ambiguous`` counts items left out because they share an external ID and
+    ``no_external`` the items left out because they have none (not a problem:
+    they are ignored by design). ``repeated`` is unchanged.
+    """
+    result = kodibridge_id_coverage(movies, episodes, max_examples=max_examples, max_places=max_places)
+    for media_type, source in (("movie", movies), ("episode", episodes)):
+        kept, no_external, shared = split_external_items(source, media_type)
+        entry = result[media_type]
+        entry["with_id"] = len(kept)
+        entry["missing"] = 0
+        entry["duplicates"] = 0
+        entry["ambiguous"] = len(shared)
+        entry["no_external"] = len(no_external)
+        entry["examples"]["missing"] = []
+        entry["examples"]["duplicates"] = []
+        entry["examples"]["ambiguous"] = [_item_label(item) for item in shared[:max_examples]]
+        entry["places"]["missing"] = []
+        entry["places"]["duplicates"] = []
+        entry["places"]["ambiguous"] = _places([item_place(item) for item in shared], max_places)
+    result["mode"] = "external"
+    return result
+
+
 def coverage_has_problems(coverage):
     return any(
         isinstance(coverage.get(t), dict)
@@ -555,22 +625,30 @@ def coverage_has_problems(coverage):
 
 def report_kodibridge_id_coverage(client_id, coverage):
     """Log the coverage once per change: WARNING with examples when incomplete."""
+    external = coverage.get("mode") == "external"
     key = repr(sorted((t, sorted((k, v) for k, v in coverage.get(t, {}).items() if k != "examples"))
-                      for t in ("movie", "episode"))) + repr(coverage.get("unreadable_nfo"))
+                      for t in ("movie", "episode"))) + repr(coverage.get("unreadable_nfo")) + repr(external)
     if _LAST_COVERAGE_REPORT.get(client_id) == key:
         return
     _LAST_COVERAGE_REPORT[client_id] = key
     lines = []
     for media_type, name in (("movie", "movies"), ("episode", "episodes")):
         c = coverage.get(media_type) or {}
+        if external:
+            lines.append("{}: {}/{} synchronized by external ID, ignored without external ID {}, "
+                         "left out (shared external ID) {}, files listed under several paths {}".format(
+                             name, c.get("with_id", 0), c.get("total", 0), c.get("no_external", 0),
+                             c.get("ambiguous", 0), c.get("repeated", 0)))
+            continue
         lines.append("{}: {}/{} with KodiBridge ID, missing {}, duplicate IDs {}, ambiguous external IDs {}, "
                      "files listed under several paths {}".format(
                          name, c.get("with_id", 0), c.get("total", 0), c.get("missing", 0), c.get("duplicates", 0),
                          c.get("ambiguous", 0), c.get("repeated", 0)))
     if coverage.get("unreadable_nfo"):
         lines.append("unreadable .nfo files: {}".format(coverage["unreadable_nfo"]))
+    title = "Library coverage (KodiBridge ID off)" if external else "KodiBridge ID coverage"
     if not coverage_has_problems(coverage):
-        logger.info("KodiBridge ID coverage complete: %s", "; ".join(lines))
+        logger.info("%s complete: %s", title, "; ".join(lines))
         return
     examples = []
     for media_type in ("movie", "episode"):
@@ -578,8 +656,8 @@ def report_kodibridge_id_coverage(client_id, coverage):
         for kind in ("missing", "duplicates", "ambiguous", "repeated"):
             for entry in ex.get(kind) or []:
                 examples.append("{} {} {}".format(media_type, kind, entry))
-    logger.warning("KodiBridge ID coverage incomplete: %s. Examples: %s",
-                   "; ".join(lines), " | ".join(examples) or "-")
+    logger.warning("%s incomplete: %s. Examples: %s",
+                   title, "; ".join(lines), " | ".join(examples) or "-")
 
 
 def _identity_keys(media_type, ids):

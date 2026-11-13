@@ -1,3 +1,14 @@
+Niewydane
+=========
+
+Opcja KodiBridge ID przełącza tryb pracy wtyczki:
+
+- Przy wyłączonej opcji wtyczka pracuje bez KodiBridge ID: dopasowuje pozycje między Kodi wyłącznie po identyfikatorach IMDb/TMDb/TVDb/Trakt i nie używa KodiBridge ID zapisanych wcześniej w plikach .nfo. Dotąd w tym trybie nadal dopasowywała pozycje po KodiBridge ID, jeśli były w plikach.
+- W trybie bez KodiBridge ID znikają komunikaty o brakujących i zdublowanych KodiBridge ID (powiadomienie przy starcie, okno statusu, dziennik). Okno statusu pokazuje, ile pozycji jest synchronizowanych.
+- Pozycje bez identyfikatora zewnętrznego są w tym trybie pomijane; okno statusu podaje tylko ich liczbę.
+- Pozycje dzielące jeden identyfikator zewnętrzny (np. dwie wersje filmu) nie są w tym trybie synchronizowane i są wskazane w oknie statusu. Dotąd taka para zatrzymywała całą synchronizację.
+- Opcję można przełączyć w każdej chwili: tryb zmienia się od razu, bez restartu Kodi. Po ponownym włączeniu opcji pozycje wcześniej pomijane wracają do synchronizacji; gdy w międzyczasie ta sama pozycja została obejrzana na dwóch Kodi z różnym stanem, wtyczka pyta, który stan zostawić.
+
 KodiBridge by Sudoizm 2.3.2
 ===========================
 

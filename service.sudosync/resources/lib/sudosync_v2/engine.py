@@ -20,7 +20,10 @@ from .kodi_rpc import OperationAborted, invoke_with_abort, is_aborted
 from .planning import build_sync_plan
 from .initialization import build_initialization_plan
 from .identity import matching_kinds
-from .snapshot import build_snapshot, kodibridge_id_coverage, report_kodibridge_id_coverage
+from .snapshot import (
+    build_snapshot, external_id_coverage, kodibridge_id_coverage, report_kodibridge_id_coverage,
+    split_external_items,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +56,7 @@ class SyncEngine(object):
 
     def __init__(self, kodi, client_id, client_name, load_previous_local,
                  load_peer_snapshots, max_records=100000, abort_requested=None,
-                 sudosync_only=False, renumbered_ids=None):
+                 sudosync_only=False, renumbered_ids=None, external_only=False):
         if kodi is None:
             raise ValueError("kodi adapter is required")
         if not callable(load_previous_local) or not callable(load_peer_snapshots):
@@ -67,6 +70,10 @@ class SyncEngine(object):
         self._abort_requested = abort_requested
         # bool or zero-argument callable (the network setting may change at runtime)
         self._sudosync_only = sudosync_only
+        # bool or zero-argument callable: the mode without KodiBridge ID. Only
+        # items with an external ID of their own are synchronized and a
+        # KodiBridge ID present in a .nfo is not used.
+        self._external_only = external_only
         # dict or zero-argument callable: KodiBridge IDs replaced by the
         # duplicate repair (old ID -> new IDs), read from the NAS
         self._renumbered_ids = renumbered_ids
@@ -84,16 +91,33 @@ class SyncEngine(object):
     def _record_coverage(self, movies, episodes):
         """Store KodiBridge ID coverage of the library just read (never fails the cycle)."""
         try:
-            coverage = kodibridge_id_coverage(movies, episodes)
+            if self._is_external_only():
+                coverage = external_id_coverage(movies, episodes)
+            else:
+                coverage = kodibridge_id_coverage(movies, episodes)
             coverage["unreadable_nfo"] = len(list(getattr(self._kodi, "skipped_nfos", []) or []))
             self.last_coverage = coverage
             report_kodibridge_id_coverage(self._client_id, coverage)
         except Exception as exc:
             logger.debug("KodiBridge ID coverage not computed: %s", exc)
 
+    def _is_sudosync_only(self):
+        return bool(self._sudosync_only() if callable(self._sudosync_only) else self._sudosync_only)
+
+    def _is_external_only(self):
+        if self._is_sudosync_only():
+            return False
+        return bool(self._external_only() if callable(self._external_only) else self._external_only)
+
     def _identity_kinds(self):
-        flag = self._sudosync_only() if callable(self._sudosync_only) else self._sudosync_only
-        return matching_kinds(bool(flag))
+        return matching_kinds(self._is_sudosync_only(), self._is_external_only())
+
+    def _library_view(self, movies, episodes):
+        """Items that take part in synchronization in the current mode."""
+        if not self._is_external_only():
+            return movies, episodes
+        return (split_external_items(movies, "movie")[0] if isinstance(movies, list) else movies,
+                split_external_items(episodes, "episode")[0] if isinstance(episodes, list) else episodes)
 
     def preview(self, abort_requested=None, suppress_local_changes=False):
         """Return a candidate snapshot and plan without publishing or writing."""
@@ -133,6 +157,7 @@ class SyncEngine(object):
                 raise
 
             self._record_coverage(movies, episodes)
+            movies, episodes = self._library_view(movies, episodes)
 
             if is_aborted(abort):
                 raise OperationAborted("Preview aborted before loading previous snapshot")
@@ -191,9 +216,13 @@ class SyncEngine(object):
             partial_movies = movies or getattr(exc, "partial_items", [])
             candidate = None
             try:
-                candidate = build_snapshot(
+                partial_movies, partial_episodes = self._library_view(
                     partial_movies if isinstance(partial_movies, list) else [],
                     episodes if isinstance(episodes, list) else [],
+                )
+                candidate = build_snapshot(
+                    partial_movies,
+                    partial_episodes,
                     self._client_id,
                     self._client_name,
                     max_records=self._max_records,
@@ -242,6 +271,7 @@ class SyncEngine(object):
                 episodes = exc.partial_items
                 raise
             self._record_coverage(movies, episodes)
+            movies, episodes = self._library_view(movies, episodes)
             if is_aborted(abort):
                 raise OperationAborted("Local snapshot build aborted before loading previous snapshot")
             previous = invoke_with_abort(self._load_previous_local, abort)
@@ -326,6 +356,8 @@ class SyncEngine(object):
                 episodes = exc.partial_items
                 raise
 
+            movies, episodes = self._library_view(movies, episodes)
+
             if is_aborted(abort):
                 raise OperationAborted("Initialization preview aborted before loading previous snapshot")
             previous = invoke_with_abort(self._load_previous_local, abort)
@@ -373,9 +405,13 @@ class SyncEngine(object):
             partial_movies = movies or getattr(exc, "partial_items", [])
             candidate = None
             try:
-                candidate = build_snapshot(
+                partial_movies, partial_episodes = self._library_view(
                     partial_movies if isinstance(partial_movies, list) else [],
                     episodes if isinstance(episodes, list) else [],
+                )
+                candidate = build_snapshot(
+                    partial_movies,
+                    partial_episodes,
                     self._client_id,
                     self._client_name,
                     max_records=self._max_records,

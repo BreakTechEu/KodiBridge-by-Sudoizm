@@ -80,7 +80,7 @@ def show_status():
     addon_version = xbmcaddon.Addon("service.sudosync").getAddonInfo("version")
     sudosync_id_state = "WŁĄCZONE" if settings.get("sudosync_id_enabled") else "WYŁĄCZONE"
 
-    coverage_text = _coverage_text(status.get("kodibridge_id_coverage"))
+    coverage_text = _coverage_text(status.get("kodibridge_id_coverage"), bool(settings.get("sudosync_id_enabled")))
     text = (
         "KodiBridge {version}\n\n"
         "Urządzenie: {name}\n"
@@ -167,24 +167,9 @@ def install_local_zip_dialog():
     install_update_from_zip_path(zip_path, show_dialogs=True)
 
 
-def _coverage_text(coverage):
-    """Describe the KodiBridge ID coverage of this Kodi's library for the status window.
-
-    For each problem only where to look: the movie, or the series and season.
-    """
-    if not isinstance(coverage, dict):
-        return "Pokrycie KodiBridge ID: — (pojawi się po pierwszym cyklu synchronizacji)"
-    movie = coverage.get("movie") or {}
-    episode = coverage.get("episode") or {}
-    lines = ["Pokrycie KodiBridge ID: filmy {}/{}, odcinki {}/{} (sprawdzono: {})".format(
-        movie.get("with_id", 0), movie.get("total", 0),
-        episode.get("with_id", 0), episode.get("total", 0),
-        coverage.get("checked_at") or "—",
-    )]
+def _problem_lines(movie, episode, kinds):
     problems = []
-    for key, label in (("missing", "bez ID"), ("duplicates", "zdublowane ID"),
-                       ("ambiguous", "wspólne ID zewnętrzne bez KodiBridge ID"),
-                       ("repeated", "ten sam plik dwa razy w bibliotece")):
+    for key, label in kinds:
         count = int(movie.get(key) or 0) + int(episode.get(key) or 0)
         if not count:
             continue
@@ -196,6 +181,50 @@ def _coverage_text(coverage):
         problems.append("{}: {}".format(label, count))
         if places:
             problems.extend("  – " + place for place in places)
+    return problems
+
+
+def _coverage_text(coverage, id_enabled=True):
+    """Describe the coverage of this Kodi's library for the status window.
+
+    For each problem only where to look: the movie, or the series and season.
+    ``id_enabled`` is the current KodiBridge ID option; a coverage recorded in
+    the other mode is not shown (the next sync cycle replaces it).
+    """
+    recorded_external = isinstance(coverage, dict) and coverage.get("mode") == "external"
+    if not isinstance(coverage, dict) or recorded_external == bool(id_enabled):
+        if id_enabled:
+            return "Pokrycie KodiBridge ID: — (pojawi się po pierwszym cyklu synchronizacji)"
+        return "Synchronizowane pozycje: — (pojawi się po pierwszym cyklu synchronizacji)"
+    movie = coverage.get("movie") or {}
+    episode = coverage.get("episode") or {}
+    if not id_enabled:
+        lines = ["Synchronizowane (według identyfikatorów zewnętrznych): filmy {}/{}, odcinki {}/{} "
+                 "(sprawdzono: {})".format(
+                     movie.get("with_id", 0), movie.get("total", 0),
+                     episode.get("with_id", 0), episode.get("total", 0),
+                     coverage.get("checked_at") or "—")]
+        ignored = int(movie.get("no_external") or 0) + int(episode.get("no_external") or 0)
+        if ignored:
+            lines.append("Pomijane, bo bez identyfikatora zewnętrznego: {}".format(ignored))
+        problems = _problem_lines(movie, episode, (
+            ("ambiguous", "niesynchronizowane (wspólny identyfikator zewnętrzny)"),
+            ("repeated", "ten sam plik dwa razy w bibliotece")))
+        if coverage.get("unreadable_nfo"):
+            problems.append("nieczytelne .nfo: {}".format(coverage["unreadable_nfo"]))
+        if problems:
+            lines.append("Do sprawdzenia:")
+            lines.extend(problems)
+        return "\n".join(lines)
+    lines = ["Pokrycie KodiBridge ID: filmy {}/{}, odcinki {}/{} (sprawdzono: {})".format(
+        movie.get("with_id", 0), movie.get("total", 0),
+        episode.get("with_id", 0), episode.get("total", 0),
+        coverage.get("checked_at") or "—",
+    )]
+    problems = _problem_lines(movie, episode, (
+        ("missing", "bez ID"), ("duplicates", "zdublowane ID"),
+        ("ambiguous", "wspólne ID zewnętrzne bez KodiBridge ID"),
+        ("repeated", "ten sam plik dwa razy w bibliotece")))
     if coverage.get("unreadable_nfo"):
         problems.append("nieczytelne .nfo: {}".format(coverage["unreadable_nfo"]))
     if problems:

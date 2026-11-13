@@ -100,16 +100,21 @@ def is_valid_serialized_identity(identity):
     return True
 
 SUDOSYNC_ONLY_KINDS = ("sudosync",)
+EXTERNAL_KINDS = tuple(kind for kind in IDENTIFIER_TYPES if kind != "sudosync")
 
 
-def matching_kinds(sudosync_only):
+def matching_kinds(sudosync_only, external_only=False):
     """Return identifier kinds used for cross-client matching.
 
-    With the network KodiBridge ID option enabled only the KodiBridge ID
-    (``sudosync``) identifies media; external IDs are a fallback for networks
-    that do not use it.
+    The network KodiBridge ID option selects the working mode: enabled, only
+    the KodiBridge ID (``sudosync``) identifies media; disabled
+    (``external_only``), only the external IDs do and a KodiBridge ID found in
+    a .nfo is not used. With neither flag every kind matches (library default,
+    not used by the Kodi service).
     """
-    return SUDOSYNC_ONLY_KINDS if sudosync_only else IDENTIFIER_TYPES
+    if sudosync_only:
+        return SUDOSYNC_ONLY_KINDS
+    return EXTERNAL_KINDS if external_only else IDENTIFIER_TYPES
 
 
 def strong_aliases(media_type, identifiers, kinds=None):
