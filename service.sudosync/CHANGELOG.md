@@ -1,5 +1,5 @@
-Niewydane
-=========
+KodiBridge by Sudoizm 2.3.3
+===========================
 
 Opcja KodiBridge ID przełącza tryb pracy wtyczki:
 
