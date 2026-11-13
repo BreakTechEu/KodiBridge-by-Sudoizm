@@ -1,5 +1,5 @@
-Niewydane
-=========
+KodiBridge by Sudoizm 2.3.2
+===========================
 
 Poprawki po przeglądzie kodu 2.3.1:
 
