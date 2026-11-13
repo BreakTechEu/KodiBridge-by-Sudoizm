@@ -1,3 +1,15 @@
+Niewydane
+=========
+
+Poprawki po przeglądzie kodu 2.3.1:
+
+- Nadawanie KodiBridge ID: gdy blokadę nadawania na NAS-ie trzyma inne Kodi, nieudana próba jej zajęcia nie usuwa już cudzego pliku blokady (dotąd druga próba przechodziła). Przy zwalnianiu blokady usuwany jest tylko własny plik.
+- Blokada nadawania pozostawiona przez Kodi zabite w trakcie nadawania ID (np. przez Androida) nie wstrzymuje już nadawania na 30 minut. Wtyczka rozpoznaje, że blokadę zapisał proces Kodi, który już nie działa, i ją usuwa.
+- Nadawanie po skanowaniu biblioteki, gdy trwa inne nadawanie (np. ręczne): wtyczka czeka bez czytania biblioteki i bez otwierania okna postępu. Dotąd co kilkanaście sekund czytała od nowa pliki .nfo, a okno postępu mogło się na chwilę pojawiać.
+- Strażnik pojedynczego Kodi: podczas nadawania KodiBridge ID po skanowaniu wtyczka odświeża swoją blokadę aktywnego Kodi co 60 s. Dotąd przy nadawaniu dłuższym niż 3 minuty blokada wygasała i drugie Kodi mogło wystartować. Gdy w tym czasie blokadę przejmie inne Kodi, nadawanie zostaje przerwane.
+- Przy wyłączonej opcji KodiBridge ID skanowanie biblioteki nie wycisza już do restartu Kodi powiadomienia o problemach w bibliotece.
+- Plik .nfo jest zamykany także wtedy, gdy jego odczyt się nie powiedzie; to samo dotyczy pliku próbnego w teście zapisu folderu wspólnego.
+
 KodiBridge by Sudoizm 2.3.1
 ===========================
 

@@ -28,6 +28,7 @@ from resources.lib.sudosync_core import (
     assign_sudosync_ids,
     get_or_create_client_id,
     install_v2_log_bridge,
+    is_assign_ids_lock_busy,
     log,
     mask_vfs_credentials,
     preview_sudosync_ids,
@@ -126,7 +127,11 @@ class SudoSyncMonitor(_MonitorBase):
                 id_enabled = bool(settings.get("sudosync_id_enabled") or settings.get("enable_sudosync_id"))
             except Exception:
                 id_enabled = False
-            if id_enabled:
+            if not id_enabled:
+                # Nothing will be assigned after this scan: do not keep the
+                # "missing ID" notification muted.
+                _ASSIGN_AFTER_SCAN["pending"] = False
+            else:
                 self.scan_assign_pending = True
                 self.scan_finished_at = time.time()
                 _ASSIGN_AFTER_SCAN["pending"] = True
@@ -269,15 +274,46 @@ def coverage_problem_summary(coverage):
     return key, "Pozycje biblioteki: " + ", ".join(parts) + ". Szczegóły w oknie statusu KodiBridge."
 
 
-def _assign_ids_after_scan(base_path, abort_requested):
+# The assignment after a scan runs inside the service loop; the active-Kodi
+# lease (TTL 180 s) must be refreshed while it works.
+ASSIGN_KEEP_ALIVE_SECONDS = 60
+
+
+def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
     """Give KodiBridge IDs to library items that have none, after a video scan.
 
     Silent when no .nfo needs a new ID. Otherwise the progress window of the
     manual action is shown: every changed item is refreshed in the library,
     which would make the lists behind it flicker. Returns the result of
     assign_sudosync_ids (0 when another assignment holds the lock).
+
+    ``keep_alive`` refreshes the active-Kodi lease; it is called at most every
+    ASSIGN_KEEP_ALIVE_SECONDS and a False result (lease lost) stops the work.
     """
     from resources.lib.sudosync_core import _get_localized_string
+
+    if is_assign_ids_lock_busy(base_path):
+        # Another assignment is running: no library read and no window now.
+        return 0
+
+    service_abort = abort_requested
+    lease = {"checked_at": time.time(), "lost": False}
+
+    def abort_requested():
+        if service_abort():
+            return True
+        if lease["lost"]:
+            return True
+        if callable(keep_alive) and (time.time() - lease["checked_at"]) >= ASSIGN_KEEP_ALIVE_SECONDS:
+            lease["checked_at"] = time.time()
+            try:
+                if keep_alive() is False:
+                    lease["lost"] = True
+                    log("Nadawanie KodiBridge ID po skanowaniu przerwane: utrata dzierżawy aktywnego Kodi.",
+                        xbmc.LOGWARNING)
+            except Exception as exc:
+                log("Odświeżanie dzierżawy podczas nadawania KodiBridge ID nieudane: {}".format(exc), xbmc.LOGWARNING)
+        return lease["lost"]
 
     try:
         preview = preview_sudosync_ids(is_canceled=abort_requested)
@@ -723,7 +759,11 @@ def _run_service():
                     else:
                         monitor.scan_assign_pending = False
                         try:
-                            assign_res = _assign_ids_after_scan(settings.get("base_path"), monitor.abortRequested)
+                            lease_base = base_for_lease
+                            assign_res = _assign_ids_after_scan(
+                                settings.get("base_path"), monitor.abortRequested,
+                                keep_alive=lambda: refresh_network_active_kodi_lease(lease_base),
+                            )
                             if assign_res == 0:
                                 # Lock busy (another process/device is assigning IDs).
                                 # Re-arm debounce to retry shortly.

@@ -1204,8 +1204,10 @@ def _read_vfs_text(path, max_bytes=256 * 1024):
                 raw = f.read(max_bytes)
             return raw.decode("utf-8-sig", errors="replace")
         f = xbmcvfs.File(path)
-        raw = f.readBytes(max_bytes)
-        f.close()
+        try:
+            raw = f.readBytes(max_bytes)
+        finally:
+            f.close()
         if isinstance(raw, (bytes, bytearray)):
             return bytes(raw).decode("utf-8-sig", errors="replace")
         return str(raw or "")
@@ -2979,10 +2981,74 @@ def _remove_assign_ids_lock_file(path):
         pass
 
 
+ASSIGN_IDS_LOCK_TTL_SECONDS = 1800.0
+
+
+def _local_assign_lock_is_live(data, now):
+    """True when the local lock file belongs to an assignment still running in this Kodi.
+
+    Every script of one Kodi runs in the same process, so a lock written by
+    another process was left by a Kodi that was killed during an assignment.
+    """
+    if not isinstance(data, dict) or not data.get("locked"):
+        return False
+    try:
+        lock_ts = float(data.get("timestamp") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if lock_ts <= 0.0 or (now - lock_ts) > ASSIGN_IDS_LOCK_TTL_SECONDS:
+        return False
+    pid = data.get("pid")
+    if isinstance(pid, int) and not isinstance(pid, bool) and pid != os.getpid():
+        return False
+    return True
+
+
+def _nas_assign_lock_is_foreign(data, now, client_id):
+    """True when the NAS lock is a fresh lock of another Kodi."""
+    if not isinstance(data, dict) or not data.get("locked"):
+        return False
+    try:
+        lock_ts = float(data.get("timestamp") or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if lock_ts <= 0.0 or (now - lock_ts) > ASSIGN_IDS_LOCK_TTL_SECONDS:
+        return False
+    owner = str(data.get("client_id") or "")
+    return not (owner and client_id and owner == str(client_id))
+
+
+def _assign_ids_nas_lock_path(base):
+    return _join_vfs(base.rstrip("/") + "/", "system").rstrip("/") + "/assign_ids.lock"
+
+
+def is_assign_ids_lock_busy(base_path=None):
+    """Read-only check: is another KodiBridge ID assignment running right now?"""
+    if _ASSIGN_IDS_LOCK_HELD:
+        return True
+    now = datetime.now(timezone.utc).timestamp()
+    try:
+        local_path = os.path.join(_addon_profile_path(), "assign_ids.lock")
+        if _local_assign_lock_is_live(_read_local_json(local_path), now):
+            return True
+        base = base_path
+        if base is None:
+            base = addon_settings().get("base_path") or ""
+        base = str(base or "").strip()
+        if base:
+            nas_lock = _assign_ids_nas_lock_path(base)
+            if xbmcvfs.exists(nas_lock):
+                return _nas_assign_lock_is_foreign(_read_vfs_json(nas_lock), now, get_or_create_client_id())
+    except Exception:
+        pass
+    return False
+
+
 def _acquire_assign_ids_lock(base_path=None, auto_mode=False, s=None):
     """Acquire local and optional NAS concurrency lock for assign_sudosync_ids.
 
-    Uses os.O_CREAT | os.O_EXCL with orphan verification (1800s TTL).
+    Uses os.O_CREAT | os.O_EXCL with orphan verification (1800s TTL, or a
+    lock left by a Kodi process that no longer runs).
     Returns True if acquired, False otherwise.
     """
     global _ASSIGN_IDS_LOCK_HELD
@@ -3003,18 +3069,23 @@ def _acquire_assign_ids_lock(base_path=None, auto_mode=False, s=None):
     # Check local lock file for active or orphaned state
     local_data = _read_local_json(local_path)
     if isinstance(local_data, dict) and local_data.get("locked"):
-        lock_ts = float(local_data.get("timestamp") or 0.0)
-        if lock_ts > 0.0 and (now - lock_ts > 1800.0):
-            log("Znaleziono osieroconą blokadę assign_ids.lock (wiek > 1800s). Usuwanie...", xbmc.LOGWARNING)
-            _remove_assign_ids_lock_file(local_path)
-        elif lock_ts > 0.0:
+        if _local_assign_lock_is_live(local_data, now):
             return False
+        try:
+            lock_ts = float(local_data.get("timestamp") or 0.0)
+        except (TypeError, ValueError):
+            lock_ts = 0.0
+        if lock_ts > 0.0:
+            log("Znaleziono osieroconą blokadę assign_ids.lock (starsza niż 1800 s albo po przerwanej "
+                "pracy Kodi). Usuwanie...", xbmc.LOGWARNING)
+            _remove_assign_ids_lock_file(local_path)
 
+    client_id = get_or_create_client_id()
     lock_payload = {
         "locked": True,
         "timestamp": now,
         "pid": os.getpid(),
-        "client_id": get_or_create_client_id(),
+        "client_id": client_id,
     }
 
     # Attempt atomic creation via os.O_CREAT | os.O_EXCL if real filesystem directory
@@ -3043,22 +3114,22 @@ def _acquire_assign_ids_lock(base_path=None, auto_mode=False, s=None):
 
     # Optional NAS lock in system/ directory
     if base:
-        base_norm = base.rstrip("/") + "/"
-        nas_lock = _join_vfs(base_norm, "system").rstrip("/") + "/assign_ids.lock"
+        nas_lock = _assign_ids_nas_lock_path(base)
         try:
             if xbmcvfs.exists(nas_lock):
                 nas_data = _read_vfs_json(nas_lock)
+                if _nas_assign_lock_is_foreign(nas_data, now, client_id):
+                    # Another Kodi is assigning IDs: give up the local lock
+                    # only; the lock on the NAS belongs to that Kodi.
+                    _release_assign_ids_lock(base_path=base, release_nas=False)
+                    return False
                 if isinstance(nas_data, dict) and nas_data.get("locked"):
-                    nas_ts = float(nas_data.get("timestamp") or 0.0)
-                    if nas_ts > 0.0 and (now - nas_ts > 1800.0):
-                        log("Znaleziono osieroconą blokadę NAS assign_ids.lock (wiek > 1800s). Usuwanie...", xbmc.LOGWARNING)
-                        try:
-                            xbmcvfs.delete(nas_lock)
-                        except Exception:
-                            pass
-                    elif nas_ts > 0.0:
-                        _release_assign_ids_lock(base_path=base)
-                        return False
+                    log("Znaleziono osieroconą blokadę NAS assign_ids.lock (starsza niż 1800 s albo własna "
+                        "po przerwanej pracy Kodi). Usuwanie...", xbmc.LOGWARNING)
+                    try:
+                        xbmcvfs.delete(nas_lock)
+                    except Exception:
+                        pass
             _write_vfs_json(nas_lock, lock_payload)
         except Exception as exc:
             log("Ostrzeżenie przy zapisie blokady NAS assign_ids.lock: {}".format(exc), xbmc.LOGWARNING)
@@ -3067,8 +3138,11 @@ def _acquire_assign_ids_lock(base_path=None, auto_mode=False, s=None):
     return True
 
 
-def _release_assign_ids_lock(base_path=None, s=None):
-    """Release local and optional NAS concurrency lock for assign_sudosync_ids."""
+def _release_assign_ids_lock(base_path=None, s=None, release_nas=True):
+    """Release local and optional NAS concurrency lock for assign_sudosync_ids.
+
+    The NAS lock is removed only when it is not a fresh lock of another Kodi.
+    """
     global _ASSIGN_IDS_LOCK_HELD
     _ASSIGN_IDS_LOCK_HELD = False
 
@@ -3087,12 +3161,13 @@ def _release_assign_ids_lock(base_path=None, s=None):
         pass
     _remove_assign_ids_lock_file(local_path)
 
-    if base:
-        base_norm = base.rstrip("/") + "/"
-        nas_lock = _join_vfs(base_norm, "system").rstrip("/") + "/assign_ids.lock"
+    if base and release_nas:
+        nas_lock = _assign_ids_nas_lock_path(base)
         try:
             if xbmcvfs.exists(nas_lock):
-                xbmcvfs.delete(nas_lock)
+                now = datetime.now(timezone.utc).timestamp()
+                if not _nas_assign_lock_is_foreign(_read_vfs_json(nas_lock), now, get_or_create_client_id()):
+                    xbmcvfs.delete(nas_lock)
         except Exception:
             pass
 

@@ -124,12 +124,16 @@ def test_vfs_rw(test_dir):
         
         test_file = test_dir + "rw_test.tmp"
         f = xbmcvfs.File(test_file, 'w')
-        f.write("test")
-        f.close()
-        
+        try:
+            f.write("test")
+        finally:
+            f.close()
+
         f = xbmcvfs.File(test_file, 'r')
-        data = f.read()
-        f.close()
+        try:
+            data = f.read()
+        finally:
+            f.close()
         
         xbmcvfs.delete(test_file)
         
