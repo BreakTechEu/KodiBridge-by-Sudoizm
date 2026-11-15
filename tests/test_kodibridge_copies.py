@@ -192,5 +192,35 @@ class CopiesEndToEndTests(unittest.TestCase):
         self.assertEqual((win11.writes, android.writes), writes)
 
 
+
+class _EpisodeSource(object):
+    def __init__(self, episodes):
+        self.episodes = episodes
+
+    def get_episodes(self, abort_requested=None, progress_callback=None):
+        from copy import deepcopy
+        return deepcopy(self.episodes)
+
+
+class EpisodeCopyQualifierTests(unittest.TestCase):
+    """Copies of one episode are one item: its KodiBridge ID gets no ':sNNeNN' qualifier."""
+
+    def test_episode_copies_keep_a_plain_kodibridge_id(self):
+        from resources.lib.sudosync_v2.snapshot import build_snapshot
+        kb = new_kodibridge_id()
+
+        def episode(episodeid, path):
+            return {"episodeid": episodeid, "season": 11, "episode": 28, "file": path,
+                    "uniqueid": {"sudosync": kb, "tvdb": "362172"}, "playcount": 0,
+                    "lastplayed": "", "resume": {"position": 0.0, "total": 0.0}, "userrating": 0}
+
+        adapter = CopyAwareKodiAdapter(_EpisodeSource([
+            episode(1, "smb://nas/wideo/S11/E28.mkv"), episode(2, "D:\\Seriale\\S11\\E28.mkv")]))
+        episodes = adapter.get_episodes()
+        self.assertEqual(len(episodes), 1)
+        snap = build_snapshot([], episodes, CLIENT_A, "Kodi", logical_clock=1)
+        self.assertEqual([r["ids"]["sudosync"] for r in snap["episodes"]], [kb])
+
+
 if __name__ == "__main__":
     unittest.main()

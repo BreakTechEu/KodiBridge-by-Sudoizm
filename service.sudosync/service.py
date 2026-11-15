@@ -480,6 +480,18 @@ def _is_library_scanning():
         return False
 
 
+def _library_busy(monitor):
+    """True while a video library scan runs; checked before every sync cycle.
+
+    The monitor learns about scans from Kodi notifications; Kodi itself is
+    asked as well, so a scan whose start notification was missed (e.g. the
+    startup scan) also postpones the cycle until it ends.
+    """
+    if getattr(monitor, "scanning", False) is True:
+        return True
+    return _is_library_scanning()
+
+
 def sync_failure_is_transient(exc):
     """True when the exception chain holds a transient error (the library changed while being read)."""
     seen = set()
@@ -958,7 +970,7 @@ def _run_service():
                     and isinstance(scan_at, (int, float))
                     and scan_at > 0.0
                     and (now - scan_at) >= 3.0
-                    and not monitor.scanning
+                    and not _library_busy(monitor)
                     and not _is_playing_video()
                 ):
                     id_enabled = bool(settings.get("sudosync_id_enabled") or settings.get("enable_sudosync_id"))
@@ -1022,7 +1034,7 @@ def _run_service():
                             and event_due
                             and current_seq != playback_published_seq
                         )
-                        if (poll_due or user_event_due) and not monitor.scanning and now >= playback_retry_not_before:
+                        if (poll_due or user_event_due) and not _library_busy(monitor) and now >= playback_retry_not_before:
                             published_ok = False
                             if v2_runtime is not None:
                                 try:
@@ -1052,7 +1064,7 @@ def _run_service():
                                 # Not published: keep the event pending and retry
                                 # shortly instead of waiting for the next poll.
                                 playback_retry_not_before = time.time() + LIVE_BUSY_RETRY_SECONDS
-                    elif (event_due or poll_due) and not monitor.scanning and time.time() >= live_retry_not_before:
+                    elif (event_due or poll_due) and not _library_busy(monitor) and time.time() >= live_retry_not_before:
                         cycle_dirty_seq = getattr(monitor, "dirty_seq", 0)
                         cycle_dirty_since = monitor.dirty_since
                         suppress = bool(
@@ -1104,12 +1116,12 @@ def _run_service():
                                 monitor.scan_refresh_pending = False
                                 monitor.playback_dirty = False
                                 monitor.user_update_dirty = False
-                    if pending_conflicts and v2_runtime is not None and not monitor.scanning and not _is_playing_video():
+                    if pending_conflicts and v2_runtime is not None and not _library_busy(monitor) and not _is_playing_video():
                         to_ask, pending_conflicts = pending_conflicts, []
                         lease_path = base_for_lease
                         if prompt_and_resolve(
                             v2_runtime, to_ask, conflict_dismissed, local_client_id,
-                            is_busy=lambda: _is_playing_video() or bool(monitor.scanning),
+                            is_busy=lambda: _is_playing_video() or _library_busy(monitor),
                             abort_requested=monitor.abortRequested,
                             keep_alive=lambda: refresh_network_active_kodi_lease(lease_path),
                             failures=conflict_failures,

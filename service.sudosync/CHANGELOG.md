@@ -4,7 +4,7 @@ KodiBridge by Sudoizm 2.4.2
 Poprawki:
 
 - Synchronizacja nie staje już, gdy odcinek przestał dzielić KodiBridge ID z innym plikiem (np. po usunięciu drugiej kopii). Wcześniej taki odcinek miał w zapisanym stanie ID z dopiskiem sezonu i odcinka, a po zmianie ID bez dopisku. Wtyczka uznawała to za konflikt i pokazywała okno „BŁĄD KodiBridge – synchronizacja wstrzymana”. Teraz przyjmuje zmianę i zachowuje historię pól.
-- Odczyt biblioteki w trakcie jej skanowania (np. skanowania przy starcie Kodi) nie jest już błędem. Wtyczka nie pokazuje okna błędu, tylko ponawia synchronizację po kilku sekundach. Wie też o skanowaniu rozpoczętym, zanim sama wystartowała.
+- Przed każdym cyklem synchronizacji wtyczka pyta Kodi, czy biblioteka jest właśnie skanowana, i czeka do końca skanowania. Dotąd wiedziała tylko o skanowaniach rozpoczętych po jej starcie, więc skanowanie przy starcie Kodi mogło trafić na odczyt biblioteki i wywołać okno błędu. Gdy biblioteka zmieni się w trakcie odczytu z innego powodu (np. przez inny dodatek), wtyczka nie pokazuje okna błędu, tylko ponawia synchronizację po kilku sekundach.
 - Komunikat o konflikcie identyfikatorów w dzienniku podaje poprzednią i obecną wartość, żeby można było wskazać, którego wideo dotyczy.
 
 KodiBridge by Sudoizm 2.4.1

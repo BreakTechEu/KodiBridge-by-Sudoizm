@@ -185,6 +185,15 @@ class LibraryChangingTests(unittest.TestCase):
         with patch.object(sudosync_service.xbmc, "getCondVisibility", side_effect=RuntimeError("no GUI")):
             self.assertFalse(sudosync_service.SudoSyncMonitor().scanning)
 
+    def test_every_cycle_asks_kodi_about_a_running_scan(self):
+        monitor = MagicMock(scanning=False)
+        with patch.object(sudosync_service.xbmc, "getCondVisibility", return_value=True):
+            self.assertTrue(sudosync_service._library_busy(monitor))
+        with patch.object(sudosync_service.xbmc, "getCondVisibility", return_value=False):
+            self.assertFalse(sudosync_service._library_busy(monitor))
+            monitor.scanning = True
+            self.assertTrue(sudosync_service._library_busy(monitor))
+
 
 if __name__ == "__main__":
     unittest.main()
