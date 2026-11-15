@@ -78,6 +78,12 @@ Opcja sieciowa `sudosync_id_enabled` wybiera tryb; usługa czyta ją w każdym c
 - **Przełączenie:** rekord poprzedniego snapshotu jest odnajdywany po wspólnym identyfikatorze, więc historia pól pozycji z identyfikatorem zewnętrznym zostaje. Pozycje pominięte w trybie bez KodiBridge ID wracają po włączeniu opcji jako nowe (wersja 0): stan obejrzany na jednym Kodi przechodzi na pozostałe, a różne niepuste stany trafiają do zwykłego rozstrzygania konfliktów.
 - Grupowanie kopii (3.2a) działa przed tym filtrem także w trybie bez KodiBridge ID: kopie z tym samym KodiBridge ID są jedną pozycją.
 
+### 3.2c. Wymiana KodiBridge ID poza naprawą duplikatów
+`build_snapshot` łączy bieżącą pozycję z rekordem poprzedniego snapshotu po wszystkich typowanych identyfikatorach. Różny KodiBridge ID przy zgodnych pozostałych był dotąd przyjmowany tylko z mapą `renumbered_ids` (naprawa duplikatów); w każdym innym wypadku `SnapshotBuildError` zatrzymywał cały cykl LIVE i zapis stanu odtwarzania. Typowa przyczyna: inny program nadpisał `.nfo` bez znacznika `kodibridge`, a wtyczka nadała nowy UUID.
+- `_is_replaced_id` przyjmuje wymianę i zachowuje wersje pól, gdy: pozycja pasuje do dokładnie jednego rekordu poprzedniego snapshotu, różnica dotyczy wyłącznie KodiBridge ID, nowego ID (bez kwalifikatora odcinka) nie było w poprzednim snapshocie, starego nie używa żadna bieżąca pozycja tego typu, a kwalifikatory `:sNNeNN` są zgodne lub jednego brak.
+- Jeden rekord poprzedniego snapshotu może przejąć tylko jedna pozycja (`replaced_priors`); druga taka pozycja nadal kończy się konfliktem.
+- Inne Kodi mają w swoich snapshotach stary ID; dopasowanie po KodiBridge ID wznawia się, gdy każde z nich opublikuje snapshot z nowym ID odczytanym z tego samego `.nfo`.
+
 ### 3.2a. Kopie jednego wideo (2.2.14)
 - Pliki z tym samym KodiBridge ID, wspólnym identyfikatorem zewnętrznym i bez sprzecznego to kopie jednego wideo (`sudosync_v2/copies.py`: `same_video`, `find_copy_groups`). Identyczny `.nfo` oznacza ten sam materiał, także przy odcinkach.
 - Od 2.2.16 wpisy jednego pliku pod różną pisownią ścieżki należą do grupy kopii razem z nim (`only_repeated_spellings`); plik wieloodcinkowy nadal nie jest kopią.

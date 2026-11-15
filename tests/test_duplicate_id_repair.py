@@ -21,7 +21,7 @@ for _path in (SERVICE_DIR, LIB_DIR):
 
 import resources.lib.sudosync_bootstrap as sudosync_bootstrap  # noqa: E402
 import resources.lib.sudosync_core as sudosync_core  # noqa: E402
-from resources.lib.sudosync_v2.snapshot import SnapshotBuildError, build_snapshot  # noqa: E402
+from resources.lib.sudosync_v2.snapshot import build_snapshot  # noqa: E402
 from tests.test_multi_kodi_partial_access_and_sudosync_ids import FakeAddon, RichVirtualVfs  # noqa: E402
 
 BASE = "smb://nas/wideo/.SudoSync/"
@@ -414,9 +414,10 @@ class RenumberedSnapshotTests(unittest.TestCase):
                   "uniqueid": {"sudosync": "DOM-000010", "tvdb": "222"}}],
             CLIENT, "Kodi3", previous_snapshot=previous, logical_clock=2, renumbered_ids=renumbered)
 
-    def test_new_id_without_repair_record_is_rejected(self):
-        with self.assertRaises(SnapshotBuildError):
-            self._build(None)
+    def test_new_id_without_repair_record_keeps_history_when_old_id_is_gone(self):
+        snap = self._build(None)
+        self.assertEqual(snap["episodes"][0]["ids"]["sudosync"], "dom-000010")
+        self.assertEqual(snap["episodes"][0]["versions"], self.previous["episodes"][0]["versions"])
 
     def test_new_id_from_repair_keeps_history(self):
         snap = self._build({"dom-000005": ["dom-000010"]})

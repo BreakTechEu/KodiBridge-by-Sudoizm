@@ -207,6 +207,18 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                                         qual,
                                     )
 
+        current_bases = set()
+        for item in source:
+            if isinstance(item, dict):
+                base = _sudosync_base(_identifiers(item).get("sudosync"))
+                if base:
+                    current_bases.add(base)
+        previous_bases = set()
+        for alias in previous_by_identity[media_type]:
+            if alias[1] == "sudosync":
+                previous_bases.add(_sudosync_base(alias[2]))
+        replaced_priors = set()
+
         for index, item in enumerate(source):
             if not isinstance(item, dict):
                 raise SnapshotBuildError("{}[{}] must be an object".format(media_type, index))
@@ -251,6 +263,7 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
             for identity in identities:
                 for prior_record in previous_by_identity[media_type].get(identity, []):
                     prior_candidates[id(prior_record)] = prior_record
+            candidate_count = len(prior_candidates)
             if len(prior_candidates) > 1:
                 if has_sudosync:
                     matching_sudosync = [
@@ -289,6 +302,18 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                         logger.info(
                             "%s item got a new KodiBridge ID from the duplicate repair: %s -> %s; "
                             "keeping its field history",
+                            media_type,
+                            prior.get("ids", {}).get("sudosync"),
+                            ids.get("sudosync"),
+                        )
+                    elif conflicting_kinds == ["sudosync"] and _is_replaced_id(
+                        prior.get("ids", {}).get("sudosync"), ids.get("sudosync"),
+                        candidate_count, current_bases, previous_bases,
+                    ) and id(prior) not in replaced_priors:
+                        replaced_priors.add(id(prior))
+                        logger.info(
+                            "%s item carries a new KodiBridge ID: %s -> %s (the old ID is no longer "
+                            "in the library, other identifiers unchanged); keeping its field history",
                             media_type,
                             prior.get("ids", {}).get("sudosync"),
                             ids.get("sudosync"),
@@ -348,6 +373,26 @@ def _sudosync_base(value):
 def _sudosync_qualifier(value):
     parts = str(value or "").strip().casefold().split(":", 1)
     return parts[1] if len(parts) > 1 else ""
+
+
+def _is_replaced_id(old_value, new_value, candidate_count, current_bases, previous_bases):
+    """True when an item's KodiBridge ID was replaced outside the duplicate repair.
+
+    Happens when the .nfo lost its KodiBridge ID (rewritten by a scraper or a
+    media manager) and the item got a new one. Accepted only when the item
+    matches exactly one previous record, the new ID did not exist in the
+    previous snapshot, the old ID is no longer used by any current item and
+    episode qualifiers agree. Every other mismatch stays a conflict.
+    """
+    old_base = _sudosync_base(old_value)
+    new_base = _sudosync_base(new_value)
+    if not old_base or not new_base or old_base == new_base or candidate_count != 1:
+        return False
+    if new_base in previous_bases or old_base in current_bases:
+        return False
+    old_qualifier = _sudosync_qualifier(old_value)
+    new_qualifier = _sudosync_qualifier(new_value)
+    return not old_qualifier or not new_qualifier or old_qualifier == new_qualifier
 
 
 RENUMBER_CHAIN_LIMIT = 64

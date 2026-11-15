@@ -1,3 +1,8 @@
+Niewydane
+=========
+
+- Synchronizacja nie zatrzymuje się już, gdy pozycja dostała nowy KodiBridge ID poza naprawą duplikatów, np. po nadpisaniu pliku .nfo przez inny program i ponownym nadaniu ID. Dotąd taka pozycja blokowała cały cykl: zmiany stanu obejrzenia nie były zapisywane ani wysyłane do innych Kodi, a błąd było widać tylko w dzienniku. Teraz pozycja zachowuje swoją historię, jeżeli pasuje do dokładnie jednego wcześniejszego wpisu, różni się od niego tylko KodiBridge ID, a starego ID nie ma już w bibliotece. Każda inna niezgodność identyfikatorów nadal zatrzymuje cykl.
+
 KodiBridge by Sudoizm 2.3.3
 ===========================
 
