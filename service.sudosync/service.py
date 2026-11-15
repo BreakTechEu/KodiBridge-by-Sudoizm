@@ -268,7 +268,7 @@ def _live_retry_delay_seconds(result, live_poll):
 # Problem summary already shown in a notification during this service run.
 _COVERAGE_NOTIFIED = {"key": None}
 _FOREIGN_SESSION_NOTIFIED = {"session_id": None}
-# Set while the window about a stopped synchronization has been shown and no cycle has succeeded since.
+# Cause key of the stopped-synchronization window already shown; cleared when a cycle succeeds.
 _SYNC_FAILURE_NOTIFIED = {"key": None}
 # True from the start of a video scan until the KodiBridge ID assignment after it.
 _ASSIGN_AFTER_SCAN = {"pending": False}
@@ -445,8 +445,18 @@ def _report_foreign_session(v2_runtime, recovery):
         pass
 
 
-SYNC_FAILURE_TITLE = "KodiBridge – synchronizacja wstrzymana"
+SYNC_FAILURE_TITLE = "BŁĄD KodiBridge – synchronizacja wstrzymana"
 AUTHOR_ISSUES_URL = "https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/issues"
+
+# Known reasons of a stopped synchronization that a tool of the add-on fixes:
+# cause code -> (reason, where to find the repair).
+KNOWN_SYNC_FAILURE_CAUSES = {
+    "shared_external_without_id": (
+        "pozycje bez KodiBridge ID mają wspólny identyfikator zewnętrzny (IMDb/TMDb/TVDb/Trakt).",
+        "Ustawienia wtyczki → Prywatne wideo → „Przypisz KodiBridge ID wszystkim pozycjom wideo "
+        "w bibliotece”. Po nadaniu ID synchronizacja ruszy sama.",
+    ),
+}
 
 
 def kodi_log_path():
@@ -462,28 +472,52 @@ def kodi_log_path():
     return folder + separator + "kodi.log"
 
 
-def sync_failure_message(log_path=None):
+def sync_failure_cause(exc):
+    """Code of a known, repairable cause found anywhere in the exception chain, or None."""
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        cause = getattr(current, "cause", None)
+        if isinstance(cause, str) and cause in KNOWN_SYNC_FAILURE_CAUSES:
+            return cause
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def sync_failure_message(log_path=None, cause=None):
     """Text of the window shown when synchronization stopped on an error."""
-    where = log_path or "plik kodi.log w folderze danych Kodi"
-    return (
+    parts = [
         "Synchronizacja zatrzymała się z powodu błędu. Do czasu jego usunięcia zmiany stanu "
-        "obejrzenia z tego Kodi nie trafiają do innych urządzeń.\n"
-        "Sprawdź dziennik Kodi: {}\n"
-        "Analizę dziennika możesz zlecić swojej SI albo przesłać dziennik autorowi wtyczki: {}"
-    ).format(where, AUTHOR_ISSUES_URL)
+        "obejrzenia z tego Kodi nie trafiają do innych urządzeń."
+    ]
+    if cause in KNOWN_SYNC_FAILURE_CAUSES:
+        reason, repair = KNOWN_SYNC_FAILURE_CAUSES[cause]
+        parts.append("Przyczyna: {}\nNaprawa: {}".format(reason, repair))
+    parts.append("Szczegóły są w dzienniku Kodi:\n{}".format(
+        log_path or "plik kodi.log w folderze danych Kodi"))
+    parts.append(
+        "Analizę dziennika możesz zlecić swojej SI albo przesłać dziennik autorowi wtyczki: {}\n"
+        "Uwaga: zgłoszenia na GitHubie są publiczne, a dziennik może zawierać ścieżki do Twoich "
+        "plików. Przejrzyj go przed wysłaniem.".format(AUTHOR_ISSUES_URL)
+    )
+    return "\n\n".join(parts)
 
 
 def _report_sync_failure(exc=None):
-    """Tell the user that synchronization stopped, once until a cycle succeeds again.
+    """Tell the user that synchronization stopped, once per cause until a cycle succeeds.
 
-    The reason is in the log only. Never shown during video playback; the next
-    failed cycle after playback shows it.
+    A known cause with a repair in the add-on is named; any other reason is in
+    the log only. Never shown during video playback; the next failed cycle
+    after playback shows it.
     """
-    if _SYNC_FAILURE_NOTIFIED["key"] or _is_playing_video():
+    cause = sync_failure_cause(exc)
+    key = cause or "stopped"
+    if key == _SYNC_FAILURE_NOTIFIED["key"] or _is_playing_video():
         return
-    _SYNC_FAILURE_NOTIFIED["key"] = "stopped"
+    _SYNC_FAILURE_NOTIFIED["key"] = key
     try:
-        xbmcgui.Dialog().ok(SYNC_FAILURE_TITLE, sync_failure_message(kodi_log_path()))
+        xbmcgui.Dialog().textviewer(SYNC_FAILURE_TITLE, sync_failure_message(kodi_log_path(), cause))
     except Exception:
         pass
 

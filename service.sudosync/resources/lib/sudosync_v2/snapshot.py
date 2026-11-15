@@ -27,7 +27,19 @@ logger = logging.getLogger(__name__)
 
 
 class SnapshotBuildError(ValueError):
-    """Kodi records could not be converted into a safe snapshot."""
+    """Kodi records could not be converted into a safe snapshot.
+
+    ``cause`` is a short code of a known reason the user can fix with a tool
+    of the add-on (see service.KNOWN_SYNC_FAILURE_CAUSES); None otherwise.
+    """
+
+    def __init__(self, message, cause=None):
+        super(SnapshotBuildError, self).__init__(message)
+        self.cause = cause
+
+
+# Items without a KodiBridge ID share an external ID; assigning IDs fixes it.
+CAUSE_SHARED_EXTERNAL_WITHOUT_ID = "shared_external_without_id"
 
 
 def _utc_timestamp():
@@ -240,7 +252,10 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                         duplicate_detected = True
                         break
                     elif not (has_sudosync and prev_has_sudosync):
-                        raise SnapshotBuildError("duplicate/overlapping strong identity in {} library: {}".format(media_type, identity))
+                        raise SnapshotBuildError(
+                            "duplicate/overlapping strong identity in {} library: {}".format(media_type, identity),
+                            cause=CAUSE_SHARED_EXTERNAL_WITHOUT_ID,
+                        )
                     else:
                         # Expected for one external episode split into several
                         # parts (e.g. a finale aired in parts): each part has its

@@ -1,3 +1,13 @@
+KodiBridge by Sudoizm 2.3.5
+===========================
+
+Okno o wstrzymanej synchronizacji:
+
+- Tytuł okna zaczyna się od słowa „BŁĄD”: „BŁĄD KodiBridge – synchronizacja wstrzymana”.
+- Gdy przyczyna jest znana, a wtyczka ma narzędzie do jej usunięcia, okno podaje przyczynę i miejsce naprawy w ustawieniach wtyczki. Dotyczy to pozycji bez KodiBridge ID, które mają wspólny identyfikator zewnętrzny (naprawa: „Przypisz KodiBridge ID wszystkim pozycjom wideo w bibliotece”). Przy pozostałych błędach okno, jak dotąd, odsyła do dziennika Kodi.
+- Okno ostrzega, że zgłoszenia na GitHubie są publiczne, a dziennik może zawierać ścieżki do plików, więc warto go przejrzeć przed wysłaniem.
+- Treść wyświetla się w przewijanym oknie, bo nie mieściła się już w zwykłym okienku.
+
 KodiBridge by Sudoizm 2.3.4
 ===========================
 
