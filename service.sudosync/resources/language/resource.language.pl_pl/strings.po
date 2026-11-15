@@ -781,6 +781,14 @@ msgctxt "#32222"
 msgid "KodiBridge — KodiBridge ID"
 msgstr "KodiBridge — KodiBridge ID"
 
+msgctxt "#32223"
+msgid "A copy of the log is saved on the NAS:\n{0}"
+msgstr "Kopia dziennika jest zapisana na serwerze NAS:\n{0}"
+
+msgctxt "#32224"
+msgid "A copy of the log could not be saved on the NAS."
+msgstr "Nie udało się zapisać kopii dziennika na serwerze NAS."
+
 msgctxt "#32300"
 msgid "Invalid config.json format"
 msgstr "nieprawidłowy format config.json"

@@ -102,6 +102,7 @@ class SyncFailureWindowTests(unittest.TestCase):
             patch.object(sudosync_service, "_is_playing_video", side_effect=lambda: self.playing[0]),
             patch.object(sudosync_service.xbmcgui, "Dialog", return_value=self.dialog),
             patch.object(sudosync_service, "kodi_log_path", return_value="C:\\Kodi\\kodi.log"),
+            patch.object(sudosync_service, "save_log_copy", return_value=None),
         ):
             patcher.start()
             self.addCleanup(patcher.stop)
@@ -144,3 +145,82 @@ class SyncFailureWindowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LogCopyTests(unittest.TestCase):
+    """On an error the log is copied to the shared folder (Android hides kodi.log)."""
+
+    BASE = "smb://kodi:secret@nas/video/.KodiBridge/"
+
+    def setUp(self):
+        self.files = []
+        self.copies = []
+        self.deleted = []
+        self.copy_result = True
+        core = sys.modules["resources.lib.sudosync_core"]
+        for patcher in (
+            patch.object(sudosync_service, "addon_settings",
+                         side_effect=lambda: {"base_path": self.base, "client_name": "Salon Box!"}),
+            patch.object(sudosync_service.xbmcvfs, "copy", side_effect=self._copy),
+            patch.object(core, "_vfs_mkdirs", return_value=True),
+            patch.object(core, "_vfs_listdir", side_effect=lambda path: ([], list(self.files))),
+            patch.object(core, "_vfs_delete", side_effect=lambda path: self.deleted.append(path) or True),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.base = self.BASE
+
+    def _copy(self, source, target):
+        self.copies.append((source, target))
+        if self.copy_result:
+            self.files.append(target.rsplit("/", 1)[1])
+        return self.copy_result
+
+    def test_copy_lands_in_the_logs_folder_and_hides_the_password(self):
+        shown = sudosync_service.save_log_copy(now=0)
+        self.assertEqual(self.copies[0][0], "special://logpath/kodi.log")
+        self.assertTrue(self.copies[0][1].startswith(self.BASE + "logs/kodi-Salon-Box-"))
+        self.assertTrue(self.copies[0][1].endswith(".log"))
+        self.assertNotIn("secret", shown)
+        self.assertTrue(shown.startswith("smb://nas/video/.KodiBridge/logs/kodi-Salon-Box-"))
+
+    def test_only_the_newest_copies_of_this_device_are_kept(self):
+        older = ["kodi-Salon-Box-2026010{}-000000.log".format(day) for day in range(1, 10)]
+        older += ["kodi-Salon-Box-20260110-000000.log", "kodi-Salon-Box-20260111-000000.log"]
+        self.files = older + ["kodi-Other-20250101-000000.log", "notes.txt"]
+        sudosync_service.save_log_copy()
+        removed = [path.rsplit("/", 1)[1] for path in self.deleted]
+        self.assertEqual(removed, older[:2])
+        self.assertEqual(len([name for name in self.files if name.startswith("kodi-Salon-Box-")])
+                         - len(removed), sudosync_service.LOG_COPIES_KEPT)
+
+    def test_failed_copy_is_reported_and_no_shared_folder_means_no_copy(self):
+        self.copy_result = False
+        self.assertIs(sudosync_service.save_log_copy(), sudosync_service.LOG_COPY_FAILED)
+        self.assertEqual(len(self.copies), 2)  # with and without credentials
+        self.base = ""
+        self.assertIsNone(sudosync_service.save_log_copy())
+
+    def test_errors_never_escape(self):
+        with patch.object(sudosync_service, "addon_settings", side_effect=RuntimeError("x")):
+            self.assertIs(sudosync_service.save_log_copy(), sudosync_service.LOG_COPY_FAILED)
+
+    def test_message_names_the_copy_or_its_failure(self):
+        text = sudosync_service.sync_failure_message("C:\\Kodi\\kodi.log", None, "smb://nas/x/kodi-A.log")
+        self.assertIn("smb://nas/x/kodi-A.log", text)
+        self.assertIn("NAS", text)
+        failed = sudosync_service.sync_failure_message(None, None, sudosync_service.LOG_COPY_FAILED)
+        self.assertIn("Nie udało się zapisać kopii dziennika", failed)
+        self.assertNotIn("NAS:", sudosync_service.sync_failure_message(None))
+
+    def test_window_shows_the_copy(self):
+        sudosync_service._SYNC_FAILURE_NOTIFIED["key"] = None
+        dialog = MagicMock()
+        with patch.object(sudosync_service, "_is_playing_video", return_value=False), \
+                patch.object(sudosync_service.xbmcgui, "Dialog", return_value=dialog), \
+                patch.object(sudosync_service, "kodi_log_path", return_value=None):
+            sudosync_service._report_sync_failure(RuntimeError("a"))
+            sudosync_service._report_sync_failure(RuntimeError("b"))
+        self.assertEqual(len(self.copies), 1)  # once per shown window
+        self.assertIn("smb://nas/video/.KodiBridge/logs/", dialog.textviewer.call_args[0][1])
+        sudosync_service._SYNC_FAILURE_NOTIFIED["key"] = None

@@ -10,6 +10,7 @@ from __future__ import absolute_import, division, print_function
 
 import atexit
 import os
+import re
 import time
 
 import xbmc
@@ -483,13 +484,68 @@ def sync_failure_cause(exc):
     return None
 
 
-def sync_failure_message(log_path=None, cause=None):
+LOG_COPY_FOLDER = "logs"
+LOG_COPIES_KEPT = 10  # per device; older copies of the same device are deleted
+LOG_COPY_FAILED = False  # log_copy value when the copy was attempted and failed
+
+
+def _log_copy_device_name(name):
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(name or "")).strip("-._")
+    return cleaned[:40] or "Kodi"
+
+
+def save_log_copy(now=None):
+    """Copy kodi.log into the logs folder of the shared KodiBridge folder on the NAS.
+
+    Kodi on Android keeps its log where other programs cannot reach it, so the
+    copy is the only way to read the log there. Returns the path of the copy
+    without credentials, LOG_COPY_FAILED when copying failed, or None when no
+    shared folder is configured. Never raises.
+    """
+    try:
+        from resources.lib.sudosync_core import _join_vfs, _vfs_delete, _vfs_listdir, _vfs_mkdirs
+        settings = addon_settings()
+        base = settings.get("base_path") or ""
+        if not base:
+            return None
+        folder = _join_vfs(base, LOG_COPY_FOLDER)
+        _vfs_mkdirs(folder)
+        device = _log_copy_device_name(settings.get("client_name"))
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(now if now is not None else time.time()))
+        target = folder + "kodi-{}-{}.log".format(device, stamp)
+        copied = bool(xbmcvfs.copy("special://logpath/kodi.log", target))
+        masked = mask_vfs_credentials(target)
+        if not copied and masked != target:
+            copied = bool(xbmcvfs.copy("special://logpath/kodi.log", masked))
+        if not copied:
+            log("Copy of kodi.log to the NAS failed: {}".format(masked), xbmc.LOGWARNING)
+            return LOG_COPY_FAILED
+        log("Copy of kodi.log saved on the NAS: {}".format(masked), xbmc.LOGINFO)
+        try:
+            prefix = "kodi-{}-".format(device).lower()
+            _, files = _vfs_listdir(folder)
+            own = sorted(name for name in files if name.lower().startswith(prefix) and name.lower().endswith(".log"))
+            for name in own[:-LOG_COPIES_KEPT]:
+                _vfs_delete(folder + name)
+        except Exception as exc:
+            log("Old kodi.log copies not removed: {}".format(exc), xbmc.LOGWARNING)
+        return masked
+    except Exception as exc:
+        log("Copy of kodi.log to the NAS failed: {}".format(exc), xbmc.LOGWARNING)
+        return LOG_COPY_FAILED
+
+
+def sync_failure_message(log_path=None, cause=None, log_copy=None):
     """Text of the window shown when synchronization stopped on an error."""
     parts = [tr(32211)]
     if cause in KNOWN_SYNC_FAILURE_CAUSES:
         reason, repair = KNOWN_SYNC_FAILURE_CAUSES[cause]()
         parts.append(tr(32212, reason, repair))
     parts.append(tr(32213, log_path or tr(32214)))
+    if log_copy:
+        parts.append(tr(32223, log_copy))
+    elif log_copy is LOG_COPY_FAILED:
+        parts.append(tr(32224))
     parts.append(tr(32215, AUTHOR_ISSUES_URL))
     return "\n\n".join(parts)
 
@@ -506,8 +562,10 @@ def _report_sync_failure(exc=None):
     if key == _SYNC_FAILURE_NOTIFIED["key"] or _is_playing_video():
         return
     _SYNC_FAILURE_NOTIFIED["key"] = key
+    log_copy = save_log_copy()
     try:
-        xbmcgui.Dialog().textviewer(sync_failure_title(), sync_failure_message(kodi_log_path(), cause))
+        xbmcgui.Dialog().textviewer(
+            sync_failure_title(), sync_failure_message(kodi_log_path(), cause, log_copy))
     except Exception:
         pass
 

@@ -1,3 +1,10 @@
+KodiBridge by Sudoizm 2.4.1
+===========================
+
+Kopia dziennika przy błędzie:
+
+- Gdy synchronizacja stanie z powodu błędu i pojawia się okno „BŁĄD KodiBridge – synchronizacja wstrzymana”, wtyczka zapisuje kopię dziennika Kodi (kodi.log) w folderze `logs` we wspólnym folderze `.KodiBridge` na serwerze NAS, a okno podaje ścieżkę do niej. Na Androidzie inne programy nie mają dostępu do miejsca, w którym Kodi trzyma dziennik, więc dotąd nie dało się go łatwo odczytać. Nazwa kopii zawiera nazwę urządzenia oraz datę i godzinę; zostaje 10 najnowszych kopii z każdego urządzenia. Gdy kopii nie da się zapisać, okno o tym mówi, a synchronizacja działa dalej jak dotąd.
+
 KodiBridge by Sudoizm 2.4.0
 ===========================
 
