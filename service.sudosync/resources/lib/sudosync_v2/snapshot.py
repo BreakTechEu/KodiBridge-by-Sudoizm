@@ -27,7 +27,15 @@ logger = logging.getLogger(__name__)
 
 
 class SnapshotBuildError(ValueError):
-    """Kodi records could not be converted into a safe snapshot."""
+    """Kodi records could not be converted into a safe snapshot.
+
+    ``place`` names the library item that stopped the build (the movie, or
+    the series and season) when one item is to blame.
+    """
+
+    def __init__(self, message, place=None):
+        super(SnapshotBuildError, self).__init__(message)
+        self.place = place
 
 
 def _utc_timestamp():
@@ -240,7 +248,10 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                         duplicate_detected = True
                         break
                     elif not (has_sudosync and prev_has_sudosync):
-                        raise SnapshotBuildError("duplicate/overlapping strong identity in {} library: {}".format(media_type, identity))
+                        raise SnapshotBuildError(
+                            "duplicate/overlapping strong identity in {} library: {}".format(media_type, identity),
+                            place=item_place(item),
+                        )
                     else:
                         # Expected for one external episode split into several
                         # parts (e.g. a finale aired in parts): each part has its
@@ -321,7 +332,8 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                     else:
                         raise SnapshotBuildError(
                             "current {} item has conflicting identifiers with its previous snapshot: {}"
-                            .format(media_type, ", ".join(conflicting_kinds))
+                            .format(media_type, ", ".join(conflicting_kinds)),
+                            place=item_place(item),
                         )
             state = _state(item)
             versions = _record_versions(

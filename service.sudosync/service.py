@@ -267,6 +267,8 @@ def _live_retry_delay_seconds(result, live_poll):
 # Problem summary already shown in a notification during this service run.
 _COVERAGE_NOTIFIED = {"key": None}
 _FOREIGN_SESSION_NOTIFIED = {"session_id": None}
+# Key of the sync failure already shown in a notification during this service run.
+_SYNC_FAILURE_NOTIFIED = {"key": None}
 # True from the start of a video scan until the KodiBridge ID assignment after it.
 _ASSIGN_AFTER_SCAN = {"pending": False}
 
@@ -442,6 +444,49 @@ def _report_foreign_session(v2_runtime, recovery):
         pass
 
 
+def sync_failure_place(exc):
+    """Library item named by the error that stopped synchronization, if any.
+
+    The engine wraps snapshot errors, so the whole cause/context chain is searched.
+    """
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        place = getattr(current, "place", None)
+        if place:
+            return str(place)
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def sync_failure_summary(exc):
+    """Return (key, message) for a notification about a stopped synchronization."""
+    place = sync_failure_place(exc)
+    if place:
+        return "place:" + place, "Synchronizacja wstrzymana. Niezgodne identyfikatory: {}".format(place)
+    return "other", "Synchronizacja wstrzymana. Szczegóły w dzienniku Kodi."
+
+
+def _report_sync_failure(exc):
+    """Tell the user that synchronization stopped, once per problem and service run.
+
+    Not shown during video playback; the next failed cycle after playback shows it.
+    """
+    key, message = sync_failure_summary(exc)
+    if key == _SYNC_FAILURE_NOTIFIED["key"] or _is_playing_video():
+        return
+    _SYNC_FAILURE_NOTIFIED["key"] = key
+    try:
+        xbmcgui.Dialog().notification("KodiBridge", message, xbmcgui.NOTIFICATION_ERROR, 10000)
+    except Exception:
+        pass
+
+
+def _clear_sync_failure():
+    _SYNC_FAILURE_NOTIFIED["key"] = None
+
+
 def _record_coverage(v2_runtime):
     """Store the KodiBridge ID coverage of the last library read and tell the user about problems.
 
@@ -521,6 +566,7 @@ def _run_live_cycle(
     except Exception as exc:
         log("V2 live sync cycle error: {}".format(exc), xbmc.LOGERROR)
         update_local_status_from_v2(error=exc)
+        _report_sync_failure(exc)
         return {"busy": True, "error": str(exc), "v2": None, "applied_items": 0}
 
     if not isinstance(v2_result, dict):
@@ -530,6 +576,8 @@ def _run_live_cycle(
 
     v2_status = v2_result.get("status")
     v2_applied = int(v2_result.get("applied_count") or 0)
+    if v2_status in ("committed", "no_changes"):
+        _clear_sync_failure()
     if v2_status == "blocked":
         log("V2 live sync blocked by unrecovered session; skipping cycle until resolved.", xbmc.LOGERROR)
         update_local_status_from_v2(error="blocked: unrecovered v2 session")
@@ -878,6 +926,7 @@ def _run_service():
                                             log("V2 published local library change during playback.", xbmc.LOGINFO)
                                 except Exception as exc:
                                     log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
+                                    _report_sync_failure(exc)
                                 _record_coverage(v2_runtime)
                             # Dirty flags stay set: remote changes are still applied
                             # by the regular cycle after playback stops.
