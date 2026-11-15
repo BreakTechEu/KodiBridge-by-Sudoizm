@@ -366,15 +366,19 @@ SETTINGS = {
 
 
 class ServiceConflictSchedulingTests(unittest.TestCase):
-    def _run(self, iterations, playing_until=0, requests=(), nfo_requests=()):
+    def _run(self, iterations, playing_until=0, requests=(), nfo_requests=(), setup=None, on_wait=None):
         clock = [1000.0]
         monitor = sudosync_service.SudoSyncMonitor()
         monitor.aborted = False
         iteration = [0]
+        if setup is not None:
+            setup(monitor)
 
         def fake_wait_for_abort(timeout=None):
             iteration[0] += 1
             clock[0] += 30.0
+            if on_wait is not None:
+                on_wait(monitor, iteration[0])
             if iteration[0] >= iterations:
                 monitor.aborted = True
                 return True
@@ -421,6 +425,33 @@ class ServiceConflictSchedulingTests(unittest.TestCase):
                 patch.object(sudosync_service.time, "time", side_effect=lambda: clock[0]):
             sudosync_service._run_service()
         return prompts, live_cycle
+
+    def test_startup_scan_postpones_the_first_cycle_until_ids_are_assigned(self):
+        def setup(monitor):
+            monitor.scanning = True
+
+        def on_wait(monitor, n):
+            if n == 2:
+                monitor.scanning = False
+                monitor.scan_assign_pending = True
+                monitor.scan_finished_at = 0.0  # assignment not yet due
+
+        _, live_cycle = self._run(iterations=4, setup=setup, on_wait=on_wait)
+        live_cycle.assert_not_called()
+
+    def test_first_cycle_runs_after_the_scan_and_the_assignment(self):
+        calls = []
+
+        def setup(monitor):
+            monitor.scanning = True
+
+        def on_wait(monitor, n):
+            calls.append(n)
+            if n == 2:
+                monitor.scanning = False
+
+        _, live_cycle = self._run(iterations=4, setup=setup, on_wait=on_wait)
+        self.assertGreaterEqual(live_cycle.call_count, 1)
 
     def test_conflict_found_at_startup_is_asked_in_first_loop_iteration(self):
         prompts, _ = self._run(iterations=4)

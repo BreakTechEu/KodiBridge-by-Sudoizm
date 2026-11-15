@@ -1,3 +1,11 @@
+KodiBridge by Sudoizm 2.4.3
+===========================
+
+Poprawka:
+
+- Pierwsza synchronizacja po starcie Kodi też czeka na koniec skanowania biblioteki. W 2.4.2 czekały tylko kolejne cykle, więc gdy skanowanie przy starcie dodało nowe pozycje, pierwszy cykl trafiał na nie, zanim dostały KodiBridge ID, i pokazywał okno „BŁĄD KodiBridge – synchronizacja wstrzymana” z przyczyną „pozycje bez KodiBridge ID mają wspólny identyfikator zewnętrzny”.
+- Po skanowaniu synchronizacja czeka, aż wtyczka nada KodiBridge ID nowym pozycjom. Dotąd mogła ruszyć sekundę wcześniej i zatrzymać się z tym samym błędem.
+
 KodiBridge by Sudoizm 2.4.2
 ===========================
 

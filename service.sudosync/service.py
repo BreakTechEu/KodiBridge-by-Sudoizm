@@ -492,6 +492,18 @@ def _library_busy(monitor):
     return _is_library_scanning()
 
 
+def _sync_must_wait(monitor):
+    """True while a sync cycle must not run: a scan is running or its ID assignment is pending.
+
+    New items found by a scan get their KodiBridge IDs a few seconds after
+    the scan ends; a cycle before that would see items without an ID that
+    share external IDs and stop with an error.
+    """
+    if _library_busy(monitor):
+        return True
+    return getattr(monitor, "scan_assign_pending", False) is True
+
+
 def sync_failure_is_transient(exc):
     """True when the exception chain holds a transient error (the library changed while being read)."""
     seen = set()
@@ -863,6 +875,10 @@ def _run_service():
             elif v2_runtime is not None and isinstance(v2_startup, dict) and v2_startup.get("status") == "deferred":
                 log("Startup synchronization deferred: v2 session recovery is deferred.", xbmc.LOGINFO)
                 live_retry_not_before = time.time() + LIVE_BUSY_RETRY_SECONDS
+            elif init.get("completed", False) and settings.get("live_sync_enabled", True) and _sync_must_wait(monitor):
+                # The startup scan of Kodi is running: the loop runs the first
+                # cycle after the scan and the KodiBridge ID assignment after it.
+                log("Startup synchronization postponed until the video library scan ends.", xbmc.LOGINFO)
             elif init.get("completed", False) and settings.get("live_sync_enabled", True):
                 result = _execute_integrated_live_cycle(
                     v2_runtime=v2_runtime,
@@ -1034,7 +1050,7 @@ def _run_service():
                             and event_due
                             and current_seq != playback_published_seq
                         )
-                        if (poll_due or user_event_due) and not _library_busy(monitor) and now >= playback_retry_not_before:
+                        if (poll_due or user_event_due) and not _sync_must_wait(monitor) and now >= playback_retry_not_before:
                             published_ok = False
                             if v2_runtime is not None:
                                 try:
@@ -1064,7 +1080,7 @@ def _run_service():
                                 # Not published: keep the event pending and retry
                                 # shortly instead of waiting for the next poll.
                                 playback_retry_not_before = time.time() + LIVE_BUSY_RETRY_SECONDS
-                    elif (event_due or poll_due) and not _library_busy(monitor) and time.time() >= live_retry_not_before:
+                    elif (event_due or poll_due) and not _sync_must_wait(monitor) and time.time() >= live_retry_not_before:
                         cycle_dirty_seq = getattr(monitor, "dirty_seq", 0)
                         cycle_dirty_since = monitor.dirty_since
                         suppress = bool(
