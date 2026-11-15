@@ -219,12 +219,13 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                                         qual,
                                     )
 
-        current_bases = set()
+        current_base_counts = {}
         for item in source:
             if isinstance(item, dict):
                 base = _sudosync_base(_identifiers(item).get("sudosync"))
                 if base:
-                    current_bases.add(base)
+                    current_base_counts[base] = current_base_counts.get(base, 0) + 1
+        current_bases = set(current_base_counts)
         previous_bases = set()
         for alias in previous_by_identity[media_type]:
             if alias[1] == "sudosync":
@@ -311,6 +312,16 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                             ", ".join(conflicting_kinds),
                             ids.get("sudosync"),
                         )
+                    elif conflicting_kinds == ["sudosync"] and _is_qualifier_dropped(
+                        prior.get("ids", {}).get("sudosync"), ids.get("sudosync"), current_base_counts,
+                    ):
+                        logger.info(
+                            "%s item is no longer one of several items sharing its KodiBridge ID: %s -> %s; "
+                            "keeping its field history",
+                            media_type,
+                            prior.get("ids", {}).get("sudosync"),
+                            ids.get("sudosync"),
+                        )
                     elif conflicting_kinds == ["sudosync"] and _is_renumbered(
                         renumbered_ids, prior.get("ids", {}).get("sudosync"), ids.get("sudosync")
                     ):
@@ -335,8 +346,13 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                         )
                     else:
                         raise SnapshotBuildError(
-                            "current {} item has conflicting identifiers with its previous snapshot: {}"
-                            .format(media_type, ", ".join(conflicting_kinds))
+                            "current {} item has conflicting identifiers with its previous snapshot: {} "
+                            "(previous: {}; current: {})".format(
+                                media_type,
+                                ", ".join(conflicting_kinds),
+                                _describe_ids(prior.get("ids", {}), conflicting_kinds),
+                                _describe_ids(ids, conflicting_kinds),
+                            )
                         )
             state = _state(item)
             versions = _record_versions(
@@ -408,6 +424,31 @@ def _is_replaced_id(old_value, new_value, candidate_count, current_bases, previo
     old_qualifier = _sudosync_qualifier(old_value)
     new_qualifier = _sudosync_qualifier(new_value)
     return not old_qualifier or not new_qualifier or old_qualifier == new_qualifier
+
+
+def _is_qualifier_dropped(old_value, new_value, current_base_counts):
+    """True when an episode stopped sharing its KodiBridge ID with other items.
+
+    A KodiBridge ID used by several episodes (a multi-episode file, or a copy
+    that has since been removed) carries a ':sNNeNN' qualifier. When only one
+    episode with that ID is left in the library, the qualifier disappears.
+    Accepted only when the base ID is the same, the previous ID had a
+    qualifier, the current one has none and exactly one current item uses
+    the base ID.
+    """
+    old_base = _sudosync_base(old_value)
+    if not old_base or old_base != _sudosync_base(new_value):
+        return False
+    if not _sudosync_qualifier(old_value) or _sudosync_qualifier(new_value):
+        return False
+    return current_base_counts.get(old_base, 0) == 1
+
+
+def _describe_ids(ids, kinds):
+    """Short 'kind=value' list of the given identifier kinds for log messages."""
+    if not isinstance(ids, dict):
+        return ""
+    return ", ".join("{}={}".format(kind, ids.get(kind)) for kind in kinds)
 
 
 RENUMBER_CHAIN_LIMIT = 64

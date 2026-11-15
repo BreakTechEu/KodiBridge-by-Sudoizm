@@ -13,7 +13,7 @@ import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "service.sudosync")))
 
-from resources.lib.sudosync_v2.kodi_rpc import KodiJsonRpcAdapter, KodiRpcError
+from resources.lib.sudosync_v2.kodi_rpc import KodiJsonRpcAdapter, KodiRpcError, LibraryChangedError
 
 
 class FakeTransport(object):
@@ -146,8 +146,10 @@ class TestKodiJsonRpcAdapter(unittest.TestCase):
             total = 3 if start == 0 else 4
             return {"movies": [{"movieid": start + 1}, {"movieid": start + 2}], "limits": {"total": total}}
         adapter = KodiJsonRpcAdapter(FakeTransport(handler), page_size=2)
-        with self.assertRaisesRegex(KodiRpcError, "total changed"):
+        with self.assertRaisesRegex(KodiRpcError, "total changed") as ctx:
             adapter.get_movies()
+        self.assertIsInstance(ctx.exception, LibraryChangedError)
+        self.assertTrue(ctx.exception.transient)
 
     def test_rejects_rpc_error(self):
         def handler(req):

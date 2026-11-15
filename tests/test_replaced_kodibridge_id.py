@@ -77,6 +77,37 @@ class ReplacedIdTests(unittest.TestCase):
                      _episode(2, 2, 5, {"sudosync": OTHER, "tvdb": "5001"})],
                 CLIENT, "Kodi", previous_snapshot=previous, logical_clock=2)
 
+    def test_qualifier_dropped_when_id_is_no_longer_shared(self):
+        # Previously two episodes shared OLD (qualified); one is gone, so the
+        # remaining episode carries OLD without a qualifier.
+        previous = _previous(
+            _episode(1, 11, 28, {"sudosync": OLD, "tvdb": "5001", "imdb": "tt1"}, playcount=1),
+            _episode(2, 11, 29, {"sudosync": OLD, "tvdb": "5002", "imdb": "tt1"}, playcount=1),
+        )
+        self.assertTrue(all(":" in r["ids"]["sudosync"] for r in previous["episodes"]))
+        with self.assertLogs("resources.lib.sudosync_v2.snapshot", level="INFO") as cm:
+            snap = build_snapshot(
+                [], [_episode(1, 11, 28, {"sudosync": OLD, "tvdb": "5001", "imdb": "tt1", "trakt": "9"},
+                              playcount=1)],
+                CLIENT, "Kodi", previous_snapshot=previous, logical_clock=2)
+        self.assertEqual(snap["episodes"][0]["ids"]["sudosync"], OLD)
+        self.assertEqual(snap["episodes"][0]["versions"], previous["episodes"][0]["versions"])
+        self.assertTrue(any("no longer one of several items" in line for line in cm.output))
+
+    def test_qualifier_dropped_with_another_base_is_a_conflict(self):
+        previous = _previous(
+            _episode(1, 11, 28, {"sudosync": OLD, "tvdb": "5001"}),
+            _episode(2, 11, 29, {"sudosync": OLD, "tvdb": "5002"}),
+        )
+        with self.assertRaises(SnapshotBuildError) as ctx:
+            build_snapshot(
+                [], [_episode(1, 11, 28, {"sudosync": NEW, "tvdb": "5001"}),
+                     _episode(3, 1, 1, {"sudosync": OLD, "tvdb": "6000"})],
+                CLIENT, "Kodi", previous_snapshot=previous, logical_clock=2)
+        message = str(ctx.exception)
+        self.assertIn("previous: sudosync=" + OLD + ":s11e28", message)
+        self.assertIn("current: sudosync=" + NEW, message)
+
     def test_movie_replaced_id_keeps_field_history(self):
         movie_old = {"movieid": 7, "playcount": 1, "uniqueid": {"sudosync": OLD, "tmdb": "9001"}}
         movie_new = {"movieid": 7, "playcount": 1, "uniqueid": {"sudosync": NEW, "tmdb": "9001"}}

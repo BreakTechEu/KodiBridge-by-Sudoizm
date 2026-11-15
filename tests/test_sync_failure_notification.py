@@ -12,6 +12,7 @@ if SERVICE_DIR not in sys.path:
     sys.path.insert(0, SERVICE_DIR)
 
 from resources.lib.sudosync_v2.engine import SyncEngineError  # noqa: E402
+from resources.lib.sudosync_v2.kodi_rpc import LibraryChangedError  # noqa: E402
 from resources.lib.sudosync_v2.snapshot import (  # noqa: E402
     CAUSE_SHARED_EXTERNAL_WITHOUT_ID, SnapshotBuildError, build_snapshot)
 import service as sudosync_service  # noqa: E402
@@ -141,6 +142,48 @@ class SyncFailureWindowTests(unittest.TestCase):
         title, message = self.dialog.textviewer.call_args[0]
         self.assertEqual(title, sudosync_service.sync_failure_title())
         self.assertIn("C:\\Kodi\\kodi.log", message)
+
+
+class LibraryChangingTests(unittest.TestCase):
+    """A library read during a running scan (e.g. the startup scan) is not an error."""
+
+    def setUp(self):
+        sudosync_service._SYNC_FAILURE_NOTIFIED["key"] = None
+        self.dialog = MagicMock()
+        for patcher in (
+            patch.object(sudosync_service, "_is_playing_video", return_value=False),
+            patch.object(sudosync_service.xbmcgui, "Dialog", return_value=self.dialog),
+            patch.object(sudosync_service, "save_log_copy", return_value=None),
+            patch.object(sudosync_service, "update_local_status_from_v2"),
+            patch.object(sudosync_service, "log"),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_wrapped_library_change_is_transient(self):
+        self.assertTrue(sudosync_service.sync_failure_is_transient(
+            _wrapped(LibraryChangedError("VideoLibrary.GetEpisodes total changed during pagination"))))
+        self.assertFalse(sudosync_service.sync_failure_is_transient(_wrapped(RuntimeError("x"))))
+        self.assertFalse(sudosync_service.sync_failure_is_transient(None))
+
+    def test_live_cycle_retries_without_window(self):
+        runtime = MagicMock()
+        runtime.sync_cycle.side_effect = _wrapped(LibraryChangedError("total changed during pagination"))
+        monitor = MagicMock(scan_refresh_pending=False)
+        result = sudosync_service._run_live_cycle(runtime, monitor, False, False, True)
+        self.dialog.textviewer.assert_not_called()
+        self.assertTrue(result["busy"])
+        self.assertNotIn("error", result)
+        self.assertEqual(sudosync_service._live_retry_delay_seconds(result, 300),
+                         sudosync_service.LIVE_BUSY_RETRY_SECONDS)
+
+    def test_monitor_knows_about_a_scan_started_before_it(self):
+        with patch.object(sudosync_service.xbmc, "getCondVisibility", return_value=True):
+            self.assertTrue(sudosync_service.SudoSyncMonitor().scanning)
+        with patch.object(sudosync_service.xbmc, "getCondVisibility", return_value=False):
+            self.assertFalse(sudosync_service.SudoSyncMonitor().scanning)
+        with patch.object(sudosync_service.xbmc, "getCondVisibility", side_effect=RuntimeError("no GUI")):
+            self.assertFalse(sudosync_service.SudoSyncMonitor().scanning)
 
 
 if __name__ == "__main__":

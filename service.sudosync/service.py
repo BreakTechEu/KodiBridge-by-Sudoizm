@@ -86,7 +86,9 @@ class SudoSyncMonitor(_MonitorBase):
         self.dirty = False
         self.dirty_since = 0.0
         self.dirty_seq = 0
-        self.scanning = False
+        # A scan started before the service (the startup scan of Kodi) sends
+        # no OnScanStarted to this monitor; its OnScanFinished still arrives.
+        self.scanning = _is_library_scanning()
         self.scan_refresh_pending = False
         self.playback_dirty = False
         self.user_update_dirty = False
@@ -471,6 +473,25 @@ def kodi_log_path():
     return folder + separator + "kodi.log"
 
 
+def _is_library_scanning():
+    try:
+        return xbmc.getCondVisibility("Library.IsScanningVideo") is True
+    except Exception:
+        return False
+
+
+def sync_failure_is_transient(exc):
+    """True when the exception chain holds a transient error (the library changed while being read)."""
+    seen = set()
+    current = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if getattr(current, "transient", False) is True:
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def sync_failure_cause(exc):
     """Code of a known, repairable cause found anywhere in the exception chain, or None."""
     seen = set()
@@ -651,6 +672,12 @@ def _run_live_cycle(
             publish_local=collect_local,
         )
     except Exception as exc:
+        if sync_failure_is_transient(exc):
+            # Not a failure: the library is being changed (e.g. the startup
+            # scan of Kodi). Retried shortly, without the error window.
+            log("V2 live sync postponed, the video library changed while being read: {}".format(exc),
+                xbmc.LOGWARNING)
+            return {"busy": True, "library_changing": True, "v2": None, "applied_items": 0}
         log("V2 live sync cycle error: {}".format(exc), xbmc.LOGERROR)
         update_local_status_from_v2(error=exc)
         _report_sync_failure(exc)
@@ -1013,7 +1040,8 @@ def _run_service():
                                             log("V2 published local library change during playback.", xbmc.LOGINFO)
                                 except Exception as exc:
                                     log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
-                                    _report_sync_failure(exc)
+                                    if not sync_failure_is_transient(exc):
+                                        _report_sync_failure(exc)
                                 _record_coverage(v2_runtime)
                             # Dirty flags stay set: remote changes are still applied
                             # by the regular cycle after playback stops.

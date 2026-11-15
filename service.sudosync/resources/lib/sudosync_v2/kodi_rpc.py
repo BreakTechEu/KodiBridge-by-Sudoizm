@@ -132,6 +132,15 @@ class KodiRpcError(RuntimeError):
         self.code = code
 
 
+class LibraryChangedError(KodiRpcError):
+    """The library changed while it was being read (usually a running scan).
+
+    Transient: the next cycle reads it again once the library has settled.
+    """
+
+    transient = True
+
+
 # Kodi answers GetMovieDetails/GetEpisodeDetails for a library ID that no
 # longer exists with "Invalid params" (the ID fails Kodi's parameter check).
 JSONRPC_INVALID_PARAMS = -32602
@@ -628,7 +637,7 @@ class KodiJsonRpcAdapter(object):
                 if expected_total is None:
                     expected_total = total
                 elif total != expected_total:
-                    raise KodiRpcError("{} total changed during pagination; refusing an inconsistent snapshot".format(method))
+                    raise LibraryChangedError("{} total changed during pagination; refusing an inconsistent snapshot".format(method))
             if len(all_items) + len(items) > self._max_records:
                 raise KodiRpcError("{} exceeds the configured library record limit".format(method))
             for item in items:
