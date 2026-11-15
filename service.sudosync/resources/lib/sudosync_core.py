@@ -45,6 +45,7 @@ import xbmcgui
 import xbmcvfs
 
 from resources.lib.sudosync_v2 import ID_SCHEME, KODIBRIDGE_ID_TYPE
+from resources.lib.sudosync_i18n import tr
 from resources.lib.sudosync_v2.identity import internal_id_kind, new_kodibridge_id
 
 ADDON_ID = "service.sudosync"
@@ -401,7 +402,7 @@ def read_shared_config(base_path=None):
     try:
         data = _read_vfs_json(path)
         if not isinstance(data, dict):
-            raise ValueError("nieprawidłowy format config.json")
+            raise ValueError(tr(32300))
         init = data.get("initialization") if isinstance(data.get("initialization"), dict) else {}
         data["initialization"] = {
             "completed": bool(init.get("completed", False)),
@@ -412,7 +413,7 @@ def read_shared_config(base_path=None):
         }
         return data
     except Exception as exc:
-        raise IOError("Nie można odczytać wspólnej konfiguracji KodiBridge: {}".format(exc))
+        raise IOError(tr(32301, exc))
 
 
 def update_shared_config(mutator_func, base_path=None):
@@ -463,7 +464,7 @@ def update_shared_config(mutator_func, base_path=None):
             
         if datetime.now(timezone.utc).timestamp() - start > 15.0:
             raise RuntimeError(
-                "Nie można uzyskać blokady wspólnej konfiguracji KodiBridge w ciągu 15 sekund."
+                tr(32302)
             )
         xbmc.sleep(200)
 
@@ -550,9 +551,9 @@ def _copy_vfs_to_local(src, dst):
     if os.path.exists(dst):
         os.remove(dst)
     if not xbmcvfs.copy(src, dst):
-        raise IOError("Nie udało się skopiować pakietu aktualizacji z: {}".format(src))
+        raise IOError(tr(32303, src))
     if not os.path.isfile(dst) or os.path.getsize(dst) < 100:
-        raise IOError("Skopiowany pakiet aktualizacji jest pusty lub niepełny.")
+        raise IOError(tr(32304))
 
 
 MAX_ZIP_FILES = 500
@@ -629,26 +630,26 @@ def _safe_zip_member(name):
 def _validate_addon_zip_package(zip_path, expected_version=None, expected_sha256=None):
     """Validate integrity (SHA-256), size limits, structure and addon.xml of a SudoSync ZIP package."""
     if not os.path.isfile(zip_path) or os.path.getsize(zip_path) < 100:
-        raise ValueError("Pakiet aktualizacji ZIP nie istnieje lub jest pusty.")
+        raise ValueError(tr(32368))
     if expected_sha256 is not None:
         expected = _normalize_sha256(expected_sha256)
         if not expected:
-            raise ValueError("Nieprawidłowy format oczekiwanej sumy SHA-256.")
+            raise ValueError(tr(32305))
         actual = _sha256_of_file(zip_path)
         if actual != expected:
             raise ValueError(
-                "Suma SHA-256 pakietu nie zgadza się (oczekiwano {}, obliczono {}).".format(expected, actual)
+                tr(32306, expected, actual)
             )
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             file_infos = [i for i in zf.infolist() if not i.filename.replace("\\", "/").endswith("/")]
             if len(file_infos) > MAX_ZIP_FILES:
-                raise ValueError("Pakiet ZIP zawiera zbyt wiele plików ({} > {}).".format(len(file_infos), MAX_ZIP_FILES))
+                raise ValueError(tr(32307, len(file_infos), MAX_ZIP_FILES))
             if any(i.file_size > MAX_ZIP_FILE_BYTES for i in file_infos):
-                raise ValueError("Plik w pakiecie ZIP przekracza limit {} MB.".format(MAX_ZIP_FILE_BYTES // (1024 * 1024)))
+                raise ValueError(tr(32364, MAX_ZIP_FILE_BYTES // (1024 * 1024)))
             if sum(i.file_size for i in file_infos) > MAX_ZIP_TOTAL_BYTES:
                 raise ValueError(
-                    "Rozmiar danych po rozpakowaniu przekracza limit {} MB.".format(MAX_ZIP_TOTAL_BYTES // (1024 * 1024))
+                    tr(32365, MAX_ZIP_TOTAL_BYTES // (1024 * 1024))
                 )
 
             names = zf.namelist()
@@ -656,24 +657,24 @@ def _validate_addon_zip_package(zip_path, expected_version=None, expected_sha256
             if not names or not all(
                 _safe_zip_member(name) for name in normalized_map.keys() if name and not name.endswith("/")
             ):
-                raise ValueError("Pakiet ZIP ma nieprawidłową strukturę lub zawiera niedozwoloną ścieżkę.")
+                raise ValueError(tr(32308))
             manifest_name = ADDON_ID + "/addon.xml"
             if manifest_name not in normalized_map:
-                raise ValueError("Pakiet nie zawiera {}.".format(manifest_name))
+                raise ValueError(tr(32369, manifest_name))
             actual_name = normalized_map[manifest_name]
             manifest = ET.fromstring(zf.read(actual_name))
             if manifest.tag != "addon" or manifest.attrib.get("id") != ADDON_ID:
-                raise ValueError("To nie jest pakiet SudoSync.")
+                raise ValueError(tr(32370))
             version = manifest.attrib.get("version") or "0.0.0"
             if expected_version and _numeric_version(version) != _numeric_version(expected_version):
                 raise ValueError(
-                    "Wersja w addon.xml ({}) nie zgadza się z oczekiwaną wersją pakietu ({}).".format(
+                    tr(32309, 
                         version, expected_version
                     )
                 )
             return version
     except zipfile.BadZipFile as exc:
-        raise ValueError("Uszkodzony plik archiwum ZIP: {}".format(exc))
+        raise ValueError(tr(32371, exc))
 
 
 def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialogs=True):
@@ -695,19 +696,19 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
             prefix = ADDON_ID + "/"
             extracted_total = 0
             if len(zf.infolist()) > MAX_ZIP_FILES * 2:
-                raise ValueError("Pakiet ZIP zawiera zbyt wiele wpisów.")
+                raise ValueError(tr(32310))
             for info in zf.infolist():
                 name = info.filename.replace("\\", "/")
                 if name.endswith("/"):
                     continue
                 if not _safe_zip_member(name):
-                    raise ValueError("Niedozwolona ścieżka w ZIP: {}".format(name))
+                    raise ValueError(tr(32311, name))
                 rel = name[len(prefix):]
                 if not rel:
                     continue
                 target = os.path.abspath(os.path.join(staging, *rel.split("/")))
                 if os.path.commonpath([staging, target]) != os.path.abspath(staging):
-                    raise ValueError("Niedozwolona ścieżka w ZIP: {}".format(name))
+                    raise ValueError(tr(32311, name))
                 parent = os.path.dirname(target)
                 if not os.path.isdir(parent):
                     os.makedirs(parent)
@@ -720,13 +721,13 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
                         file_bytes += len(chunk)
                         extracted_total += len(chunk)
                         if file_bytes > MAX_ZIP_FILE_BYTES or extracted_total > MAX_ZIP_TOTAL_BYTES:
-                            raise ValueError("Przekroczono limit rozmiaru danych podczas rozpakowywania pakietu ZIP.")
+                            raise ValueError(tr(32366))
                         dst.write(chunk)
 
         staged_manifest = os.path.join(staging, "addon.xml")
         root = ET.parse(staged_manifest).getroot()
         if root.attrib.get("id") != ADDON_ID or _numeric_version(root.attrib.get("version")) != _numeric_version(package_version):
-            raise ValueError("Walidacja katalogu tymczasowego aktualizacji nie powiodła się.")
+            raise ValueError(tr(32312))
 
         # Atomic-ish directory swap on the same local filesystem. If anything fails,
         # restore the previous add-on directory.
@@ -757,11 +758,10 @@ def _extract_and_swap_addon(local_zip, package_version, source_desc, show_dialog
     log("Self-update installed from {} -> {}".format(source_desc, package_version))
     if show_dialogs:
         restart = xbmcgui.Dialog().yesno(
-            "KodiBridge — aktualizacja zainstalowana",
-            "Zainstalowano wersję {}.\n\n"
-            "Nowa wersja stanie się w pełni aktywna po ponownym uruchomieniu Kodi. Uruchomić Kodi ponownie teraz?".format(package_version),
-            yeslabel="Uruchom ponownie",
-            nolabel="Później",
+            tr(32313),
+            tr(32314, package_version),
+            yeslabel=tr(32315),
+            nolabel=tr(32316),
         )
         if restart:
             xbmc.executebuiltin("RestartApp")
@@ -812,7 +812,7 @@ def find_github_update(timeout=10, api_url=None):
         return {
             "available": False,
             "current_version": current_text,
-            "error": "Nieprawidłowa odpowiedź z GitHub API.",
+            "error": tr(32317),
             "source": "github",
         }
 
@@ -896,14 +896,14 @@ def _fetch_expected_sha256(info, filename, timeout):
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 raw = resp.read(64 * 1024)
         except Exception as exc:
-            raise IOError("Nie udało się pobrać pliku sumy SHA-256: {}".format(exc))
+            raise IOError(tr(32318, exc))
         if isinstance(raw, (bytes, bytearray)):
             raw = raw.decode("utf-8", errors="replace")
         expected = _sha256_from_text(raw, filename)
         if expected:
             return expected
     raise ValueError(
-        "Brak sumy kontrolnej SHA-256 dla pakietu aktualizacji w wydaniu GitHub - instalacja odrzucona."
+        tr(32372)
     )
 
 
@@ -947,7 +947,7 @@ def install_github_update(update_info=None, show_dialogs=True, timeout=30):
                 os.remove(part_zip)
             except Exception:
                 pass
-        raise IOError("Nie udało się pobrać pakietu z GitHub Releases: {}".format(exc))
+        raise IOError(tr(32319, exc))
 
     try:
         package_version = _validate_addon_zip_package(local_zip, info.get("version"), expected_sha256=expected_sha256)
@@ -998,18 +998,17 @@ def install_update_from_zip_path(zip_path, allow_same_or_older=False, show_dialo
     package_version = _validate_addon_zip_package(local_zip)
     if not allow_same_or_older and _numeric_version(package_version) < _numeric_version(current_text):
         raise ValueError(
-            "Wybrany pakiet ({}) jest starszy niż obecnie zainstalowana wersja ({}).".format(
+            tr(32320, 
                 package_version, current_text
             )
         )
 
     if show_dialogs:
         if not xbmcgui.Dialog().yesno(
-            "KodiBridge — instalacja z pliku ZIP",
-            "Zweryfikowano pakiet KodiBridge w wersji {} (obecnie zainstalowana: {}).\n\n"
-            "Czy na pewno chcesz zainstalować tę wersję?".format(package_version, current_text),
-            yeslabel="Zainstaluj",
-            nolabel="Anuluj",
+            tr(32321),
+            tr(32322, package_version, current_text),
+            yeslabel=tr(32118),
+            nolabel=tr(32119),
         ):
             return {"installed": False, "cancelled": True, "version": package_version}
 
@@ -1059,13 +1058,10 @@ def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=
             result["declined_previously"] = True
             return result
         if xbmcgui.Dialog().yesno(
-            "KodiBridge — dostępna aktualizacja",
-            "Dostępna jest nowa wersja KodiBridge {} na GitHub Releases (obecnie zainstalowana: {}).\n\n"
-            "Czy chcesz pobrać i zainstalować aktualizację teraz?".format(
-                result.get("version"), result.get("current_version")
-            ),
-            yeslabel="Zainstaluj",
-            nolabel="Później",
+            tr(32116),
+            tr(32323, result.get("version"), result.get("current_version")),
+            yeslabel=tr(32118),
+            nolabel=tr(32316),
         ):
             try:
                 installed = install_github_update(update_info=result, show_dialogs=True)
@@ -1073,8 +1069,8 @@ def maybe_check_github_update_daily(now_epoch=None, ask_and_install=True, force=
             except Exception as exc:
                 log("GitHub update installation failed: {}".format(exc), xbmc.LOGERROR)
                 xbmcgui.Dialog().ok(
-                    "KodiBridge — błąd aktualizacji",
-                    "Nie udało się zainstalować aktualizacji z GitHub:\n{}".format(exc),
+                    tr(32324),
+                    tr(32325, exc),
                 )
         elif target_version:
             local_status["last_declined_github_version"] = target_version
@@ -1902,7 +1898,7 @@ def persist_network_sudosync_id_last_number(last_number, base_path=None, s=None)
             update_shared_config(_mutator, base_norm)
         except Exception as exc:
             log("Błąd atomowej synchronizacji licznika SudoSync ID na NAS: {}".format(exc), xbmc.LOGERROR)
-            raise IOError("Nie udało się zapisać licznika KodiBridge ID na NAS: {}".format(exc))
+            raise IOError(tr(32326, exc))
 
     final_saved = actual_persisted[0]
 
@@ -1999,13 +1995,13 @@ def _build_created_nfo_xml(kind, title_text, full_id):
 def _verify_created_nfo_unmodified(entry, raw_bytes):
     """Verify that a newly created NFO file still matches the exact file generated by SudoSync."""
     if raw_bytes is None:
-        return False, "file_modified", "Plik .nfo jest pusty lub nieczytelny; zachowano plik."
+        return False, "file_modified", tr(32373)
     if isinstance(raw_bytes, str):
         raw_bytes = raw_bytes.encode("utf-8")
     else:
         raw_bytes = bytes(raw_bytes)
     if not raw_bytes:
-        return False, "file_modified", "Plik .nfo jest pusty; zachowano plik."
+        return False, "file_modified", tr(32374)
 
     expected_hash = entry.get("content_sha256")
     expected_id = entry.get("sudosync_id")
@@ -2013,7 +2009,7 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
         return (
             False,
             "unverifiable_created_file",
-            "Brak danych weryfikacyjnych w manifeście dla utworzonego pliku; zachowano plik.",
+            tr(32327),
         )
 
     if expected_hash:
@@ -2022,7 +2018,7 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
             return (
                 False,
                 "file_modified",
-                "Utworzony plik .nfo został zmodyfikowany po wygenerowaniu KodiBridge ID; zachowano plik.",
+                tr(32328),
             )
 
     from resources.lib.sudosync_v2.kodi_rpc import has_xml_dtd
@@ -2034,23 +2030,23 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
         return (
             False,
             "file_modified",
-            "Utworzony plik .nfo nie jest poprawnym dokumentem XML KodiBridge; zachowano plik.",
+            tr(32329),
         )
 
     kind = entry.get("type")
     if kind == "movie" and root.tag != "movie":
-        return False, "file_modified", "Zmieniono główny znacznik XML w utworzonym pliku .nfo; zachowano plik."
+        return False, "file_modified", tr(32330)
     if kind == "episode" and root.tag != "episodedetails":
-        return False, "file_modified", "Zmieniono główny znacznik XML w utworzonym pliku .nfo; zachowano plik."
+        return False, "file_modified", tr(32330)
     if root.tag not in ("movie", "episodedetails"):
-        return False, "file_modified", "Nieznany główny znacznik XML w utworzonym pliku .nfo; zachowano plik."
+        return False, "file_modified", tr(32331)
 
     children = list(root)
     if len(children) != 2 or [c.tag for c in children] != ["title", "uniqueid"]:
         return (
             False,
             "file_modified",
-            "Struktura XML pliku .nfo zawiera dodatkowe lub zmienione pola; zachowano plik.",
+            tr(32332),
         )
 
     uid_el = children[1]
@@ -2058,16 +2054,16 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
         return (
             False,
             "file_modified",
-            "Znacznik uniqueid w pliku .nfo nie należy do operacji KodiBridge; zachowano plik.",
+            tr(32333),
         )
     actual_id = (uid_el.text or "").strip()
     if not actual_id:
-        return False, "file_modified", "Brak wartości KodiBridge ID w pliku .nfo; zachowano plik."
+        return False, "file_modified", tr(32334)
     if expected_id and actual_id != expected_id:
         return (
             False,
             "file_modified",
-            "Wartość KodiBridge ID w pliku .nfo nie zgadza się z manifestem operacji; zachowano plik.",
+            tr(32335),
         )
 
     if not expected_hash:
@@ -2078,7 +2074,7 @@ def _verify_created_nfo_unmodified(entry, raw_bytes):
             return (
                 False,
                 "file_modified",
-                "Zawartość utworzonego pliku .nfo odbiega od szablonu KodiBridge; zachowano plik.",
+                tr(32336),
             )
 
     return True, "ok", ""
@@ -2101,12 +2097,12 @@ def _safe_restore_modified_nfo(bak_path, target_path):
     if had_target:
         moved_to_safety = xbmcvfs.rename(target_path, tmp_safety)
         if not moved_to_safety:
-            raise IOError("Nie można przenieść pliku docelowego do tymczasowej kopii bezpieczeństwa: {}".format(target_path))
+            raise IOError(tr(32337, target_path))
 
     try:
         success = xbmcvfs.rename(bak_path, target_path)
         if not success:
-            raise IOError("Operacja xbmcvfs.rename nie powiodła się przy przywracaniu pliku z kopii zapasowej")
+            raise IOError(tr(32338))
         if moved_to_safety and xbmcvfs.exists(tmp_safety):
             xbmcvfs.delete(tmp_safety)
         return True
@@ -2124,12 +2120,12 @@ def rollback_sudosync_ids(manifest_path=None):
     if not manifest_path:
         manifest_path = os.path.join(_addon_profile_path(), "assign_ids_manifest.json")
     if not xbmcvfs.exists(manifest_path):
-        raise RuntimeError("Brak pliku manifestu: {}".format(manifest_path))
+        raise RuntimeError(tr(32367, manifest_path))
     manifest = _read_local_json(manifest_path)
     if not isinstance(manifest, dict) or not isinstance(manifest.get("modified"), list):
-        raise RuntimeError("Nieprawidłowy format pliku manifestu: {}".format(manifest_path))
+        raise RuntimeError(tr(32339, manifest_path))
     if manifest.get("id_scheme") != ID_SCHEME:
-        raise RuntimeError("Manifest {} pochodzi ze starszej wersji (stary KodiBridge ID); nie można go wycofać.".format(manifest_path))
+        raise RuntimeError(tr(32340, manifest_path))
 
     rollbacks = 0
     restored = 0
@@ -2155,7 +2151,7 @@ def rollback_sudosync_ids(manifest_path=None):
     for entry in manifest.get("modified", []):
         if not isinstance(entry, dict):
             errors += 1
-            _record_error(None, "invalid_entry", "Nieprawidłowy wpis w manifeście wycofywania.")
+            _record_error(None, "invalid_entry", tr(32341))
             continue
 
         best_path = entry.get("file")
@@ -2165,7 +2161,7 @@ def rollback_sudosync_ids(manifest_path=None):
 
         if not best_path:
             errors += 1
-            _record_error(None, "missing_file_path", "Wpis manifestu nie zawiera ścieżki pliku .nfo.")
+            _record_error(None, "missing_file_path", tr(32342))
             continue
 
         if entry.get("rolled_back"):
@@ -2187,7 +2183,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 except Exception as exc:
                     errors += 1
                     _record_error(best_path, "restore_failed",
-                                  "Nie udało się przywrócić pliku .nfo z kopii {}: {}".format(bak_path, exc))
+                                  tr(32343, bak_path, exc))
                 continue
             if not backup_exists:
                 # The original was never moved: nothing to undo.
@@ -2198,13 +2194,13 @@ def rollback_sudosync_ids(manifest_path=None):
         if is_created:
             if not xbmcvfs.exists(best_path):
                 errors += 1
-                _record_error(best_path, "missing_created_file", "Utworzony plik .nfo już nie istnieje.")
+                _record_error(best_path, "missing_created_file", tr(32344))
                 continue
             try:
                 raw_bytes = _read_vfs_all(best_path)
             except Exception as exc:
                 errors += 1
-                _record_error(best_path, "read_failed", "Nie udało się odczytać utworzonego pliku .nfo: {}".format(exc))
+                _record_error(best_path, "read_failed", tr(32345, exc))
                 continue
 
             verified, reason, msg = _verify_created_nfo_unmodified(entry, raw_bytes)
@@ -2221,7 +2217,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _mark_done(entry)
             else:
                 errors += 1
-                _record_error(best_path, "delete_failed", "Nie udało się usunąć utworzonego pliku .nfo.")
+                _record_error(best_path, "delete_failed", tr(32346))
         else:
             if not bak_path or not xbmcvfs.exists(bak_path):
                 original_hash = entry.get("original_sha256")
@@ -2239,7 +2235,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _record_error(
                     best_path,
                     "missing_backup",
-                    "Brak pliku kopii zapasowej (.bak); pozostawiono bieżący plik .nfo bez zmian.",
+                    tr(32347),
                 )
                 continue
 
@@ -2248,7 +2244,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _record_error(
                     best_path,
                     "missing_target_file",
-                    "Docelowy plik .nfo nie istnieje; zachowano plik kopii zapasowej (.bak).",
+                    tr(32348),
                 )
                 continue
 
@@ -2258,7 +2254,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _record_error(
                     best_path,
                     "unverifiable_modified_file",
-                    "Brak sumy kontrolnej w manifeście dla zmodyfikowanego pliku; zachowano plik .nfo i kopię .bak.",
+                    tr(32349),
                 )
                 continue
 
@@ -2269,7 +2265,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _record_error(
                     best_path,
                     "read_failed",
-                    "Nie udało się odczytać bieżącego pliku .nfo: {}".format(exc),
+                    tr(32350, exc),
                 )
                 continue
 
@@ -2280,7 +2276,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _record_error(
                     best_path,
                     "file_modified",
-                    "Plik .nfo został zmodyfikowany po przypisaniu KodiBridge ID; zachowano plik .nfo i kopię .bak.",
+                    tr(32351),
                 )
                 continue
 
@@ -2294,7 +2290,7 @@ def rollback_sudosync_ids(manifest_path=None):
                 _record_error(
                     best_path,
                     "restore_failed",
-                    "Nie udało się przywrócić kopii zapasowej .bak do pliku .nfo: {}".format(exc),
+                    tr(32352, exc),
                 )
 
     _NFO_ID_CACHE.clear()
@@ -2645,7 +2641,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
     """
     settings = addon_settings()
     if not bool(settings.get("sudosync_id_enabled") or settings.get("enable_sudosync_id")):
-        raise RuntimeError("Generowanie KodiBridge ID jest wyłączone w ustawieniach.")
+        raise RuntimeError(tr(32353))
     base = base_path if base_path is not None else (settings.get("base_path") or "")
     result = {
         "busy": False,
@@ -2725,7 +2721,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             return candidate
 
         if not _write_manifest():
-            raise RuntimeError("Nie można zapisać raportu {}; naprawa nie została rozpoczęta.".format(REPAIR_IDS_MANIFEST_NAME))
+            raise RuntimeError(tr(32354, REPAIR_IDS_MANIFEST_NAME))
 
         total = sum(len(group["files"]) - 1 for group in groups)
         done = 0
@@ -2748,7 +2744,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             })
             note = ""
             if known_elsewhere > 1:
-                note = " (UWAGA: inne Kodi synchronizują pod tym ID {} różne pozycje; ID zachowała ta, którą zna najwięcej urządzeń)".format(known_elsewhere)
+                note = tr(32355, known_elsewhere)
             result["kept"].append("{} — {}{}".format(keeper["sudosync_id"], keeper_label, note))
             for entry in files:
                 if entry is keeper:
@@ -2764,17 +2760,17 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
                 old_id = entry["sudosync_id"]
                 best_path, _ids, _text = _find_best_nfo(entry["file"], entry["type"])
                 if not best_path or not xbmcvfs.exists(best_path):
-                    _error(entry, label, "brak pliku .nfo")
+                    _error(entry, label, tr(32375))
                     continue
                 _touch_assign_ids_lock(base)
                 try:
                     raw = _read_vfs_all(best_path)
                     raw = raw.encode("utf-8") if isinstance(raw, str) else bytes(raw or b"")
                 except Exception as exc:
-                    _error(entry, label, "nie można odczytać .nfo: {}".format(exc))
+                    _error(entry, label, tr(32356, exc))
                     continue
                 if _replace_sudosync_id_in_nfo(raw, old_id, old_id)[1] == 0:
-                    _error(entry, label, "plik .nfo nie zawiera ID {} (ID pochodzi z bazy Kodi)".format(old_id))
+                    _error(entry, label, tr(32376, old_id))
                     continue
 
                 new_id = new_kodibridge_id()
@@ -2799,7 +2795,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
                 manifest["modified"].append(record)
                 if not _write_manifest():
                     manifest["modified"].remove(record)
-                    _fatal(entry, label, "nie można zapisać raportu naprawy; przerwano bez zmiany pliku")
+                    _fatal(entry, label, tr(32357))
                     stop = True
                     break
 
@@ -2811,17 +2807,17 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
                     current = _read_vfs_all(best_path)
                     current = current.encode("utf-8") if isinstance(current, str) else bytes(current or b"")
                     if current != raw:
-                        failure = "plik .nfo zmienił się w trakcie naprawy; pozostawiono go bez zmian"
+                        failure = tr(32358)
                     else:
                         moved_original = bool(xbmcvfs.rename(best_path, bak_path))
                         if not moved_original:
-                            failure = "nie można utworzyć kopii zapasowej"
+                            failure = tr(32359)
                         elif xbmcvfs.rename(new_path, best_path):
                             changed = True
                         else:
-                            failure = "nie można podmienić pliku .nfo"
+                            failure = tr(32360)
                 except Exception as exc:
-                    failure = "błąd zapisu .nfo: {}".format(exc)
+                    failure = tr(32361, exc)
                 if not changed:
                     try:
                         if moved_original and not xbmcvfs.exists(best_path):
@@ -2829,7 +2825,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
                         if xbmcvfs.exists(new_path):
                             xbmcvfs.delete(new_path)
                     except Exception as exc:
-                        failure += "; przywracanie kopii nie powiodło się: {} (kopia: {})".format(exc, bak_path)
+                        failure += tr(32362, exc, bak_path)
                     if xbmcvfs.exists(best_path):
                         manifest["modified"].remove(record)
                     else:
@@ -2861,7 +2857,7 @@ def repair_duplicate_sudosync_ids(progress_callback=None, is_canceled=None, base
             try:
                 publish_kodibridge_id_change(base, pairs)
             except Exception as exc:
-                msg = "Nie udało się ogłosić zmiany ID innym Kodi: {}".format(exc)
+                msg = tr(32363, exc)
                 result["errors"].append(msg)
                 log(msg, xbmc.LOGWARNING)
         log("Duplicate KodiBridge ID repair: groups={}, renumbered={}, errors={}".format(
@@ -2880,7 +2876,7 @@ class _PreviewResult(list):
 def preview_sudosync_ids(progress_callback=None, is_canceled=None):
     settings = addon_settings()
     if not settings.get("sudosync_id_enabled"):
-        raise RuntimeError("Generowanie KodiBridge ID jest wylaczone w ustawieniach.")
+        raise RuntimeError(tr(32353))
     _NFO_ID_CACHE.clear()
     if is_canceled and is_canceled():
         res = _PreviewResult([])
@@ -2955,17 +2951,6 @@ def preview_sudosync_ids(progress_callback=None, is_canceled=None):
 
 
 _ASSIGN_IDS_LOCK_HELD = False
-
-
-def _get_localized_string(string_id, fallback=""):
-    try:
-        addon = xbmcaddon.Addon(ADDON_ID)
-        val = addon.getLocalizedString(string_id)
-        if isinstance(val, str) and val.strip():
-            return val
-    except Exception:
-        pass
-    return fallback
 
 
 def _remove_assign_ids_lock_file(path):
@@ -3219,7 +3204,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
                 "cancelled": False,
                 "fatal_error": "",
             }
-        raise RuntimeError("Generowanie KodiBridge ID jest wylaczone w ustawieniach.")
+        raise RuntimeError(tr(32353))
 
     base = base_path if base_path is not None else s
     if base is None:
@@ -3233,7 +3218,7 @@ def assign_sudosync_ids(show_notification=True, auto_mode=False, collected_items
             log("Ręczne przypisywanie SudoSync ID zablokowane: inna operacja przypisywania jest w toku.", xbmc.LOGWARNING)
             if not silent and show_notification:
                 try:
-                    msg = _get_localized_string(32079, "Przypisywanie KodiBridge ID jest już wykonywane w tle. Poczekaj na zakończenie.")
+                    msg = tr(32079)
                     xbmcgui.Dialog().notification("KodiBridge", msg, xbmcgui.NOTIFICATION_WARNING, 5000)
                 except Exception:
                     pass

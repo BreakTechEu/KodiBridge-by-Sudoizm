@@ -24,7 +24,7 @@ for _path in (SERVICE_DIR, LIB_DIR):
 
 import service as sudosync_service
 from resources.lib.sudosync_v2.foreign_session import (
-    TITLE, describe_foreign_session, format_started_at, owner_client_name,
+    describe_foreign_session, format_started_at, owner_client_name, title as foreign_title,
 )
 
 OWNER = "1a2b3c4d-1111-4222-8333-444455556666"
@@ -58,7 +58,7 @@ class TestForeignSessionMessage(unittest.TestCase):
 
     def test_message_names_device_time_and_steps(self):
         title, message, log_line = describe_foreign_session(BLOCKED, "AndroidBox", localtime=time.gmtime)
-        self.assertEqual(title, TITLE)
+        self.assertEqual(title, foreign_title())
         self.assertIn("„AndroidBox”", message)
         self.assertIn("08.11.2026 12:48", message)
         self.assertIn("Wyłącz → Zakończ", message)
@@ -93,7 +93,7 @@ class TestServiceReportsForeignSession(unittest.TestCase):
         first = self._report(dict(BLOCKED))
         first.ok.assert_called_once()
         title, message = first.ok.call_args[0]
-        self.assertEqual(title, TITLE)
+        self.assertEqual(title, foreign_title())
         self.assertIn("AndroidBox", message)
         self.assertFalse(self._report(dict(BLOCKED)).ok.called)
 

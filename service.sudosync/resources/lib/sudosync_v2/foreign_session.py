@@ -18,7 +18,20 @@ from __future__ import absolute_import, division, print_function
 import calendar
 import time
 
-TITLE = "KodiBridge — synchronizacja wstrzymana"
+TITLE_ID = 32230
+
+
+def _tr(string_id, *args, **kwargs):
+    # This package is imported both as resources.lib.sudosync_v2 and as sudosync_v2.
+    try:
+        from resources.lib.sudosync_i18n import tr
+    except ImportError:
+        from sudosync_i18n import tr
+    return tr(string_id, *args, **kwargs)
+
+
+def title():
+    return _tr(TITLE_ID)
 
 
 def owner_client_name(load_snapshot, client_id):
@@ -52,23 +65,17 @@ def describe_foreign_session(recovery, owner_name=None, localtime=None):
     session_id = str(recovery.get("session_id") or "")
     started = format_started_at(recovery.get("started_at"), localtime=localtime)
     if owner_name:
-        device = "„{}”".format(owner_name)
+        device = _tr(32231, owner_name)
     elif owner_id:
-        device = "o identyfikatorze {}".format(owner_id[:8])
+        device = _tr(32232, owner_id[:8])
     else:
-        device = "nieznanym"
-    when = " rozpoczętej {}".format(started) if started else ""
-    message = (
-        "Kodi na urządzeniu {device} nie dokończyło operacji synchronizacji{when}, "
-        "prawdopodobnie zostało zamknięte nieprawidłowo. Tylko ono może ją dokończyć albo wycofać. "
-        "Do tego czasu to Kodi nie synchronizuje stanu obejrzenia.\n"
-        "Zamknij to Kodi, uruchom Kodi na urządzeniu {device}, odczekaj około 2 minut bez odtwarzania "
-        "i zamknij je z menu Kodi (Wyłącz → Zakończ)."
-    ).format(device=device, when=when)
+        device = _tr(32233)
+    when = _tr(32234, started) if started else ""
+    message = _tr(32235, device=device, when=when)
     log_line = (
         "Unfinished v2 operation of another Kodi blocks synchronization "
         "(owner client {}, name {}, session {}, started {}).".format(
             owner_id or "?", owner_name or "?", session_id or "?",
             recovery.get("started_at") or "?")
     )
-    return TITLE, message, log_line
+    return title(), message, log_line

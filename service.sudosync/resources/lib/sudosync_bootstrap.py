@@ -14,6 +14,8 @@ import xbmcgui
 import xbmcvfs
 import xbmcaddon
 
+from resources.lib.sudosync_i18n import tr
+
 ADDON_ID = "service.sudosync"
 # Shared folder on the network share. 2.2.12 replaced the sequential
 # <uniqueid type="sudosync"> with <uniqueid type="kodibridge"> (UUID) and starts
@@ -115,12 +117,12 @@ def test_vfs_rw(test_dir):
                 data = f.read()
             os.remove(test_file)
             if data != "test":
-                return False, "Błąd weryfikacji zapisu/odczytu"
+                return False, tr(32500)
             return True, "OK"
 
         if not _b_exists(test_dir):
             if not _b_mkdirs(test_dir):
-                return False, "Nie można utworzyć folderu współdzielonego"
+                return False, tr(32501)
         
         test_file = test_dir + "rw_test.tmp"
         f = xbmcvfs.File(test_file, 'w')
@@ -138,7 +140,7 @@ def test_vfs_rw(test_dir):
         xbmcvfs.delete(test_file)
         
         if data != "test":
-            return False, "Błąd weryfikacji zapisu/odczytu"
+            return False, tr(32500)
             
         return True, "OK"
     except Exception as exc:
@@ -556,17 +558,10 @@ def enforce_network_version_guard(base_path, cfg=None):
     )
     dialog = xbmcgui.Dialog()
     if dialog.yesno(
-        "KodiBridge — wymagana aktualizacja",
-        "Na innym urządzeniu Kodi w tej sieci zainstalowano już nowszą wersję KodiBridge ({remote}), "
-        "natomiast tutaj działa starsza wersja ({local}).\n\n"
-        "Aby chronić spójność biblioteki, KodiBridge jest wyłączony do czasu aktualizacji. "
-        "Bez aktualizacji KodiBridge nie będzie synchronizował tego Kodi, a pytanie pojawi się "
-        "ponownie dopiero po następnym uruchomieniu Kodi.\n\n"
-        "Czy chcesz pobrać i zainstalować aktualizację z GitHub teraz?".format(
-            remote=remote_min, local=local_version
-        ),
-        yeslabel="Aktualizuj z GitHub",
-        nolabel="Inna opcja / Wyłącz",
+        tr(32502),
+        tr(32503, remote=remote_min, local=local_version),
+        yeslabel=tr(32504),
+        nolabel=tr(32505),
     ):
         try:
             res = install_github_update(show_dialogs=True)
@@ -575,20 +570,17 @@ def enforce_network_version_guard(base_path, cfg=None):
         except Exception as exc:
             log("GitHub update during version guard failed: {}".format(exc), xbmc.LOGERROR)
             dialog.ok(
-                "KodiBridge — błąd pobierania z GitHub",
-                "Nie udało się pobrać aktualizacji z GitHub:\n{}".format(exc),
+                tr(32506),
+                tr(32507, exc),
             )
 
     if dialog.yesno(
-        "KodiBridge — aktualizacja z pliku ZIP",
-        "Wymagana jest wersja co najmniej {remote} (obecna: {local}).\n\n"
-        "Czy chcesz wskazać plik aktualizacji .zip z dysku lokalnego lub udziału sieciowego?".format(
-            remote=remote_min, local=local_version
-        ),
-        yeslabel="Wybierz plik ZIP",
-        nolabel="Wyłącz KodiBridge",
+        tr(32508),
+        tr(32509, remote=remote_min, local=local_version),
+        yeslabel=tr(32510),
+        nolabel=tr(32511),
     ):
-        zip_path = dialog.browse(1, "Wybierz pakiet aktualizacji KodiBridge (.zip)", "files", ".zip")
+        zip_path = dialog.browse(1, tr(32120), "files", ".zip")
         if zip_path:
             try:
                 res = install_update_from_zip_path(zip_path, show_dialogs=True)
@@ -596,15 +588,11 @@ def enforce_network_version_guard(base_path, cfg=None):
                     # Kodi restarts the updated service; this instance stops here.
                     return False
             except Exception as exc:
-                dialog.ok("KodiBridge — błąd aktualizacji", str(exc))
+                dialog.ok(tr(32324), str(exc))
 
     dialog.ok(
-        "KodiBridge — usługa wstrzymana",
-        "KodiBridge nie będzie synchronizował tego Kodi do czasu aktualizacji wtyczki do wersji {}.\n\n"
-        "Ponownie zapytam o aktualizację po następnym uruchomieniu Kodi. Możesz też w każdej chwili "
-        "zaktualizować wtyczkę ręcznie w jej ustawieniach.".format(
-            remote_min
-        ),
+        tr(32512),
+        tr(32513, remote_min),
     )
     return False
 
@@ -760,11 +748,8 @@ def _report_active_peer_kodi(owner_id, owner_name):
         xbmc.LOGWARNING,
     )
     xbmcgui.Dialog().ok(
-        "KodiBridge — inne Kodi jest aktywne",
-        "W tej sieci działa już KodiBridge na urządzeniu: {}.\n"
-        "Dozwolone jest tylko jedno aktywne Kodi naraz — zamknij tamto Kodi przed uruchomieniem kolejnego.".format(
-            owner_name
-        ),
+        tr(32514),
+        tr(32515, owner_name),
     )
 
 
@@ -786,12 +771,8 @@ def ensure_no_active_peer_kodi(base_path=None, ttl_seconds=ACTIVE_KODI_TTL_SECON
     log("Nie można odczytać blokady aktywnego Kodi ({}): {}. Zatrzymuję start.".format(status, lock_path),
         xbmc.LOGERROR)
     xbmcgui.Dialog().ok(
-        "KodiBridge — nie można sprawdzić innych Kodi",
-        "Nie udało się odczytać pliku blokady aktywnego Kodi na NAS-ie:\n{}\n\n"
-        "KodiBridge nie wystartuje, dopóki nie sprawdzi, czy inne Kodi nie pracuje. Sprawdź połączenie z NAS-em "
-        "i uruchom Kodi ponownie. Jeśli plik jest uszkodzony, a żadne inne Kodi nie pracuje, usuń go.".format(
-            lock_path
-        ),
+        tr(32516),
+        tr(32517, lock_path),
     )
     return False
 
@@ -879,7 +860,7 @@ def refresh_network_active_kodi_lease(base_path=None, ttl_seconds=ACTIVE_KODI_TT
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(now))),
         }
         if not _write_json_file(lock_path, lease_payload):
-            raise IOError("nie udało się zapisać dzierżawy")
+            raise IOError(tr(32518))
         _LEASE_STATE["last_ok_epoch"] = now
         return True
     except Exception as exc:
@@ -945,8 +926,8 @@ def _ensure_client_enrolled_and_initialized(base_path):
 
 def run_migration_wizard(base_path):
     xbmcgui.Dialog().ok(
-        "KodiBridge - Migracja",
-        "Wykryto istniejącą instalację starszej wersji KodiBridge w wybranym folderze.\n\nTwoje dotychczasowe dane i identyfikatory zostaną zachowane. KodiBridge wyodrębni teraz ustawienia sieciowe do nowego pliku SudoSync.cfg."
+        tr(32519),
+        tr(32520)
     )
     
     # Wyciągamy ustawienia sieciowe, jeśli jakieś były w starym system/config.json
@@ -988,15 +969,15 @@ def run_migration_wizard(base_path):
     }
     
     if not write_sudosync_cfg(base_path, new_cfg):
-        xbmcgui.Dialog().ok("Błąd", "Nie udało się zapisać zmigrowanej konfiguracji do SudoSync.cfg")
+        xbmcgui.Dialog().ok(tr(32521), tr(32522))
         return False
         
-    xbmcgui.Dialog().notification("Migracja", "Migracja zakończona sukcesem.", xbmcgui.NOTIFICATION_INFO, 5000)
+    xbmcgui.Dialog().notification(tr(32523), tr(32524), xbmcgui.NOTIFICATION_INFO, 5000)
     return True
 
 def run_new_config_wizard(base_path):
     dialog = xbmcgui.Dialog()
-    if not dialog.yesno("KodiBridge - Konfigurator sieciowy", "Skonfigurujemy teraz nowe środowisko synchronizacji KodiBridge dla Twojej domeny.\n\nCzy chcesz domyślnie używać niezawodnego identyfikatora 'KodiBridge ID' dla wideo pozbawionych standardowych ID (IMDb/TMDb)?", yeslabel="Tak (Zalecane)", nolabel="Nie, użyj IMDb"):
+    if not dialog.yesno(tr(32525), tr(32526), yeslabel=tr(32527), nolabel=tr(32528)):
         sudosync_id_enabled = False
         sudosync_id_prefix = ""
     else:
@@ -1022,10 +1003,10 @@ def run_new_config_wizard(base_path):
     }
     
     if not write_sudosync_cfg(base_path, new_cfg):
-        xbmcgui.Dialog().ok("Błąd", "Nie udało się zapisać nowej konfiguracji do SudoSync.cfg")
+        xbmcgui.Dialog().ok(tr(32521), tr(32529))
         return False
         
-    dialog.ok("Sukces", "Środowisko .KodiBridge skonfigurowane poprawnie!\nTeraz synchronizacja może się rozpocząć.")
+    dialog.ok(tr(32530), tr(32531))
     return True
 
 def apply_network_settings(cfg):
@@ -1073,19 +1054,19 @@ def run_bootstrap(force_select_path=False):
     if base_path and force_select_path:
         dialog = xbmcgui.Dialog()
         if dialog.yesno(
-            "KodiBridge — Konfigurator",
-            "Obecny folder:\n{}\nCzy chcesz wskazać inny folder współdzielony?".format(mask_vfs_credentials(base_path)),
-            yeslabel="Zmień folder",
-            nolabel="Sprawdź obecny",
+            tr(32532),
+            tr(32533, mask_vfs_credentials(base_path)),
+            yeslabel=tr(32534),
+            nolabel=tr(32535),
         ):
             choose_new_path = True
 
     if choose_new_path:
         dialog = xbmcgui.Dialog()
         if not base_path:
-            dialog.ok("KodiBridge", "Musisz wskazać folder sieciowy (np. SMB/NFS), w którym KodiBridge będzie przechowywać wspólną konfigurację i bazę dla wszystkich urządzeń Kodi w tej sieci.")
+            dialog.ok("KodiBridge", tr(32536))
         
-        selected_path = dialog.browse(3, "Wybierz katalog współdzielony (np. Wideo)", "network")
+        selected_path = dialog.browse(3, tr(32537), "network")
         if not selected_path:
             log("User cancelled path selection.")
             return False
@@ -1138,7 +1119,7 @@ def run_bootstrap(force_select_path=False):
     log("Testowanie dostępu R/W do {}".format(mask_vfs_credentials(base_path)))
     success, msg = test_vfs_rw(base_path)
     if not success:
-        xbmcgui.Dialog().ok("KodiBridge - Brak Dostępu", "Nie udało się zapisać plików w wybranym folderze:\n{}\n\nSprawdź uprawnienia do zapisu lub wskaż inny udział w ustawieniach.".format(msg))
+        xbmcgui.Dialog().ok(tr(32538), tr(32539, msg))
         return False
 
     if migrated_from:
@@ -1150,7 +1131,7 @@ def run_bootstrap(force_select_path=False):
         try:
             xbmcgui.Dialog().notification(
                 "KodiBridge",
-                "Nowy folder wspólny {}: synchronizacja zaczyna się od nowa".format(SHARED_DIR_NAME),
+                tr(32540, SHARED_DIR_NAME),
                 xbmcgui.NOTIFICATION_INFO,
                 8000,
             )
@@ -1162,30 +1143,30 @@ def run_bootstrap(force_select_path=False):
     if status == "VALID":
         # WALIDACJA ISTNIEJĄCEGO SudoSync.cfg
         if not isinstance(cfg, dict):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Plik SudoSync.cfg nie jest prawidłowym słownikiem JSON.")
+            xbmcgui.Dialog().ok(tr(32544), tr(32545))
             return False
         if cfg.get("schema_version") not in (1, 2):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Nieobsługiwana wersja schematu (schema_version) w SudoSync.cfg.")
+            xbmcgui.Dialog().ok(tr(32544), tr(32546))
             return False
         if not isinstance(cfg.get("network_settings"), dict):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Brak sekcji network_settings w SudoSync.cfg.")
+            xbmcgui.Dialog().ok(tr(32544), tr(32547))
             return False
         if not isinstance(cfg.get("network_settings", {}).get("sudosync_id_enabled"), bool):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Zły typ danych w sudosync_id_enabled.")
+            xbmcgui.Dialog().ok(tr(32544), tr(32548, "sudosync_id_enabled"))
             return False
         if not isinstance(cfg.get("network_settings", {}).get("sudosync_id_prefix"), str):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Zły typ danych w sudosync_id_prefix.")
+            xbmcgui.Dialog().ok(tr(32544), tr(32548, "sudosync_id_prefix"))
             return False
         last_num = cfg.get("network_settings", {}).get("sudosync_id_last_number")
         if last_num is not None and (not isinstance(last_num, int) or isinstance(last_num, bool) or last_num < 0):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Zły typ danych w sudosync_id_last_number.")
+            xbmcgui.Dialog().ok(tr(32544), tr(32548, "sudosync_id_last_number"))
             return False
         min_ver = cfg.get("network_settings", {}).get("min_addon_version")
         if min_ver is not None and not isinstance(min_ver, str):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Zły typ danych w min_addon_version.")
+            xbmcgui.Dialog().ok(tr(32544), tr(32548, "min_addon_version"))
             return False
         if not cfg.get("configuration", {}).get("completed"):
-            xbmcgui.Dialog().ok("Błąd SudoSync.cfg", "Konfiguracja w SudoSync.cfg nie jest oznaczona jako ukończona.")
+            xbmcgui.Dialog().ok(tr(32544), tr(32549))
             return False
 
         if not enforce_network_version_guard(base_path, cfg):
@@ -1202,7 +1183,7 @@ def run_bootstrap(force_select_path=False):
         backup_path = base_path + "SudoSync.cfg.corrupted_" + str(int(time.time()))
         if xbmcvfs.exists(corrupted_path):
             xbmcvfs.copy(corrupted_path, backup_path)
-        xbmcgui.Dialog().ok("Błąd Krytyczny", "Plik SudoSync.cfg jest uszkodzony lub nieczytelny. Została utworzona kopia zapasowa. Napraw plik ręcznie lub usuń go, aby wymusić nową konfigurację.")
+        xbmcgui.Dialog().ok(tr(32541), tr(32542))
         return False
     else:
         # BRAK SUDOSYNC.CFG
@@ -1227,6 +1208,6 @@ def run_bootstrap(force_select_path=False):
             _ensure_client_enrolled_and_initialized(base_path)
             return True
             
-        xbmcgui.Dialog().ok("Błąd Krytyczny", "Nie udało się odczytać SudoSync.cfg pomimo jego zapisu.")
+        xbmcgui.Dialog().ok(tr(32541), tr(32543))
         return False
 

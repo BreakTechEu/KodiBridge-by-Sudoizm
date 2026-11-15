@@ -16,19 +16,12 @@ import xbmc
 import xbmcgui
 
 from resources.lib.sudosync_core import log, rpc
+from resources.lib.sudosync_i18n import tr
 
 # Window property set by the "Resolve conflicts" settings action and read by
 # the running service (the settings script must not run the engine itself).
 RESOLVE_REQUEST_PROPERTY = "service.sudosync.resolve_conflicts"
 HOME_WINDOW_ID = 10000
-
-FIELD_NAMES = {
-    "playcount": "liczba odtworzeń",
-    "lastplayed": "data ostatniego odtworzenia",
-    "resume": "punkt wznowienia",
-    "userrating": "ocena",
-}
-
 
 def conflict_key(conflict):
     """Identify one conflict, including its version, for the dismissed-this-session set."""
@@ -63,21 +56,21 @@ def _clock(seconds):
 
 
 def describe_value(field, value):
-    """Return a short Polish description of one synchronized field value."""
+    """Return a short description of one synchronized field value (Kodi language)."""
     if field == "playcount":
         count = int(value or 0)
-        return "nieobejrzane" if count <= 0 else "obejrzane, odtworzeń: {}".format(count)
+        return tr(32240) if count <= 0 else tr(32241, count)
     if field == "lastplayed":
-        return str(value) if value else "brak"
+        return str(value) if value else tr(32242)
     if field == "resume":
         value = value if isinstance(value, dict) else {}
         position = float(value.get("position") or 0)
         if position <= 0:
-            return "od początku"
+            return tr(32243)
         total = float(value.get("total") or 0)
-        return "{} z {}".format(_clock(position), _clock(total)) if total else _clock(position)
+        return tr(32244, _clock(position), _clock(total)) if total else _clock(position)
     if field == "userrating":
-        return "brak oceny" if not value else "ocena {}/10".format(int(value))
+        return tr(32245) if not value else tr(32246, int(value))
     return str(value)
 
 
@@ -101,7 +94,7 @@ def item_label(conflict):
         ).strip()
     except Exception as exc:
         log("Cannot read title for conflict item {} {}: {}".format(conflict.get("type"), kodi_id, exc), xbmc.LOGDEBUG)
-        return "{} #{}".format("film" if conflict.get("type") == "movie" else "odcinek", kodi_id)
+        return tr(32247 if conflict.get("type") == "movie" else 32248, kodi_id)
 
 
 def choice_options(conflict, local_client_id):
@@ -127,17 +120,21 @@ def choice_options(conflict, local_client_id):
 def _device_name(option, local_client_id):
     name = option.get("client_name") or str(option.get("client_id", ""))[:8]
     if option.get("client_id") == local_client_id:
-        name += " (to Kodi)"
+        name += tr(32249)
     return name
 
 
 FIELD_ORDER = ("playcount", "lastplayed", "resume", "userrating")
-ROW_NAMES = {
-    "playcount": "Liczba odtworzeń",
-    "lastplayed": "Ostatnio odtworzone",
-    "resume": "Punkt wznowienia",
-    "userrating": "Ocena",
+ROW_NAME_IDS = {
+    "playcount": 32250,
+    "lastplayed": 32251,
+    "resume": 32252,
+    "userrating": 32253,
 }
+
+
+def row_name(field):
+    return tr(ROW_NAME_IDS[field])
 
 
 def group_conflicts(conflicts):
@@ -262,10 +259,10 @@ def build_dialog_class(gui):
             self.addControl(gui.ControlImage(x, y, w, height, tex_bg))
             self.addControl(gui.ControlImage(x, y, w, 64, tex_head))
             self.addControl(gui.ControlLabel(x + 24, y + 12, w - 48, 40,
-                                             "[B]KodiBridge — konflikt {}: {}[/B]".format(counter, title)))
+                                             "[B]{}[/B]".format(tr(32254, counter, title))))
             self.addControl(gui.ControlLabel(
                 x + 24, y + 74, w - 48, 36,
-                "Te same pola zmieniono na różnych urządzeniach. Wybierz w każdym wierszu właściwą wartość.",
+                tr(32255),
                 textColor="0xFFB0B8C4"))
             cols = len(matrix.columns)
             col_w = int((w - 48 - self.LABEL_W) / max(cols, 1))
@@ -275,7 +272,7 @@ def build_dialog_class(gui):
                                                  "[B]{}[/B]".format(name), alignment=_ALIGN_CENTER))
             for row, field in enumerate(matrix.fields):
                 row_y = top + 48 + row * self.ROW_H
-                self.addControl(gui.ControlLabel(x + 24, row_y + 8, self.LABEL_W - 12, 36, ROW_NAMES[field]))
+                self.addControl(gui.ControlLabel(x + 24, row_y + 8, self.LABEL_W - 12, 36, row_name(field)))
                 buttons = []
                 for col in range(cols):
                     if not matrix.has_cell(row, col):
@@ -291,10 +288,10 @@ def build_dialog_class(gui):
                     buttons.append(button)
                 self.grid.append(buttons)
             bottom = y + height - 76
-            self.save_button = gui.ControlButton(x + w - 24 - 2 * 250 - 16, bottom, 250, self.BTN_H, "[B]Zapisz[/B]",
+            self.save_button = gui.ControlButton(x + w - 24 - 2 * 250 - 16, bottom, 250, self.BTN_H, "[B]{}[/B]".format(tr(32256)),
                                                  focusTexture=tex_focus, noFocusTexture=tex_btn,
                                                  alignment=_ALIGN_CENTER)
-            self.later_button = gui.ControlButton(x + w - 24 - 250, bottom, 250, self.BTN_H, "Później",
+            self.later_button = gui.ControlButton(x + w - 24 - 250, bottom, 250, self.BTN_H, tr(32257),
                                                   focusTexture=tex_focus, noFocusTexture=tex_btn,
                                                   alignment=_ALIGN_CENTER)
             self.addControl(self.save_button)
@@ -394,8 +391,8 @@ def _ask_by_select(group, local_client_id, title, counter):
     for field in [f for f in FIELD_ORDER if f in group["conflicts"]]:
         labels, values = choice_options(group["conflicts"][field], local_client_id)
         selected = xbmcgui.Dialog().select(
-            "KodiBridge ({}): {} — {}".format(counter, title, ROW_NAMES[field].lower()),
-            labels + ["Później (zapytaj po ponownym uruchomieniu Kodi)"],
+            tr(32258, counter, title, row_name(field).lower()),
+            labels + [tr(32259)],
         )
         if selected < 0 or selected >= len(values):
             return None
@@ -469,7 +466,7 @@ def _record_error(message):
 def _notify(message, warning=False, duration=6000):
     try:
         xbmcgui.Dialog().notification(
-            "KodiBridge — konflikty", message,
+            tr(32260), message,
             xbmcgui.NOTIFICATION_WARNING if warning else xbmcgui.NOTIFICATION_INFO,
             duration,
         )
@@ -519,7 +516,7 @@ def prompt_and_resolve(runtime, conflicts, dismissed, local_client_id, is_busy=N
             # service loop handles it; never write without the lease.
             log("Conflict resolution skipped: active Kodi lease was lost.", xbmc.LOGWARNING)
             break
-        _notify("Zapisuję wybór: {}…".format(title), duration=4000)
+        _notify(tr(32261, title), duration=4000)
         try:
             result = runtime.resolve_item_conflicts(
                 group["type"], group["kodi_id"], choices,
@@ -557,17 +554,17 @@ def _notify_summary(counts):
         return
     parts = []
     if counts["resolved"]:
-        parts.append("zapisano wybór: {}".format(counts["resolved"]))
+        parts.append(tr(32262, counts["resolved"]))
     if counts["outdated"]:
-        parts.append("nieaktualne, bez zapisu: {}".format(counts["outdated"]))
+        parts.append(tr(32263, counts["outdated"]))
     if counts["failed"]:
-        parts.append("błąd zapisu: {} (pytanie wróci później)".format(counts["failed"]))
+        parts.append(tr(32264, counts["failed"]))
     _notify("; ".join(parts).capitalize() + ".", warning=bool(counts["failed"]))
 
 
 CONFLICT_CHECK_TIMEOUT_SECONDS = 15 * 60
-CHECK_HEADING = "KodiBridge — sprawdzam konflikty zmian"
-CHECK_START_MESSAGE = "Odczyt biblioteki i porównanie z innymi Kodi. Przy dużej bibliotece może to potrwać kilka minut."
+CHECK_HEADING_ID = 32265
+CHECK_START_MESSAGE_ID = 32266
 
 
 class ConflictCheckProgress(object):
@@ -591,9 +588,9 @@ class ConflictCheckProgress(object):
         try:
             if self._dialog is None:
                 self._dialog = self._gui.DialogProgressBG()
-                self._dialog.create(CHECK_HEADING, CHECK_START_MESSAGE)
+                self._dialog.create(tr(CHECK_HEADING_ID), tr(CHECK_START_MESSAGE_ID))
             else:
-                self._dialog.update(0, CHECK_HEADING, CHECK_START_MESSAGE)
+                self._dialog.update(0, tr(CHECK_HEADING_ID), tr(CHECK_START_MESSAGE_ID))
         except Exception as exc:
             log("Cannot show conflict check progress: {}".format(exc), xbmc.LOGDEBUG)
             self._dialog = None
@@ -603,10 +600,10 @@ class ConflictCheckProgress(object):
             return
         elapsed = ""
         if now is not None:
-            elapsed = " (trwa {} min)".format(int((now - self.started_at) // 60))
+            elapsed = tr(32267, int((now - self.started_at) // 60))
         try:
             if self._dialog is not None:
-                self._dialog.update(0, CHECK_HEADING, message + elapsed)
+                self._dialog.update(0, tr(CHECK_HEADING_ID), message + elapsed)
         except Exception:
             pass
 

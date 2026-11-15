@@ -17,6 +17,7 @@ import xbmcgui
 import xbmcvfs
 
 from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_guard, ServiceGuardError
+from resources.lib.sudosync_i18n import tr
 from resources.lib.sudosync_conflicts import (
     ConflictCheckProgress,
     prompt_and_resolve,
@@ -289,34 +290,33 @@ def coverage_problem_summary(coverage):
         unreadable = int(coverage.get("unreadable_nfo") or 0)
         parts = []
         if shared:
-            parts.append("niesynchronizowane (wspólny identyfikator zewnętrzny): {}".format(shared))
+            parts.append(tr(32200, shared))
         if repeated:
-            parts.append("ten sam plik dwa razy w bibliotece: {}".format(repeated))
+            parts.append(tr(32201, repeated))
         if unreadable:
-            parts.append("nieczytelne .nfo: {}".format(unreadable))
+            parts.append(tr(32202, unreadable))
         if not parts:
             return None, None
-        return (("external", shared, unreadable, repeated),
-                "Pozycje biblioteki: " + ", ".join(parts) + ". Szczegóły w oknie statusu KodiBridge.")
+        return (("external", shared, unreadable, repeated), tr(32203, ", ".join(parts)))
     totals = {}
     for key in ("missing", "duplicates", "ambiguous", "repeated"):
         totals[key] = sum(int((coverage.get(t) or {}).get(key) or 0) for t in ("movie", "episode"))
     unreadable = int(coverage.get("unreadable_nfo") or 0)
     parts = []
     if totals["missing"]:
-        parts.append("bez KodiBridge ID: {}".format(totals["missing"]))
+        parts.append(tr(32204, totals["missing"]))
     if totals["duplicates"]:
-        parts.append("zdublowane ID: {}".format(totals["duplicates"]))
+        parts.append(tr(32205, totals["duplicates"]))
     if totals["ambiguous"]:
-        parts.append("blokujące synchronizację: {}".format(totals["ambiguous"]))
+        parts.append(tr(32206, totals["ambiguous"]))
     if totals["repeated"]:
-        parts.append("ten sam plik dwa razy w bibliotece: {}".format(totals["repeated"]))
+        parts.append(tr(32201, totals["repeated"]))
     if unreadable:
-        parts.append("nieczytelne .nfo: {}".format(unreadable))
+        parts.append(tr(32202, unreadable))
     if not parts:
         return None, None
     key = (totals["missing"], totals["duplicates"], totals["ambiguous"], unreadable, totals["repeated"])
-    return key, "Pozycje biblioteki: " + ", ".join(parts) + ". Szczegóły w oknie statusu KodiBridge."
+    return key, tr(32203, ", ".join(parts))
 
 
 # The assignment after a scan runs inside the service loop; the active-Kodi
@@ -335,8 +335,6 @@ def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
     ``keep_alive`` refreshes the active-Kodi lease; it is called at most every
     ASSIGN_KEEP_ALIVE_SECONDS and a False result (lease lost) stops the work.
     """
-    from resources.lib.sudosync_core import _get_localized_string
-
     if is_assign_ids_lock_busy(base_path):
         # Another assignment is running: no library read and no window now.
         return 0
@@ -375,9 +373,9 @@ def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
         )
 
     dialog = xbmcgui.DialogProgress()
-    title = _get_localized_string(32076, "KodiBridge — KodiBridge ID")
-    stage = _get_localized_string(32081, "Przypisywanie KodiBridge ID...")
-    notice = _get_localized_string(32082, "To okno zamknie się automatycznie po zakończeniu operacji.")
+    title = tr(32076)
+    stage = tr(32081)
+    notice = tr(32082)
 
     def is_canceled():
         try:
@@ -410,11 +408,9 @@ def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
     if isinstance(result, dict) and result.get("fatal_error"):
         try:
             xbmcgui.Dialog().ok(
-                "KodiBridge — błąd",
-                "Nadawanie KodiBridge ID przerwane: {}\n"
-                "Zmieniono do błędu: filmy {}, odcinki {}.".format(
-                    mask_vfs_credentials(result.get("fatal_error")),
-                    result.get("movies", 0), result.get("episodes", 0)),
+                tr(32168),
+                tr(32207, mask_vfs_credentials(result.get("fatal_error")),
+                   result.get("movies", 0), result.get("episodes", 0)),
             )
         except Exception:
             pass
@@ -445,17 +441,19 @@ def _report_foreign_session(v2_runtime, recovery):
         pass
 
 
-SYNC_FAILURE_TITLE = "BŁĄD KodiBridge – synchronizacja wstrzymana"
+SYNC_FAILURE_TITLE_ID = 32208
 AUTHOR_ISSUES_URL = "https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/issues"
 
+
+def sync_failure_title():
+    return tr(SYNC_FAILURE_TITLE_ID)
+
+
 # Known reasons of a stopped synchronization that a tool of the add-on fixes:
-# cause code -> (reason, where to find the repair).
+# cause code -> function returning (reason, where to find the repair).
 KNOWN_SYNC_FAILURE_CAUSES = {
-    "shared_external_without_id": (
-        "pozycje bez KodiBridge ID mają wspólny identyfikator zewnętrzny (IMDb/TMDb/TVDb/Trakt).",
-        "Ustawienia wtyczki → Prywatne wideo → „Przypisz KodiBridge ID wszystkim pozycjom wideo "
-        "w bibliotece”. Po nadaniu ID synchronizacja ruszy sama.",
-    ),
+    # Settings → "Private videos" (32060) → "Assign KodiBridge IDs…" (32065).
+    "shared_external_without_id": lambda: (tr(32209), tr(32210, tr(32060), tr(32065))),
 }
 
 
@@ -487,20 +485,12 @@ def sync_failure_cause(exc):
 
 def sync_failure_message(log_path=None, cause=None):
     """Text of the window shown when synchronization stopped on an error."""
-    parts = [
-        "Synchronizacja zatrzymała się z powodu błędu. Do czasu jego usunięcia zmiany stanu "
-        "obejrzenia z tego Kodi nie trafiają do innych urządzeń."
-    ]
+    parts = [tr(32211)]
     if cause in KNOWN_SYNC_FAILURE_CAUSES:
-        reason, repair = KNOWN_SYNC_FAILURE_CAUSES[cause]
-        parts.append("Przyczyna: {}\nNaprawa: {}".format(reason, repair))
-    parts.append("Szczegóły są w dzienniku Kodi:\n{}".format(
-        log_path or "plik kodi.log w folderze danych Kodi"))
-    parts.append(
-        "Analizę dziennika możesz zlecić swojej SI albo przesłać dziennik autorowi wtyczki: {}\n"
-        "Uwaga: zgłoszenia na GitHubie są publiczne, a dziennik może zawierać ścieżki do Twoich "
-        "plików. Przejrzyj go przed wysłaniem.".format(AUTHOR_ISSUES_URL)
-    )
+        reason, repair = KNOWN_SYNC_FAILURE_CAUSES[cause]()
+        parts.append(tr(32212, reason, repair))
+    parts.append(tr(32213, log_path or tr(32214)))
+    parts.append(tr(32215, AUTHOR_ISSUES_URL))
     return "\n\n".join(parts)
 
 
@@ -517,7 +507,7 @@ def _report_sync_failure(exc=None):
         return
     _SYNC_FAILURE_NOTIFIED["key"] = key
     try:
-        xbmcgui.Dialog().textviewer(SYNC_FAILURE_TITLE, sync_failure_message(kodi_log_path(), cause))
+        xbmcgui.Dialog().textviewer(sync_failure_title(), sync_failure_message(kodi_log_path(), cause))
     except Exception:
         pass
 
@@ -546,7 +536,7 @@ def _record_coverage(v2_runtime):
     _COVERAGE_NOTIFIED["key"] = key
     log("KodiBridge ID coverage problems: {}".format(message), xbmc.LOGWARNING)
     try:
-        title = "KodiBridge" if coverage.get("mode") == "external" else "KodiBridge — KodiBridge ID"
+        title = "KodiBridge" if coverage.get("mode") == "external" else tr(32222)
         xbmcgui.Dialog().notification(title, message, xbmcgui.NOTIFICATION_WARNING, 10000)
     except Exception:
         pass
@@ -839,7 +829,7 @@ def _run_service():
                             try:
                                 xbmcgui.Dialog().notification(
                                     "KodiBridge",
-                                    "Inne Kodi przejęło sesję, wymagana jest nowsza wersja albo NAS nie odpowiada. Usługa wstrzymana.",
+                                    tr(32216),
                                     xbmcgui.NOTIFICATION_WARNING,
                                     5000,
                                 )
@@ -873,7 +863,7 @@ def _run_service():
                 if report_no_conflicts and conflict_check.timed_out(now):
                     report_no_conflicts = False
                     conflict_check.finish(
-                        "Sprawdzanie konfliktów przerwane po 15 minutach. Spróbuj ponownie później.", warning=True)
+                        tr(32217), warning=True)
 
                 # Check for pending post-scan SudoSync ID assignment (debounce 3-5s)
                 scan_pending = getattr(monitor, "scan_assign_pending", False) is True
@@ -1009,16 +999,15 @@ def _run_service():
                             if result.get("busy"):
                                 # Error or busy session: keep the request and retry.
                                 conflict_check.update(
-                                    "Synchronizacja chwilowo niemożliwa ({}), ponawiam…".format(
-                                        result.get("error") or "sesja zajęta"), now=time.time())
+                                    tr(32218, result.get("error") or tr(32219)), now=time.time())
                             elif v2_status == "deferred":
-                                conflict_check.update("Czekam, aż będzie można odczytać bibliotekę…", now=time.time())
+                                conflict_check.update(tr(32220), now=time.time())
                             else:
                                 report_no_conflicts = False
                                 if pending_conflicts:
                                     conflict_check.finish()
                                 else:
-                                    conflict_check.finish("Brak konfliktów do rozwiązania.")
+                                    conflict_check.finish(tr(32221))
                         if not result.get("busy"):
                             if (
                                 getattr(monitor, "dirty_seq", 0) == cycle_dirty_seq

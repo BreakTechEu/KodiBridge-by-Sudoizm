@@ -87,7 +87,7 @@ class MessageTests(unittest.TestCase):
         self.assertIn("C:\\Kodi\\kodi.log", text)
 
     def test_title_marks_an_error(self):
-        self.assertTrue(sudosync_service.SYNC_FAILURE_TITLE.startswith("BŁĄD KodiBridge"))
+        self.assertTrue(sudosync_service.sync_failure_title().startswith("BŁĄD KodiBridge"))
 
     def test_message_without_known_path(self):
         self.assertIn("kodi.log w folderze danych Kodi", sudosync_service.sync_failure_message(None))
@@ -138,7 +138,7 @@ class SyncFailureWindowTests(unittest.TestCase):
         self.assertTrue(result["busy"])
         self.assertEqual(self.dialog.textviewer.call_count, 1)
         title, message = self.dialog.textviewer.call_args[0]
-        self.assertEqual(title, sudosync_service.SYNC_FAILURE_TITLE)
+        self.assertEqual(title, sudosync_service.sync_failure_title())
         self.assertIn("C:\\Kodi\\kodi.log", message)
 
 

@@ -268,3 +268,1023 @@ msgstr "Napraw zdublowane KodiBridge ID"
 msgctxt "#32087"
 msgid "Gives new KodiBridge IDs to library items that share one KodiBridge ID. One item of each group keeps its ID. Changed .nfo files are backed up as .repair.bak; the change can be rolled back."
 msgstr "Nadaje nowe KodiBridge ID pozycjom biblioteki, które mają to samo KodiBridge ID. Jedna pozycja z każdej grupy zachowuje swoje ID. Zmienione pliki .nfo dostają kopię .repair.bak; zmianę można wycofać."
+
+msgctxt "#32100"
+msgid "not checked"
+msgstr "nie sprawdzano"
+
+msgctxt "#32101"
+msgid "Available on GitHub: {0} (checked: {1})"
+msgstr "Dostępna na GitHub: {0} (sprawdzono: {1})"
+
+msgctxt "#32102"
+msgid "GitHub check error ({0}): {1}"
+msgstr "Błąd sprawdzenia GitHub ({0}): {1}"
+
+msgctxt "#32103"
+msgid "No newer version (installed {0}, checked: {1})"
+msgstr "Brak nowszej wersji (zainstalowana {0}, sprawdzono: {1})"
+
+msgctxt "#32104"
+msgid "Live synchronization: {state}\nPolling other Kodi devices: every {poll} s\nLast cycle: {when}\nLast received: {received}\nLast error: {error}"
+msgstr "Synchronizacja bieżąca: {state}\nOdpytywanie innych Kodi: co {poll} s\nOstatni cykl: {when}\nOstatnio odebrano: {received}\nOstatni błąd: {error}"
+
+msgctxt "#32105"
+msgid "ON"
+msgstr "WŁĄCZONA"
+
+msgctxt "#32106"
+msgid "OFF"
+msgstr "WYŁĄCZONA"
+
+msgctxt "#32107"
+msgid "{0} items ({1})"
+msgstr "{0} pozycji ({1})"
+
+msgctxt "#32108"
+msgid "none"
+msgstr "brak"
+
+msgctxt "#32109"
+msgid "ON"
+msgstr "WŁĄCZONE"
+
+msgctxt "#32110"
+msgid "OFF"
+msgstr "WYŁĄCZONE"
+
+msgctxt "#32111"
+msgid "KodiBridge {version}\n\nDevice: {name}\nClient ID: {cid}\nKodi: {kodi} ({platform})\nJSON-RPC: {rpc}\nKodiBridge ID: {sid_state}\n{coverage}\n\nLast snapshot: {when}\nMovies: {movies}\nEpisodes: {episodes}\n\nSnapshot: {path}\n\n{live}\n\nUpdates: {update}"
+msgstr "KodiBridge {version}\n\nUrządzenie: {name}\nClient ID: {cid}\nKodi: {kodi} ({platform})\nJSON-RPC: {rpc}\nKodiBridge ID: {sid_state}\n{coverage}\n\nOstatni snapshot: {when}\nFilmy: {movies}\nOdcinki: {episodes}\n\nSnapshot: {path}\n\n{live}\n\nAktualizacje: {update}"
+
+msgctxt "#32112"
+msgid "KodiBridge — status"
+msgstr "KodiBridge — status"
+
+msgctxt "#32113"
+msgid "KodiBridge — update (GitHub)"
+msgstr "KodiBridge — aktualizacja (GitHub)"
+
+msgctxt "#32114"
+msgid "Could not check for updates on GitHub Releases:\n{0}\n\nYou can install the update from a selected ZIP file instead."
+msgstr "Nie udało się sprawdzić aktualizacji na GitHub Releases:\n{0}\n\nMożesz użyć opcji instalacji ze wskazanego pliku ZIP."
+
+msgctxt "#32115"
+msgid "You have the latest version available on GitHub Releases.\n\nInstalled: {0}"
+msgstr "Masz najnowszą wersję dostępną w GitHub Releases.\n\nZainstalowana: {0}"
+
+msgctxt "#32116"
+msgid "KodiBridge — update available"
+msgstr "KodiBridge — dostępna aktualizacja"
+
+msgctxt "#32117"
+msgid "A new version of KodiBridge, {0}, is available on GitHub Releases (installed: {1}).\n\nDownload and install the update now?"
+msgstr "Na GitHub Releases dostępna jest nowa wersja KodiBridge {0} (obecnie zainstalowana: {1}).\n\nPobrać i zainstalować aktualizację teraz?"
+
+msgctxt "#32118"
+msgid "Install"
+msgstr "Zainstaluj"
+
+msgctxt "#32119"
+msgid "Cancel"
+msgstr "Anuluj"
+
+msgctxt "#32120"
+msgid "Select a KodiBridge update package (.zip)"
+msgstr "Wybierz pakiet aktualizacji KodiBridge (.zip)"
+
+msgctxt "#32121"
+msgid "KodiBridge ID coverage: — (shown after the first synchronization cycle)"
+msgstr "Pokrycie KodiBridge ID: — (pojawi się po pierwszym cyklu synchronizacji)"
+
+msgctxt "#32122"
+msgid "Synchronized items: — (shown after the first synchronization cycle)"
+msgstr "Synchronizowane pozycje: — (pojawi się po pierwszym cyklu synchronizacji)"
+
+msgctxt "#32123"
+msgid "Synchronized (by external identifiers): movies {0}/{1}, episodes {2}/{3} (checked: {4})"
+msgstr "Synchronizowane (według identyfikatorów zewnętrznych): filmy {0}/{1}, odcinki {2}/{3} (sprawdzono: {4})"
+
+msgctxt "#32124"
+msgid "Skipped, no external identifier: {0}"
+msgstr "Pomijane, bo bez identyfikatora zewnętrznego: {0}"
+
+msgctxt "#32125"
+msgid "not synchronized (shared external identifier)"
+msgstr "niesynchronizowane (wspólny identyfikator zewnętrzny)"
+
+msgctxt "#32126"
+msgid "same file twice in the library"
+msgstr "ten sam plik dwa razy w bibliotece"
+
+msgctxt "#32127"
+msgid "unreadable .nfo: {0}"
+msgstr "nieczytelne .nfo: {0}"
+
+msgctxt "#32128"
+msgid "To check:"
+msgstr "Do sprawdzenia:"
+
+msgctxt "#32129"
+msgid "KodiBridge ID coverage: movies {0}/{1}, episodes {2}/{3} (checked: {4})"
+msgstr "Pokrycie KodiBridge ID: filmy {0}/{1}, odcinki {2}/{3} (sprawdzono: {4})"
+
+msgctxt "#32130"
+msgid "without ID"
+msgstr "bez ID"
+
+msgctxt "#32131"
+msgid "duplicate IDs"
+msgstr "zdublowane ID"
+
+msgctxt "#32132"
+msgid "shared external IDs without KodiBridge ID"
+msgstr "wspólne ID zewnętrzne bez KodiBridge ID"
+
+msgctxt "#32133"
+msgid "All items have a KodiBridge ID."
+msgstr "Wszystkie pozycje mają KodiBridge ID."
+
+msgctxt "#32134"
+msgid "KodiBridge ID assignment is already running (e.g. after a library update). Wait for it to finish and try again."
+msgstr "Nadawanie KodiBridge ID jest już wykonywane (np. po aktualizacji biblioteki). Poczekaj na jego zakończenie i spróbuj ponownie."
+
+msgctxt "#32135"
+msgid "The function is disabled. Enable it first and confirm the settings with OK."
+msgstr "Funkcja jest wyłączona. Najpierw ją włącz i zatwierdź opcje przyciskiem OK."
+
+msgctxt "#32136"
+msgid "KodiBridge — duplicate IDs"
+msgstr "KodiBridge — zdublowane ID"
+
+msgctxt "#32137"
+msgid "Library items that share one KodiBridge ID will get new KodiBridge IDs. One item of each group keeps its ID (the one synchronization knows). Changed .nfo files are backed up as .repair.bak and the change can be rolled back.\nReading the library may take a few minutes. Continue?"
+msgstr "Pozycje biblioteki, które mają to samo KodiBridge ID, dostaną nowe KodiBridge ID. Jedna pozycja z każdej grupy zachowuje swoje ID (ta, którą zna synchronizacja). Zmienione pliki .nfo dostają kopię .repair.bak, a zmianę można wycofać.\nOdczyt biblioteki może potrwać kilka minut. Kontynuować?"
+
+msgctxt "#32138"
+msgid "Repair"
+msgstr "Napraw"
+
+msgctxt "#32139"
+msgid "KodiBridge — duplicate ID repair"
+msgstr "KodiBridge — naprawa zdublowanych ID"
+
+msgctxt "#32140"
+msgid "Assigning new IDs ({0}/{1})\n{2}"
+msgstr "Nadaję nowe ID ({0}/{1})\n{2}"
+
+msgctxt "#32141"
+msgid "Reading the library and .nfo files…"
+msgstr "Odczyt biblioteki i plików .nfo…"
+
+msgctxt "#32142"
+msgid "KodiBridge ID assignment is already running in the background. Wait for it to finish and try again."
+msgstr "Przypisywanie KodiBridge ID jest już wykonywane w tle. Poczekaj na zakończenie i spróbuj ponownie."
+
+msgctxt "#32143"
+msgid "Same file twice in the library (this is not a duplicate ID):"
+msgstr "Ten sam plik dwa razy w bibliotece (to nie jest zdublowane ID):"
+
+msgctxt "#32144"
+msgid "There are no duplicate KodiBridge IDs in the library of this Kodi."
+msgstr "W bibliotece tego Kodi nie ma zdublowanych KodiBridge ID."
+
+msgctxt "#32145"
+msgid "Groups with the same ID: {0}. New IDs assigned: {1}. Skipped: {2}."
+msgstr "Grupy z tym samym ID: {0}. Nadano nowe ID: {1}. Pominięte: {2}."
+
+msgctxt "#32146"
+msgid "Stopped on request; the remaining items are unchanged."
+msgstr "Przerwano na żądanie; pozostałe pozycje bez zmian."
+
+msgctxt "#32147"
+msgid "Stopped: {0}"
+msgstr "Przerwano: {0}"
+
+msgctxt "#32148"
+msgid "New IDs:"
+msgstr "Nowe ID:"
+
+msgctxt "#32149"
+msgid "Kept their IDs:"
+msgstr "Zachowały ID:"
+
+msgctxt "#32150"
+msgid "Skipped:"
+msgstr "Pominięte:"
+
+msgctxt "#32151"
+msgid "Report: {0}. The change is undone with the “{1}” button."
+msgstr "Raport: {0}. Zmianę wycofuje przycisk „{1}”."
+
+msgctxt "#32152"
+msgid "There is no saved operation to roll back."
+msgstr "Brak zapisanej operacji do wycofania."
+
+msgctxt "#32153"
+msgid "Last KodiBridge ID assignment ({0})"
+msgstr "Ostatnie przypisanie KodiBridge ID ({0})"
+
+msgctxt "#32154"
+msgid "Last duplicate ID repair ({0})"
+msgstr "Ostatnia naprawa zdublowanych ID ({0})"
+
+msgctxt "#32155"
+msgid "Roll back the last KodiBridge ID assignment, restoring .nfo files from the backups?"
+msgstr "Czy wycofać ostatnie przypisanie KodiBridge ID, przywracając pliki .nfo z kopii zapasowych?"
+
+msgctxt "#32156"
+msgid "Roll back the last duplicate ID repair, restoring .nfo files from the backups?"
+msgstr "Czy wycofać ostatnią naprawę zdublowanych ID, przywracając pliki .nfo z kopii zapasowych?"
+
+msgctxt "#32157"
+msgid "KodiBridge — what to roll back?"
+msgstr "KodiBridge — co wycofać?"
+
+msgctxt "#32158"
+msgid "KodiBridge — undo changes"
+msgstr "KodiBridge — cofnięcie zmian"
+
+msgctxt "#32159"
+msgid "Yes, roll back"
+msgstr "Tak, wycofaj"
+
+msgctxt "#32160"
+msgid "Restored: {0} files. Errors: {1}"
+msgstr "Przywrócono: {0} plików. Błędy: {1}"
+
+msgctxt "#32161"
+msgid "Already rolled back earlier: {0}"
+msgstr "Wycofane już wcześniej: {0}"
+
+msgctxt "#32162"
+msgid "Setup finished successfully. Everything is ready."
+msgstr "Konfigurator zakończony pomyślnie. Środowisko gotowe."
+
+msgctxt "#32163"
+msgid "KodiBridge — update"
+msgstr "KodiBridge — aktualizacja"
+
+msgctxt "#32164"
+msgid "No newer version on GitHub Releases."
+msgstr "Brak nowszej wersji na GitHub Releases."
+
+msgctxt "#32165"
+msgid "Install version {0} from GitHub Releases?"
+msgstr "Zainstalować wersję {0} z GitHub Releases?"
+
+msgctxt "#32166"
+msgid "Conflict check requested. Progress is shown in the corner of the screen; a large library takes a few minutes."
+msgstr "Zlecono sprawdzenie konfliktów. Postęp w rogu ekranu; przy dużej bibliotece kilka minut."
+
+msgctxt "#32167"
+msgid "No new files needing an ID were found."
+msgstr "Nie znaleziono żadnych nowych plików wymagających przypisania ID."
+
+msgctxt "#32168"
+msgid "KodiBridge — error"
+msgstr "KodiBridge — błąd"
+
+msgctxt "#32169"
+msgid "Write error on the network share: {0}\nModified before the error: movies {1}, episodes {2}.\nDetails in kodi.log and in the report ({3})"
+msgstr "Błąd zapisu na udziale sieciowym: {0}\nZmodyfikowano do błędu: filmy {1}, odcinki {2}.\nSzczegóły w kodi.log oraz w raporcie ({3})"
+
+msgctxt "#32170"
+msgid "Modified or created: movies: {0}, episodes: {1}.\nThe operation report was saved in the profile ({2})"
+msgstr "Zmodyfikowano lub utworzono: filmy: {0}, odcinki: {1}.\nRaport z operacji zapisano w profilu ({2})"
+
+msgctxt "#32200"
+msgid "not synchronized (shared external identifier): {0}"
+msgstr "niesynchronizowane (wspólny identyfikator zewnętrzny): {0}"
+
+msgctxt "#32201"
+msgid "same file twice in the library: {0}"
+msgstr "ten sam plik dwa razy w bibliotece: {0}"
+
+msgctxt "#32202"
+msgid "unreadable .nfo: {0}"
+msgstr "nieczytelne .nfo: {0}"
+
+msgctxt "#32203"
+msgid "Library items: {0}. Details in the KodiBridge status window."
+msgstr "Pozycje biblioteki: {0}. Szczegóły w oknie statusu KodiBridge."
+
+msgctxt "#32204"
+msgid "without KodiBridge ID: {0}"
+msgstr "bez KodiBridge ID: {0}"
+
+msgctxt "#32205"
+msgid "duplicate IDs: {0}"
+msgstr "zdublowane ID: {0}"
+
+msgctxt "#32206"
+msgid "blocking synchronization: {0}"
+msgstr "blokujące synchronizację: {0}"
+
+msgctxt "#32207"
+msgid "KodiBridge ID assignment stopped: {0}\nChanged before the error: movies {1}, episodes {2}."
+msgstr "Nadawanie KodiBridge ID przerwane: {0}\nZmieniono do błędu: filmy {1}, odcinki {2}."
+
+msgctxt "#32208"
+msgid "ERROR KodiBridge – synchronization stopped"
+msgstr "BŁĄD KodiBridge – synchronizacja wstrzymana"
+
+msgctxt "#32209"
+msgid "items without a KodiBridge ID share an external identifier (IMDb/TMDb/TVDb/Trakt)."
+msgstr "pozycje bez KodiBridge ID mają wspólny identyfikator zewnętrzny (IMDb/TMDb/TVDb/Trakt)."
+
+msgctxt "#32210"
+msgid "Add-on settings → {0} → “{1}”. Synchronization resumes by itself once the IDs are assigned."
+msgstr "Ustawienia wtyczki → {0} → „{1}”. Po nadaniu ID synchronizacja ruszy sama."
+
+msgctxt "#32211"
+msgid "Synchronization stopped because of an error. Until it is fixed, watch state changes from this Kodi do not reach other devices."
+msgstr "Synchronizacja zatrzymała się z powodu błędu. Do czasu jego usunięcia zmiany stanu obejrzenia z tego Kodi nie trafiają do innych urządzeń."
+
+msgctxt "#32212"
+msgid "Cause: {0}\nRepair: {1}"
+msgstr "Przyczyna: {0}\nNaprawa: {1}"
+
+msgctxt "#32213"
+msgid "Details are in the Kodi log:\n{0}"
+msgstr "Szczegóły są w dzienniku Kodi:\n{0}"
+
+msgctxt "#32214"
+msgid "the kodi.log file in the Kodi data folder"
+msgstr "plik kodi.log w folderze danych Kodi"
+
+msgctxt "#32215"
+msgid "You can have the log analysed by your own AI or send it to the add-on author: {0}\nNote: GitHub issues are public and the log may contain paths to your files. Review it before sending."
+msgstr "Analizę dziennika możesz zlecić swojej SI albo przesłać dziennik autorowi wtyczki: {0}\nUwaga: zgłoszenia na GitHubie są publiczne, a dziennik może zawierać ścieżki do Twoich plików. Przejrzyj go przed wysłaniem."
+
+msgctxt "#32216"
+msgid "Another Kodi took over the session, a newer add-on version is required or the NAS does not respond. Service paused."
+msgstr "Inne Kodi przejęło sesję, wymagana jest nowsza wersja albo NAS nie odpowiada. Usługa wstrzymana."
+
+msgctxt "#32217"
+msgid "Conflict check stopped after 15 minutes. Try again later."
+msgstr "Sprawdzanie konfliktów przerwane po 15 minutach. Spróbuj ponownie później."
+
+msgctxt "#32218"
+msgid "Synchronization temporarily impossible ({0}), retrying…"
+msgstr "Synchronizacja chwilowo niemożliwa ({0}), ponawiam…"
+
+msgctxt "#32219"
+msgid "session busy"
+msgstr "sesja zajęta"
+
+msgctxt "#32220"
+msgid "Waiting until the library can be read…"
+msgstr "Czekam, aż będzie można odczytać bibliotekę…"
+
+msgctxt "#32221"
+msgid "No conflicts to resolve."
+msgstr "Brak konfliktów do rozwiązania."
+
+msgctxt "#32230"
+msgid "KodiBridge — synchronization stopped"
+msgstr "KodiBridge — synchronizacja wstrzymana"
+
+msgctxt "#32231"
+msgid "“{0}”"
+msgstr "„{0}”"
+
+msgctxt "#32232"
+msgid "with ID {0}"
+msgstr "o identyfikatorze {0}"
+
+msgctxt "#32233"
+msgid "(unknown)"
+msgstr "nieznanym"
+
+msgctxt "#32234"
+msgid " started {0}"
+msgstr " rozpoczętej {0}"
+
+msgctxt "#32235"
+msgid "Kodi on the device {device} did not finish a synchronization operation{when}; it was probably closed incorrectly. Only that Kodi can finish or roll it back. Until then this Kodi does not synchronize the watch state.\nClose this Kodi, start Kodi on the device {device}, wait about 2 minutes without playing anything and close it from the Kodi menu (Power → Exit)."
+msgstr "Kodi na urządzeniu {device} nie dokończyło operacji synchronizacji{when}, prawdopodobnie zostało zamknięte nieprawidłowo. Tylko ono może ją dokończyć albo wycofać. Do tego czasu to Kodi nie synchronizuje stanu obejrzenia.\nZamknij to Kodi, uruchom Kodi na urządzeniu {device}, odczekaj około 2 minut bez odtwarzania i zamknij je z menu Kodi (Wyłącz → Zakończ)."
+
+msgctxt "#32240"
+msgid "not watched"
+msgstr "nieobejrzane"
+
+msgctxt "#32241"
+msgid "watched, play count: {0}"
+msgstr "obejrzane, odtworzeń: {0}"
+
+msgctxt "#32242"
+msgid "none"
+msgstr "brak"
+
+msgctxt "#32243"
+msgid "from the beginning"
+msgstr "od początku"
+
+msgctxt "#32244"
+msgid "{0} of {1}"
+msgstr "{0} z {1}"
+
+msgctxt "#32245"
+msgid "no rating"
+msgstr "brak oceny"
+
+msgctxt "#32246"
+msgid "rating {0}/10"
+msgstr "ocena {0}/10"
+
+msgctxt "#32247"
+msgid "movie #{0}"
+msgstr "film #{0}"
+
+msgctxt "#32248"
+msgid "episode #{0}"
+msgstr "odcinek #{0}"
+
+msgctxt "#32249"
+msgid " (this Kodi)"
+msgstr " (to Kodi)"
+
+msgctxt "#32250"
+msgid "Play count"
+msgstr "Liczba odtworzeń"
+
+msgctxt "#32251"
+msgid "Last played"
+msgstr "Ostatnio odtworzone"
+
+msgctxt "#32252"
+msgid "Resume point"
+msgstr "Punkt wznowienia"
+
+msgctxt "#32253"
+msgid "Rating"
+msgstr "Ocena"
+
+msgctxt "#32254"
+msgid "KodiBridge — conflict {0}: {1}"
+msgstr "KodiBridge — konflikt {0}: {1}"
+
+msgctxt "#32255"
+msgid "The same fields were changed on different devices. Choose the correct value in each row."
+msgstr "Te same pola zmieniono na różnych urządzeniach. Wybierz w każdym wierszu właściwą wartość."
+
+msgctxt "#32256"
+msgid "Save"
+msgstr "Zapisz"
+
+msgctxt "#32257"
+msgid "Later"
+msgstr "Później"
+
+msgctxt "#32258"
+msgid "KodiBridge ({0}): {1} — {2}"
+msgstr "KodiBridge ({0}): {1} — {2}"
+
+msgctxt "#32259"
+msgid "Later (ask again after Kodi restarts)"
+msgstr "Później (zapytaj po ponownym uruchomieniu Kodi)"
+
+msgctxt "#32260"
+msgid "KodiBridge — conflicts"
+msgstr "KodiBridge — konflikty"
+
+msgctxt "#32261"
+msgid "Saving the choice: {0}…"
+msgstr "Zapisuję wybór: {0}…"
+
+msgctxt "#32262"
+msgid "choice saved: {0}"
+msgstr "zapisano wybór: {0}"
+
+msgctxt "#32263"
+msgid "outdated, not saved: {0}"
+msgstr "nieaktualne, bez zapisu: {0}"
+
+msgctxt "#32264"
+msgid "save error: {0} (you will be asked again later)"
+msgstr "błąd zapisu: {0} (pytanie wróci później)"
+
+msgctxt "#32265"
+msgid "KodiBridge — checking change conflicts"
+msgstr "KodiBridge — sprawdzam konflikty zmian"
+
+msgctxt "#32266"
+msgid "Reading the library and comparing it with other Kodi devices. A large library may take a few minutes."
+msgstr "Odczyt biblioteki i porównanie z innymi Kodi. Przy dużej bibliotece może to potrwać kilka minut."
+
+msgctxt "#32267"
+msgid " (running for {0} min)"
+msgstr " (trwa {0} min)"
+
+msgctxt "#32222"
+msgid "KodiBridge — KodiBridge ID"
+msgstr "KodiBridge — KodiBridge ID"
+
+msgctxt "#32300"
+msgid "Invalid config.json format"
+msgstr "nieprawidłowy format config.json"
+
+msgctxt "#32301"
+msgid "Cannot read the shared KodiBridge configuration: {0}"
+msgstr "Nie można odczytać wspólnej konfiguracji KodiBridge: {0}"
+
+msgctxt "#32302"
+msgid "Cannot lock the shared KodiBridge configuration within 15 seconds."
+msgstr "Nie można uzyskać blokady wspólnej konfiguracji KodiBridge w ciągu 15 sekund."
+
+msgctxt "#32303"
+msgid "Could not copy the update package from: {0}"
+msgstr "Nie udało się skopiować pakietu aktualizacji z: {0}"
+
+msgctxt "#32304"
+msgid "The copied update package is empty or incomplete."
+msgstr "Skopiowany pakiet aktualizacji jest pusty lub niepełny."
+
+msgctxt "#32305"
+msgid "Invalid format of the expected SHA-256 checksum."
+msgstr "Nieprawidłowy format oczekiwanej sumy SHA-256."
+
+msgctxt "#32306"
+msgid "The SHA-256 checksum of the package does not match (expected {0}, computed {1})."
+msgstr "Suma SHA-256 pakietu nie zgadza się (oczekiwano {0}, obliczono {1})."
+
+msgctxt "#32307"
+msgid "The ZIP package contains too many files ({0} > {1})."
+msgstr "Pakiet ZIP zawiera zbyt wiele plików ({0} > {1})."
+
+msgctxt "#32308"
+msgid "The ZIP package has an invalid structure or contains a forbidden path."
+msgstr "Pakiet ZIP ma nieprawidłową strukturę lub zawiera niedozwoloną ścieżkę."
+
+msgctxt "#32309"
+msgid "The version in addon.xml ({0}) does not match the expected package version ({1})."
+msgstr "Wersja w addon.xml ({0}) nie zgadza się z oczekiwaną wersją pakietu ({1})."
+
+msgctxt "#32310"
+msgid "The ZIP package contains too many entries."
+msgstr "Pakiet ZIP zawiera zbyt wiele wpisów."
+
+msgctxt "#32311"
+msgid "Forbidden path in the ZIP: {0}"
+msgstr "Niedozwolona ścieżka w ZIP: {0}"
+
+msgctxt "#32312"
+msgid "Validation of the temporary update folder failed."
+msgstr "Walidacja katalogu tymczasowego aktualizacji nie powiodła się."
+
+msgctxt "#32313"
+msgid "KodiBridge — update installed"
+msgstr "KodiBridge — aktualizacja zainstalowana"
+
+msgctxt "#32314"
+msgid "Version {0} has been installed.\n\nThe new version becomes fully active after Kodi restarts. Restart Kodi now?"
+msgstr "Zainstalowano wersję {0}.\n\nNowa wersja stanie się w pełni aktywna po ponownym uruchomieniu Kodi. Uruchomić Kodi ponownie teraz?"
+
+msgctxt "#32315"
+msgid "Restart"
+msgstr "Uruchom ponownie"
+
+msgctxt "#32316"
+msgid "Later"
+msgstr "Później"
+
+msgctxt "#32317"
+msgid "Invalid response from the GitHub API."
+msgstr "Nieprawidłowa odpowiedź z GitHub API."
+
+msgctxt "#32318"
+msgid "Could not download the SHA-256 checksum file: {0}"
+msgstr "Nie udało się pobrać pliku sumy SHA-256: {0}"
+
+msgctxt "#32319"
+msgid "Could not download the package from GitHub Releases: {0}"
+msgstr "Nie udało się pobrać pakietu z GitHub Releases: {0}"
+
+msgctxt "#32320"
+msgid "The selected package ({0}) is older than the installed version ({1})."
+msgstr "Wybrany pakiet ({0}) jest starszy niż obecnie zainstalowana wersja ({1})."
+
+msgctxt "#32321"
+msgid "KodiBridge — install from a ZIP file"
+msgstr "KodiBridge — instalacja z pliku ZIP"
+
+msgctxt "#32322"
+msgid "Verified KodiBridge package version {0} (installed: {1}).\n\nDo you really want to install this version?"
+msgstr "Zweryfikowano pakiet KodiBridge w wersji {0} (obecnie zainstalowana: {1}).\n\nCzy na pewno chcesz zainstalować tę wersję?"
+
+msgctxt "#32323"
+msgid "A new version of KodiBridge, {0}, is available on GitHub Releases (installed: {1}).\n\nDo you want to download and install the update now?"
+msgstr "Dostępna jest nowa wersja KodiBridge {0} na GitHub Releases (obecnie zainstalowana: {1}).\n\nCzy chcesz pobrać i zainstalować aktualizację teraz?"
+
+msgctxt "#32324"
+msgid "KodiBridge — update error"
+msgstr "KodiBridge — błąd aktualizacji"
+
+msgctxt "#32325"
+msgid "Could not install the update from GitHub:\n{0}"
+msgstr "Nie udało się zainstalować aktualizacji z GitHub:\n{0}"
+
+msgctxt "#32326"
+msgid "Could not save the KodiBridge ID counter on the NAS: {0}"
+msgstr "Nie udało się zapisać licznika KodiBridge ID na NAS: {0}"
+
+msgctxt "#32327"
+msgid "No verification data in the manifest for the created file; the file was kept."
+msgstr "Brak danych weryfikacyjnych w manifeście dla utworzonego pliku; zachowano plik."
+
+msgctxt "#32328"
+msgid "The created .nfo file was modified after the KodiBridge ID was generated; the file was kept."
+msgstr "Utworzony plik .nfo został zmodyfikowany po wygenerowaniu KodiBridge ID; zachowano plik."
+
+msgctxt "#32329"
+msgid "The created .nfo file is not a valid KodiBridge XML document; the file was kept."
+msgstr "Utworzony plik .nfo nie jest poprawnym dokumentem XML KodiBridge; zachowano plik."
+
+msgctxt "#32330"
+msgid "The root XML element of the created .nfo file was changed; the file was kept."
+msgstr "Zmieniono główny znacznik XML w utworzonym pliku .nfo; zachowano plik."
+
+msgctxt "#32331"
+msgid "Unknown root XML element in the created .nfo file; the file was kept."
+msgstr "Nieznany główny znacznik XML w utworzonym pliku .nfo; zachowano plik."
+
+msgctxt "#32332"
+msgid "The XML structure of the .nfo file contains extra or changed fields; the file was kept."
+msgstr "Struktura XML pliku .nfo zawiera dodatkowe lub zmienione pola; zachowano plik."
+
+msgctxt "#32333"
+msgid "The uniqueid element in the .nfo file does not belong to a KodiBridge operation; the file was kept."
+msgstr "Znacznik uniqueid w pliku .nfo nie należy do operacji KodiBridge; zachowano plik."
+
+msgctxt "#32334"
+msgid "No KodiBridge ID value in the .nfo file; the file was kept."
+msgstr "Brak wartości KodiBridge ID w pliku .nfo; zachowano plik."
+
+msgctxt "#32335"
+msgid "The KodiBridge ID in the .nfo file does not match the operation manifest; the file was kept."
+msgstr "Wartość KodiBridge ID w pliku .nfo nie zgadza się z manifestem operacji; zachowano plik."
+
+msgctxt "#32336"
+msgid "The content of the created .nfo file differs from the KodiBridge template; the file was kept."
+msgstr "Zawartość utworzonego pliku .nfo odbiega od szablonu KodiBridge; zachowano plik."
+
+msgctxt "#32337"
+msgid "Cannot move the target file to a temporary safety copy: {0}"
+msgstr "Nie można przenieść pliku docelowego do tymczasowej kopii bezpieczeństwa: {0}"
+
+msgctxt "#32338"
+msgid "xbmcvfs.rename failed while restoring the file from the backup"
+msgstr "Operacja xbmcvfs.rename nie powiodła się przy przywracaniu pliku z kopii zapasowej"
+
+msgctxt "#32339"
+msgid "Invalid manifest file format: {0}"
+msgstr "Nieprawidłowy format pliku manifestu: {0}"
+
+msgctxt "#32340"
+msgid "Manifest {0} comes from an older version (old KodiBridge ID); it cannot be rolled back."
+msgstr "Manifest {0} pochodzi ze starszej wersji (stary KodiBridge ID); nie można go wycofać."
+
+msgctxt "#32341"
+msgid "Invalid entry in the rollback manifest."
+msgstr "Nieprawidłowy wpis w manifeście wycofywania."
+
+msgctxt "#32342"
+msgid "The manifest entry has no .nfo file path."
+msgstr "Wpis manifestu nie zawiera ścieżki pliku .nfo."
+
+msgctxt "#32343"
+msgid "Could not restore the .nfo file from the backup {0}: {1}"
+msgstr "Nie udało się przywrócić pliku .nfo z kopii {0}: {1}"
+
+msgctxt "#32344"
+msgid "The created .nfo file no longer exists."
+msgstr "Utworzony plik .nfo już nie istnieje."
+
+msgctxt "#32345"
+msgid "Could not read the created .nfo file: {0}"
+msgstr "Nie udało się odczytać utworzonego pliku .nfo: {0}"
+
+msgctxt "#32346"
+msgid "Could not delete the created .nfo file."
+msgstr "Nie udało się usunąć utworzonego pliku .nfo."
+
+msgctxt "#32347"
+msgid "No backup file (.bak); the current .nfo file was left unchanged."
+msgstr "Brak pliku kopii zapasowej (.bak); pozostawiono bieżący plik .nfo bez zmian."
+
+msgctxt "#32348"
+msgid "The target .nfo file does not exist; the backup file (.bak) was kept."
+msgstr "Docelowy plik .nfo nie istnieje; zachowano plik kopii zapasowej (.bak)."
+
+msgctxt "#32349"
+msgid "No checksum in the manifest for the modified file; the .nfo file and the .bak copy were kept."
+msgstr "Brak sumy kontrolnej w manifeście dla zmodyfikowanego pliku; zachowano plik .nfo i kopię .bak."
+
+msgctxt "#32350"
+msgid "Could not read the current .nfo file: {0}"
+msgstr "Nie udało się odczytać bieżącego pliku .nfo: {0}"
+
+msgctxt "#32351"
+msgid "The .nfo file was modified after the KodiBridge ID was assigned; the .nfo file and the .bak copy were kept."
+msgstr "Plik .nfo został zmodyfikowany po przypisaniu KodiBridge ID; zachowano plik .nfo i kopię .bak."
+
+msgctxt "#32352"
+msgid "Could not restore the .bak backup to the .nfo file: {0}"
+msgstr "Nie udało się przywrócić kopii zapasowej .bak do pliku .nfo: {0}"
+
+msgctxt "#32353"
+msgid "KodiBridge ID generation is disabled in the settings."
+msgstr "Generowanie KodiBridge ID jest wyłączone w ustawieniach."
+
+msgctxt "#32354"
+msgid "Cannot save the report {0}; the repair was not started."
+msgstr "Nie można zapisać raportu {0}; naprawa nie została rozpoczęta."
+
+msgctxt "#32355"
+msgid " (NOTE: other Kodi devices synchronize {0} different items under this ID; the ID stayed with the one known to most devices)"
+msgstr " (UWAGA: inne Kodi synchronizują pod tym ID {0} różne pozycje; ID zachowała ta, którą zna najwięcej urządzeń)"
+
+msgctxt "#32356"
+msgid "cannot read the .nfo: {0}"
+msgstr "nie można odczytać .nfo: {0}"
+
+msgctxt "#32357"
+msgid "cannot save the repair report; stopped without changing the file"
+msgstr "nie można zapisać raportu naprawy; przerwano bez zmiany pliku"
+
+msgctxt "#32358"
+msgid "the .nfo file changed during the repair; it was left unchanged"
+msgstr "plik .nfo zmienił się w trakcie naprawy; pozostawiono go bez zmian"
+
+msgctxt "#32359"
+msgid "cannot create a backup copy"
+msgstr "nie można utworzyć kopii zapasowej"
+
+msgctxt "#32360"
+msgid "cannot replace the .nfo file"
+msgstr "nie można podmienić pliku .nfo"
+
+msgctxt "#32361"
+msgid ".nfo write error: {0}"
+msgstr "błąd zapisu .nfo: {0}"
+
+msgctxt "#32362"
+msgid "; restoring the backup failed: {0} (backup: {1})"
+msgstr "; przywracanie kopii nie powiodło się: {0} (kopia: {1})"
+
+msgctxt "#32363"
+msgid "Could not announce the ID change to other Kodi devices: {0}"
+msgstr "Nie udało się ogłosić zmiany ID innym Kodi: {0}"
+
+msgctxt "#32364"
+msgid "A file in the ZIP package exceeds the {0} MB limit."
+msgstr "Plik w pakiecie ZIP przekracza limit {0} MB."
+
+msgctxt "#32365"
+msgid "The unpacked data size exceeds the {0} MB limit."
+msgstr "Rozmiar danych po rozpakowaniu przekracza limit {0} MB."
+
+msgctxt "#32366"
+msgid "The data size limit was exceeded while unpacking the ZIP package."
+msgstr "Przekroczono limit rozmiaru danych podczas rozpakowywania pakietu ZIP."
+
+msgctxt "#32367"
+msgid "Manifest file missing: {0}"
+msgstr "Brak pliku manifestu: {0}"
+
+msgctxt "#32500"
+msgid "Write/read verification error"
+msgstr "Błąd weryfikacji zapisu/odczytu"
+
+msgctxt "#32501"
+msgid "Cannot create the shared folder"
+msgstr "Nie można utworzyć folderu współdzielonego"
+
+msgctxt "#32502"
+msgid "KodiBridge — update required"
+msgstr "KodiBridge — wymagana aktualizacja"
+
+msgctxt "#32503"
+msgid "A newer version of KodiBridge ({remote}) is already installed on another Kodi device in this network, while this one runs an older version ({local}).\n\nTo protect the consistency of the library, KodiBridge is disabled until it is updated. Without the update KodiBridge will not synchronize this Kodi, and you will be asked again only after the next Kodi start.\n\nDo you want to download and install the update from GitHub now?"
+msgstr "Na innym urządzeniu Kodi w tej sieci zainstalowano już nowszą wersję KodiBridge ({remote}), natomiast tutaj działa starsza wersja ({local}).\n\nAby chronić spójność biblioteki, KodiBridge jest wyłączony do czasu aktualizacji. Bez aktualizacji KodiBridge nie będzie synchronizował tego Kodi, a pytanie pojawi się ponownie dopiero po następnym uruchomieniu Kodi.\n\nCzy chcesz pobrać i zainstalować aktualizację z GitHub teraz?"
+
+msgctxt "#32504"
+msgid "Update from GitHub"
+msgstr "Aktualizuj z GitHub"
+
+msgctxt "#32505"
+msgid "Other option / Disable"
+msgstr "Inna opcja / Wyłącz"
+
+msgctxt "#32506"
+msgid "KodiBridge — GitHub download error"
+msgstr "KodiBridge — błąd pobierania z GitHub"
+
+msgctxt "#32507"
+msgid "Could not download the update from GitHub:\n{0}"
+msgstr "Nie udało się pobrać aktualizacji z GitHub:\n{0}"
+
+msgctxt "#32508"
+msgid "KodiBridge — update from a ZIP file"
+msgstr "KodiBridge — aktualizacja z pliku ZIP"
+
+msgctxt "#32509"
+msgid "Version {remote} or newer is required (current: {local}).\n\nDo you want to select a .zip update file on a local disk or a network share?"
+msgstr "Wymagana jest wersja co najmniej {remote} (obecna: {local}).\n\nCzy chcesz wskazać plik aktualizacji .zip z dysku lokalnego lub udziału sieciowego?"
+
+msgctxt "#32510"
+msgid "Select ZIP file"
+msgstr "Wybierz plik ZIP"
+
+msgctxt "#32511"
+msgid "Disable KodiBridge"
+msgstr "Wyłącz KodiBridge"
+
+msgctxt "#32512"
+msgid "KodiBridge — service paused"
+msgstr "KodiBridge — usługa wstrzymana"
+
+msgctxt "#32513"
+msgid "KodiBridge will not synchronize this Kodi until the add-on is updated to version {0}.\n\nYou will be asked about the update again after the next Kodi start. You can also update the add-on manually in its settings at any time."
+msgstr "KodiBridge nie będzie synchronizował tego Kodi do czasu aktualizacji wtyczki do wersji {0}.\n\nPonownie zapytam o aktualizację po następnym uruchomieniu Kodi. Możesz też w każdej chwili zaktualizować wtyczkę ręcznie w jej ustawieniach."
+
+msgctxt "#32514"
+msgid "KodiBridge — another Kodi is active"
+msgstr "KodiBridge — inne Kodi jest aktywne"
+
+msgctxt "#32515"
+msgid "KodiBridge is already running in this network on the device: {0}.\nOnly one active Kodi is allowed at a time — close that Kodi before starting another one."
+msgstr "W tej sieci działa już KodiBridge na urządzeniu: {0}.\nDozwolone jest tylko jedno aktywne Kodi naraz — zamknij tamto Kodi przed uruchomieniem kolejnego."
+
+msgctxt "#32516"
+msgid "KodiBridge — cannot check other Kodi devices"
+msgstr "KodiBridge — nie można sprawdzić innych Kodi"
+
+msgctxt "#32517"
+msgid "Could not read the active Kodi lock file on the NAS:\n{0}\n\nKodiBridge will not start until it has checked that no other Kodi is running. Check the connection to the NAS and restart Kodi. If the file is damaged and no other Kodi is running, delete it."
+msgstr "Nie udało się odczytać pliku blokady aktywnego Kodi na NAS-ie:\n{0}\n\nKodiBridge nie wystartuje, dopóki nie sprawdzi, czy inne Kodi nie pracuje. Sprawdź połączenie z NAS-em i uruchom Kodi ponownie. Jeśli plik jest uszkodzony, a żadne inne Kodi nie pracuje, usuń go."
+
+msgctxt "#32518"
+msgid "could not save the lease"
+msgstr "nie udało się zapisać dzierżawy"
+
+msgctxt "#32519"
+msgid "KodiBridge — migration"
+msgstr "KodiBridge — migracja"
+
+msgctxt "#32520"
+msgid "An existing installation of an older KodiBridge version was found in the selected folder.\n\nYour data and identifiers will be kept. KodiBridge will now move the network settings to a new SudoSync.cfg file."
+msgstr "Wykryto istniejącą instalację starszej wersji KodiBridge w wybranym folderze.\n\nTwoje dotychczasowe dane i identyfikatory zostaną zachowane. KodiBridge wyodrębni teraz ustawienia sieciowe do nowego pliku SudoSync.cfg."
+
+msgctxt "#32521"
+msgid "Error"
+msgstr "Błąd"
+
+msgctxt "#32522"
+msgid "Could not save the migrated configuration to SudoSync.cfg"
+msgstr "Nie udało się zapisać zmigrowanej konfiguracji do SudoSync.cfg"
+
+msgctxt "#32523"
+msgid "Migration"
+msgstr "Migracja"
+
+msgctxt "#32524"
+msgid "Migration finished successfully."
+msgstr "Migracja zakończona sukcesem."
+
+msgctxt "#32525"
+msgid "KodiBridge — network setup"
+msgstr "KodiBridge — konfigurator sieciowy"
+
+msgctxt "#32526"
+msgid "We will now set up a new KodiBridge synchronization environment for your network.\n\nDo you want to use the reliable 'KodiBridge ID' identifier by default for videos without standard IDs (IMDb/TMDb)?"
+msgstr "Skonfigurujemy teraz nowe środowisko synchronizacji KodiBridge dla Twojej sieci.\n\nCzy chcesz domyślnie używać niezawodnego identyfikatora „KodiBridge ID” dla wideo pozbawionych standardowych ID (IMDb/TMDb)?"
+
+msgctxt "#32527"
+msgid "Yes (recommended)"
+msgstr "Tak (zalecane)"
+
+msgctxt "#32528"
+msgid "No, use IMDb"
+msgstr "Nie, użyj IMDb"
+
+msgctxt "#32529"
+msgid "Could not save the new configuration to SudoSync.cfg"
+msgstr "Nie udało się zapisać nowej konfiguracji do SudoSync.cfg"
+
+msgctxt "#32530"
+msgid "Success"
+msgstr "Sukces"
+
+msgctxt "#32531"
+msgid "The .KodiBridge environment is set up correctly!\nSynchronization can start now."
+msgstr "Środowisko .KodiBridge skonfigurowane poprawnie!\nTeraz synchronizacja może się rozpocząć."
+
+msgctxt "#32532"
+msgid "KodiBridge — setup"
+msgstr "KodiBridge — konfigurator"
+
+msgctxt "#32533"
+msgid "Current folder:\n{0}\nDo you want to select a different shared folder?"
+msgstr "Obecny folder:\n{0}\nCzy chcesz wskazać inny folder współdzielony?"
+
+msgctxt "#32534"
+msgid "Change folder"
+msgstr "Zmień folder"
+
+msgctxt "#32535"
+msgid "Check the current one"
+msgstr "Sprawdź obecny"
+
+msgctxt "#32536"
+msgid "Select a network folder (e.g. SMB/NFS) where KodiBridge will keep the shared configuration and data for all Kodi devices in this network."
+msgstr "Musisz wskazać folder sieciowy (np. SMB/NFS), w którym KodiBridge będzie przechowywać wspólną konfigurację i bazę dla wszystkich urządzeń Kodi w tej sieci."
+
+msgctxt "#32537"
+msgid "Select the shared folder (e.g. Videos)"
+msgstr "Wybierz katalog współdzielony (np. Wideo)"
+
+msgctxt "#32538"
+msgid "KodiBridge — no access"
+msgstr "KodiBridge — brak dostępu"
+
+msgctxt "#32539"
+msgid "Could not write files in the selected folder:\n{0}\n\nCheck the write permissions or select another share in the settings."
+msgstr "Nie udało się zapisać plików w wybranym folderze:\n{0}\n\nSprawdź uprawnienia do zapisu lub wskaż inny udział w ustawieniach."
+
+msgctxt "#32540"
+msgid "New shared folder {0}: synchronization starts from scratch"
+msgstr "Nowy folder wspólny {0}: synchronizacja zaczyna się od nowa"
+
+msgctxt "#32541"
+msgid "Critical error"
+msgstr "Błąd krytyczny"
+
+msgctxt "#32542"
+msgid "The SudoSync.cfg file is damaged or unreadable. A backup copy was created. Repair the file manually or delete it to force a new configuration."
+msgstr "Plik SudoSync.cfg jest uszkodzony lub nieczytelny. Została utworzona kopia zapasowa. Napraw plik ręcznie lub usuń go, aby wymusić nową konfigurację."
+
+msgctxt "#32543"
+msgid "Could not read SudoSync.cfg even though it was saved."
+msgstr "Nie udało się odczytać SudoSync.cfg pomimo jego zapisu."
+
+msgctxt "#32544"
+msgid "SudoSync.cfg error"
+msgstr "Błąd SudoSync.cfg"
+
+msgctxt "#32545"
+msgid "The SudoSync.cfg file is not a valid JSON object."
+msgstr "Plik SudoSync.cfg nie jest prawidłowym słownikiem JSON."
+
+msgctxt "#32546"
+msgid "Unsupported schema version (schema_version) in SudoSync.cfg."
+msgstr "Nieobsługiwana wersja schematu (schema_version) w SudoSync.cfg."
+
+msgctxt "#32547"
+msgid "The network_settings section is missing in SudoSync.cfg."
+msgstr "Brak sekcji network_settings w SudoSync.cfg."
+
+msgctxt "#32548"
+msgid "Wrong data type of {0}."
+msgstr "Zły typ danych w {0}."
+
+msgctxt "#32549"
+msgid "The configuration in SudoSync.cfg is not marked as completed."
+msgstr "Konfiguracja w SudoSync.cfg nie jest oznaczona jako ukończona."
+
+msgctxt "#32368"
+msgid "The ZIP update package does not exist or is empty."
+msgstr "Pakiet aktualizacji ZIP nie istnieje lub jest pusty."
+
+msgctxt "#32369"
+msgid "The package does not contain {0}."
+msgstr "Pakiet nie zawiera {0}."
+
+msgctxt "#32370"
+msgid "This is not a SudoSync package."
+msgstr "To nie jest pakiet SudoSync."
+
+msgctxt "#32371"
+msgid "Damaged ZIP archive: {0}"
+msgstr "Uszkodzony plik archiwum ZIP: {0}"
+
+msgctxt "#32372"
+msgid "No SHA-256 checksum for the update package in the GitHub release - installation rejected."
+msgstr "Brak sumy kontrolnej SHA-256 dla pakietu aktualizacji w wydaniu GitHub - instalacja odrzucona."
+
+msgctxt "#32373"
+msgid "The .nfo file is empty or unreadable; the file was kept."
+msgstr "Plik .nfo jest pusty lub nieczytelny; zachowano plik."
+
+msgctxt "#32374"
+msgid "The .nfo file is empty; the file was kept."
+msgstr "Plik .nfo jest pusty; zachowano plik."
+
+msgctxt "#32375"
+msgid "no .nfo file"
+msgstr "brak pliku .nfo"
+
+msgctxt "#32376"
+msgid "the .nfo file does not contain the ID {0} (the ID comes from the Kodi database)"
+msgstr "plik .nfo nie zawiera ID {0} (ID pochodzi z bazy Kodi)"

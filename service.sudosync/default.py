@@ -25,17 +25,7 @@ from resources.lib.sudosync_core import (
     read_local_status,
     addon_settings,
 )
-
-
-def _get_localized_string(string_id, fallback=""):
-    try:
-        import xbmcaddon
-        val = xbmcaddon.Addon("service.sudosync").getLocalizedString(string_id)
-        if isinstance(val, str) and val.strip():
-            return val
-    except Exception:
-        pass
-    return fallback
+from resources.lib.sudosync_i18n import tr
 
 
 def show_status():
@@ -50,52 +40,34 @@ def show_status():
     import xbmcaddon
     addon_version = xbmcaddon.Addon("service.sudosync").getAddonInfo("version")
     gh_upd = status.get("last_github_update_result") or {}
-    gh_when = status.get("last_github_update_check_at") or "nie sprawdzano"
+    gh_when = status.get("last_github_update_check_at") or tr(32100)
     if gh_upd.get("available"):
-        update_text = "Dostępna na GitHub: {} (sprawdzono: {})".format(gh_upd.get("version"), gh_when)
+        update_text = tr(32101, gh_upd.get("version"), gh_when)
     elif gh_upd.get("error"):
-        update_text = "Błąd sprawdzenia GitHub ({}): {}".format(gh_when, gh_upd.get("error"))
+        update_text = tr(32102, gh_when, gh_upd.get("error"))
     else:
-        update_text = "Brak nowszej wersji (zainstalowana {}, sprawdzono: {})".format(addon_version, gh_when)
+        update_text = tr(32103, addon_version, gh_when)
 
     live_enabled = settings.get("live_sync_enabled", True)
-    live_text = (
-        "Synchronizacja bieżąca: {state}\n"
-        "Odpytywanie innych Kodi: co {poll} s\n"
-        "Ostatni cykl: {when}\n"
-        "Ostatnio odebrano: {received}\n"
-        "Ostatni błąd: {error}"
-    ).format(
-        state="WŁĄCZONA" if live_enabled else "WYŁĄCZONA",
+    live_text = tr(
+        32104,
+        state=tr(32105) if live_enabled else tr(32106),
         poll=settings.get("live_poll_seconds", 60),
         when=status.get("last_live_sync_at") or "—",
         received=(
-            "{} pozycji ({})".format(status.get("last_live_received_items"), status.get("last_live_received_at") or "—")
+            tr(32107, status.get("last_live_received_items"), status.get("last_live_received_at") or "—")
             if status.get("last_live_received_items") else "—"
         ),
-        error=mask_vfs_credentials(status.get("last_live_error") or "brak"),
+        error=mask_vfs_credentials(status.get("last_live_error") or tr(32108)),
     )
 
     import xbmcaddon
     addon_version = xbmcaddon.Addon("service.sudosync").getAddonInfo("version")
-    sudosync_id_state = "WŁĄCZONE" if settings.get("sudosync_id_enabled") else "WYŁĄCZONE"
+    sudosync_id_state = tr(32109) if settings.get("sudosync_id_enabled") else tr(32110)
 
     coverage_text = _coverage_text(status.get("kodibridge_id_coverage"), bool(settings.get("sudosync_id_enabled")))
-    text = (
-        "KodiBridge {version}\n\n"
-        "Urządzenie: {name}\n"
-        "Client ID: {cid}\n"
-        "Kodi: {kodi} ({platform})\n"
-        "JSON-RPC: {rpc}\n"
-        "KodiBridge ID: {sid_state}\n"
-        "{coverage}\n\n"
-        "Ostatni snapshot: {when}\n"
-        "Filmy: {movies}\n"
-        "Odcinki: {episodes}\n\n"
-        "Snapshot: {path}\n\n"
-        "{live}\n\n"
-        "Aktualizacje: {update}"
-    ).format(
+    text = tr(
+        32111,
         version=addon_version,
         name=status.get("client_name", "Kodi"),
         cid=status.get("client_id", "—"),
@@ -111,7 +83,7 @@ def show_status():
         live=live_text,
         update=update_text,
     )
-    xbmcgui.Dialog().textviewer("KodiBridge — status", text)
+    xbmcgui.Dialog().textviewer(tr(32112), text)
 
 
 def update_dialog():
@@ -132,35 +104,23 @@ def update_dialog():
     _write_local_json(os.path.join(_addon_profile_path(), "status.json"), local_status)
 
     if result.get("error"):
-        xbmcgui.Dialog().ok(
-            "KodiBridge — aktualizacja (GitHub)",
-            "Nie udało się sprawdzić aktualizacji na GitHub Releases:\n{}\n\n"
-            "Możesz użyć opcji instalacji ze wskazanego pliku ZIP.".format(result["error"]),
-        )
+        xbmcgui.Dialog().ok(tr(32113), tr(32114, result["error"]))
         return
     if not result.get("available"):
-        xbmcgui.Dialog().ok(
-            "KodiBridge — aktualizacja (GitHub)",
-            "Masz najnowszą wersję dostępną w GitHub Releases.\n\nZainstalowana: {}".format(
-                result.get("current_version", "—")
-            ),
-        )
+        xbmcgui.Dialog().ok(tr(32113), tr(32115, result.get("current_version", "—")))
         return
     if xbmcgui.Dialog().yesno(
-        "KodiBridge — dostępna aktualizacja",
-        "Na GitHub Releases dostępna jest nowa wersja KodiBridge {} (obecnie zainstalowana: {}).\n\n"
-        "Pobrać i zainstalować aktualizację teraz?".format(
-            result.get("version"), result.get("current_version", "—")
-        ),
-        yeslabel="Zainstaluj",
-        nolabel="Anuluj",
+        tr(32116),
+        tr(32117, result.get("version"), result.get("current_version", "—")),
+        yeslabel=tr(32118),
+        nolabel=tr(32119),
     ):
         install_github_update(update_info=result, show_dialogs=True)
 
 
 def install_local_zip_dialog():
     zip_path = xbmcgui.Dialog().browse(
-        1, "Wybierz pakiet aktualizacji KodiBridge (.zip)", "files", ".zip"
+        1, tr(32120), "files", ".zip"
     )
     if not zip_path:
         return
@@ -194,49 +154,52 @@ def _coverage_text(coverage, id_enabled=True):
     recorded_external = isinstance(coverage, dict) and coverage.get("mode") == "external"
     if not isinstance(coverage, dict) or recorded_external == bool(id_enabled):
         if id_enabled:
-            return "Pokrycie KodiBridge ID: — (pojawi się po pierwszym cyklu synchronizacji)"
-        return "Synchronizowane pozycje: — (pojawi się po pierwszym cyklu synchronizacji)"
+            return tr(32121)
+        return tr(32122)
     movie = coverage.get("movie") or {}
     episode = coverage.get("episode") or {}
     if not id_enabled:
-        lines = ["Synchronizowane (według identyfikatorów zewnętrznych): filmy {}/{}, odcinki {}/{} "
-                 "(sprawdzono: {})".format(
-                     movie.get("with_id", 0), movie.get("total", 0),
-                     episode.get("with_id", 0), episode.get("total", 0),
-                     coverage.get("checked_at") or "—")]
+        lines = [tr(32123,
+                    movie.get("with_id", 0), movie.get("total", 0),
+                    episode.get("with_id", 0), episode.get("total", 0),
+                    coverage.get("checked_at") or "—")]
         ignored = int(movie.get("no_external") or 0) + int(episode.get("no_external") or 0)
         if ignored:
-            lines.append("Pomijane, bo bez identyfikatora zewnętrznego: {}".format(ignored))
+            lines.append(tr(32124, ignored))
         problems = _problem_lines(movie, episode, (
-            ("ambiguous", "niesynchronizowane (wspólny identyfikator zewnętrzny)"),
-            ("repeated", "ten sam plik dwa razy w bibliotece")))
+            ("ambiguous", tr(32125)),
+            ("repeated", tr(32126))))
         if coverage.get("unreadable_nfo"):
-            problems.append("nieczytelne .nfo: {}".format(coverage["unreadable_nfo"]))
+            problems.append(tr(32127, coverage["unreadable_nfo"]))
         if problems:
-            lines.append("Do sprawdzenia:")
+            lines.append(tr(32128))
             lines.extend(problems)
         return "\n".join(lines)
-    lines = ["Pokrycie KodiBridge ID: filmy {}/{}, odcinki {}/{} (sprawdzono: {})".format(
+    lines = [tr(
+        32129,
         movie.get("with_id", 0), movie.get("total", 0),
         episode.get("with_id", 0), episode.get("total", 0),
         coverage.get("checked_at") or "—",
     )]
     problems = _problem_lines(movie, episode, (
-        ("missing", "bez ID"), ("duplicates", "zdublowane ID"),
-        ("ambiguous", "wspólne ID zewnętrzne bez KodiBridge ID"),
-        ("repeated", "ten sam plik dwa razy w bibliotece")))
+        ("missing", tr(32130)), ("duplicates", tr(32131)),
+        ("ambiguous", tr(32132)),
+        ("repeated", tr(32126))))
     if coverage.get("unreadable_nfo"):
-        problems.append("nieczytelne .nfo: {}".format(coverage["unreadable_nfo"]))
+        problems.append(tr(32127, coverage["unreadable_nfo"]))
     if problems:
-        lines.append("Do sprawdzenia:")
+        lines.append(tr(32128))
         lines.extend(problems)
     else:
-        lines.append("Wszystkie pozycje mają KodiBridge ID.")
+        lines.append(tr(32133))
     return "\n".join(lines)
 
 
-ASSIGN_BUSY_MESSAGE = ("Nadawanie KodiBridge ID jest już wykonywane (np. po aktualizacji biblioteki). "
-                       "Poczekaj na jego zakończenie i spróbuj ponownie.")
+ASSIGN_BUSY_MESSAGE_ID = 32134
+
+
+def assign_busy_message():
+    return tr(ASSIGN_BUSY_MESSAGE_ID)
 
 
 # Number of .nfo files changed by the current settings action (assign or roll
@@ -266,23 +229,15 @@ def repair_ids_dialog():
     from resources.lib.sudosync_core import repair_duplicate_sudosync_ids
 
     if not addon_settings().get("sudosync_id_enabled"):
-        xbmcgui.Dialog().ok("KodiBridge", "Funkcja jest wyłączona. Najpierw ją włącz i zatwierdź opcje przyciskiem OK.")
+        xbmcgui.Dialog().ok("KodiBridge", tr(32135))
         return
-    if not xbmcgui.Dialog().yesno(
-        "KodiBridge — zdublowane ID",
-        "Pozycje biblioteki, które mają to samo KodiBridge ID, dostaną nowe KodiBridge ID. "
-        "Jedna pozycja z każdej grupy zachowuje swoje ID (ta, którą zna synchronizacja). "
-        "Zmienione pliki .nfo dostają kopię .repair.bak, a zmianę można wycofać.\n"
-        "Odczyt biblioteki może potrwać kilka minut. Kontynuować?",
-        yeslabel="Napraw",
-        nolabel="Anuluj",
-    ):
+    if not xbmcgui.Dialog().yesno(tr(32136), tr(32137), yeslabel=tr(32138), nolabel=tr(32119)):
         return
 
     import xbmc
     monitor = xbmc.Monitor()
     dialog = xbmcgui.DialogProgress()
-    heading = "KodiBridge — naprawa zdublowanych ID"
+    heading = tr(32139)
 
     def is_canceled():
         try:
@@ -299,9 +254,9 @@ def repair_ids_dialog():
         if is_canceled():
             return
         pct = int(min(100, max(0, current * 100 // max(1, total))))
-        dialog.update(pct, "Nadaję nowe ID ({}/{})\n{}".format(current, total, label))
+        dialog.update(pct, tr(32140, current, total, label))
 
-    dialog.create(heading, "Odczyt biblioteki i plików .nfo…")
+    dialog.create(heading, tr(32141))
     try:
         result = repair_duplicate_sudosync_ids(progress_callback=progress, is_canceled=is_canceled)
     finally:
@@ -313,39 +268,37 @@ def repair_ids_dialog():
     _flush_nfo_refresh()
 
     if result.get("busy"):
-        xbmcgui.Dialog().ok("KodiBridge", "Przypisywanie KodiBridge ID jest już wykonywane w tle. Poczekaj na zakończenie i spróbuj ponownie.")
+        xbmcgui.Dialog().ok("KodiBridge", tr(32142))
         return
     repeated = result.get("repeated") or []
     repeated_lines = []
     if repeated:
-        repeated_lines = ["", "Ten sam plik dwa razy w bibliotece (to nie jest zdublowane ID):"]
+        repeated_lines = ["", tr(32143)]
         repeated_lines += ["  – " + mask_vfs_credentials(line) for line in repeated]
     if not result.get("groups"):
         if repeated_lines:
-            xbmcgui.Dialog().textviewer(
-                "KodiBridge — naprawa zdublowanych ID",
-                "\n".join(["W bibliotece tego Kodi nie ma zdublowanych KodiBridge ID."] + repeated_lines))
+            xbmcgui.Dialog().textviewer(heading, "\n".join([tr(32144)] + repeated_lines))
         else:
-            xbmcgui.Dialog().ok("KodiBridge", "W bibliotece tego Kodi nie ma zdublowanych KodiBridge ID.")
+            xbmcgui.Dialog().ok("KodiBridge", tr(32144))
         return
 
     lines = [
-        "Grupy z tym samym ID: {}. Nadano nowe ID: {}. Pominięte: {}.".format(
-            result.get("groups", 0), result.get("renumbered", 0), len(result.get("errors") or [])),
+        tr(32145,
+           result.get("groups", 0), result.get("renumbered", 0), len(result.get("errors") or [])),
     ]
     if result.get("cancelled"):
-        lines.append("Przerwano na żądanie; pozostałe pozycje bez zmian.")
+        lines.append(tr(32146))
     if result.get("fatal_error"):
-        lines.append("Przerwano: {}".format(mask_vfs_credentials(result["fatal_error"])))
+        lines.append(tr(32147, mask_vfs_credentials(result["fatal_error"])))
     if result.get("changes"):
-        lines += ["", "Nowe ID:"] + ["  " + line for line in result["changes"]]
+        lines += ["", tr(32148)] + ["  " + line for line in result["changes"]]
     if result.get("kept"):
-        lines += ["", "Zachowały ID:"] + ["  " + line for line in result["kept"]]
+        lines += ["", tr(32149)] + ["  " + line for line in result["kept"]]
     lines += repeated_lines
     if result.get("errors"):
-        lines += ["", "Pominięte:"] + ["  " + mask_vfs_credentials(line) for line in result["errors"]]
-    lines += ["", "Raport: {}. Zmianę wycofuje przycisk „Wycofaj ostatnio przypisane ID”.".format(
-        os.path.basename(result.get("manifest_path") or "") or "repair_ids_manifest.json")]
+        lines += ["", tr(32150)] + ["  " + mask_vfs_credentials(line) for line in result["errors"]]
+    lines += ["", tr(32151, os.path.basename(result.get("manifest_path") or "") or "repair_ids_manifest.json",
+                     tr(32072))]
     xbmcgui.Dialog().textviewer(heading, "\n".join(lines))
 
 
@@ -360,23 +313,24 @@ def rollback_ids_dialog():
 
     manifests = latest_rollback_manifests()
     if not manifests:
-        xbmcgui.Dialog().ok("KodiBridge", "Brak zapisanej operacji do wycofania.")
+        xbmcgui.Dialog().ok("KodiBridge", tr(32152))
         return
-    names = {"assign": "przypisanie KodiBridge ID", "repair": "naprawę zdublowanych ID"}
+    choice_labels = {"assign": 32153, "repair": 32154}
+    confirm_texts = {"assign": 32155, "repair": 32156}
     kind, path, stamp = manifests[0]
     if len(manifests) > 1:
         choice = xbmcgui.Dialog().select(
-            "KodiBridge — co wycofać?",
-            ["Ostatnie {} ({})".format(names[k], s[:16].replace("T", " ") or "?") for k, _p, s in manifests],
+            tr(32157),
+            [tr(choice_labels[k], s[:16].replace("T", " ") or "?") for k, _p, s in manifests],
         )
         if choice < 0:
             return
         kind, path, stamp = manifests[choice]
     if not xbmcgui.Dialog().yesno(
-        "KodiBridge - cofnięcie zmian",
-        "Czy wycofać ostatnie {}, przywracając pliki .nfo z kopii zapasowych?".format(names[kind]),
-        yeslabel="Tak, wycofaj",
-        nolabel="Anuluj",
+        tr(32158),
+        tr(confirm_texts[kind]),
+        yeslabel=tr(32159),
+        nolabel=tr(32119),
     ):
         return
     res = rollback_sudosync_ids(manifest_path=path)
@@ -390,9 +344,9 @@ def rollback_ids_dialog():
         except Exception as exc:
             log("Cannot announce the KodiBridge ID rollback: {}".format(exc))
     _flush_nfo_refresh()
-    message = "Przywrócono: {} plików. Błędy: {}".format(res.get("rolled_back", 0), res.get("errors", 0))
+    message = tr(32160, res.get("rolled_back", 0), res.get("errors", 0))
     if res.get("already_rolled_back"):
-        message += "\nWycofane już wcześniej: {}".format(res["already_rolled_back"])
+        message += "\n" + tr(32161, res["already_rolled_back"])
     xbmcgui.Dialog().ok("KodiBridge", message)
 
 
@@ -403,7 +357,7 @@ def main():
         if action == "bootstrap":
             from resources.lib.sudosync_bootstrap import run_bootstrap
             if run_bootstrap(force_select_path=True):
-                xbmcgui.Dialog().ok("KodiBridge", "Konfigurator zakończony pomyślnie. Środowisko gotowe.")
+                xbmcgui.Dialog().ok("KodiBridge", tr(32162))
         elif action in ("checkupdate", "update"):
             update_dialog()
         elif action in ("installlocalzip", "localupdate"):
@@ -413,12 +367,12 @@ def main():
             if result.get("error"):
                 raise IOError(result["error"])
             if not result.get("available"):
-                xbmcgui.Dialog().ok("KodiBridge — aktualizacja", "Brak nowszej wersji na GitHub Releases.")
+                xbmcgui.Dialog().ok(tr(32163), tr(32164))
             elif xbmcgui.Dialog().yesno(
-                "KodiBridge — aktualizacja",
-                "Zainstalować wersję {} z GitHub Releases?".format(result.get("version")),
-                yeslabel="Zainstaluj",
-                nolabel="Anuluj",
+                tr(32163),
+                tr(32165, result.get("version")),
+                yeslabel=tr(32118),
+                nolabel=tr(32119),
             ):
                 install_github_update(update_info=result, show_dialogs=True)
         elif action in ("resolveconflicts", "conflicts"):
@@ -426,24 +380,21 @@ def main():
             request_resolution()
             xbmcgui.Dialog().notification(
                 "KodiBridge",
-                "Zlecono sprawdzenie konfliktów. Postęp w rogu ekranu; przy dużej bibliotece kilka minut.",
+                tr(32166),
                 xbmcgui.NOTIFICATION_INFO, 6000,
             )
         elif action in ("assignids", "assign_ids"):
             if not addon_settings().get("sudosync_id_enabled"):
-                xbmcgui.Dialog().ok(
-                    "KodiBridge",
-                    "Funkcja jest wyłączona. Najpierw ją włącz i zatwierdź opcje przyciskiem OK."
-                )
+                xbmcgui.Dialog().ok("KodiBridge", tr(32135))
                 return
 
             import xbmc
             monitor = xbmc.Monitor()
             dialog = xbmcgui.DialogProgress()
-            dialog_title = _get_localized_string(32076, "KodiBridge — KodiBridge ID")
-            stage1_desc = _get_localized_string(32080, "Skanowanie biblioteki i sprawdzanie KodiBridge ID...")
-            stage2_desc = _get_localized_string(32081, "Przypisywanie KodiBridge ID...")
-            auto_close_notice = _get_localized_string(32082, "To okno zamknie się automatycznie po zakończeniu operacji.")
+            dialog_title = tr(32076)
+            stage1_desc = tr(32080)
+            stage2_desc = tr(32081)
+            auto_close_notice = tr(32082)
 
             def is_canceled():
                 try:
@@ -484,12 +435,9 @@ def main():
                     _note_nfo_changes(sync_res)
                     dialog.close()
                     if not isinstance(sync_res, dict):
-                        xbmcgui.Dialog().ok("KodiBridge", ASSIGN_BUSY_MESSAGE)
+                        xbmcgui.Dialog().ok("KodiBridge", assign_busy_message())
                         return
-                    xbmcgui.Dialog().ok(
-                        "KodiBridge",
-                        "Nie znaleziono żadnych nowych plików wymagających przypisania ID.",
-                    )
+                    xbmcgui.Dialog().ok("KodiBridge", tr(32167))
                     return
 
                 total_preview = len(preview)
@@ -526,11 +474,9 @@ def main():
                     dialog.close()
                     manifest_name = os.path.basename(result.get("manifest_path", "")) or "assign_ids_manifest.json"
                     xbmcgui.Dialog().ok(
-                        "KodiBridge — błąd",
-                        "Błąd zapisu na udziale sieciowym: {}\n"
-                        "Zmodyfikowano do błędu: filmy {}, odcinki {}.\n"
-                        "Szczegóły w kodi.log oraz w raporcie ({})".format(
-                            mask_vfs_credentials(result.get("fatal_error")),
+                        tr(32168),
+                        tr(32169,
+                           mask_vfs_credentials(result.get("fatal_error")),
                             result.get("movies", 0),
                             result.get("episodes", 0),
                             manifest_name,
@@ -545,15 +491,14 @@ def main():
                 dialog.close()
                 if not isinstance(result, dict):
                     # Another assignment (e.g. the one after a library scan) holds the lock.
-                    xbmcgui.Dialog().ok("KodiBridge", ASSIGN_BUSY_MESSAGE)
+                    xbmcgui.Dialog().ok("KodiBridge", assign_busy_message())
                     return
 
                 manifest_name = os.path.basename(result.get("manifest_path", "")) or "assign_ids_manifest.json"
                 xbmcgui.Dialog().ok(
                     "KodiBridge",
-                    "Zmodyfikowano lub utworzono: filmy: {}, odcinki: {}.\n"
-                    "Raport z operacji zapisano w profilu ({})".format(
-                        result.get("movies", 0),
+                    tr(32170,
+                       result.get("movies", 0),
                         result.get("episodes", 0),
                         manifest_name,
                     ),
@@ -570,7 +515,7 @@ def main():
         else:
             show_status()
     except Exception as exc:
-        xbmcgui.Dialog().ok("KodiBridge — błąd", mask_vfs_credentials(str(exc)))
+        xbmcgui.Dialog().ok(tr(32168), mask_vfs_credentials(str(exc)))
     finally:
         if action in ("assignids", "assign_ids", "repairids", "repair_ids", "rollbackids") and _NFO_CHANGES["count"] > 0:
             # These actions change KodiBridge IDs in .nfo files from this script
