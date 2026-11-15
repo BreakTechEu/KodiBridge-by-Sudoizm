@@ -4,7 +4,7 @@ Niewydane
 Wielojęzyczność:
 
 - Wszystkie teksty wtyczki – okna, powiadomienia, okno statusu, kreator konfiguracji, aktualizacje, nadawanie, naprawa i wycofywanie KodiBridge ID, konflikty, komunikaty błędów i raporty – są w plikach tłumaczeń. Wtyczka jest dostępna po polsku i po angielsku; język wybiera Kodi. Dotąd po angielsku były tylko ustawienia, a wszystkie okna wyłącznie po polsku.
-- Przy okazji poprawiono kilka polskich tekstów (np. „Ostatnia naprawa zdublowanych ID” zamiast „Ostatnie naprawę…”).
+- Przy okazji poprawiono kilka polskich tekstów, np. w oknie wyboru operacji do wycofania jest teraz „Ostatnia naprawa zdublowanych ID” zamiast błędnej formy „Ostatnie naprawę zdublowanych ID”.
 - Dziennik Kodi pozostaje bez tłumaczenia.
 
 KodiBridge by Sudoizm 2.3.5
