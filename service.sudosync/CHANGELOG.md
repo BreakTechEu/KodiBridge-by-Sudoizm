@@ -2,7 +2,7 @@ Niewydane
 =========
 
 - Synchronizacja nie zatrzymuje się już, gdy pozycja dostała nowy KodiBridge ID poza naprawą duplikatów, np. po nadpisaniu pliku .nfo przez inny program i ponownym nadaniu ID. Dotąd taka pozycja blokowała cały cykl: zmiany stanu obejrzenia nie były zapisywane ani wysyłane do innych Kodi, a błąd było widać tylko w dzienniku. Teraz pozycja zachowuje swoją historię, jeżeli pasuje do dokładnie jednego wcześniejszego wpisu, różni się od niego tylko KodiBridge ID, a starego ID nie ma już w bibliotece. Każda inna niezgodność identyfikatorów nadal zatrzymuje cykl.
-- Gdy synchronizacja stanie z powodu błędu, wtyczka pokazuje powiadomienie w rogu ekranu: przy niezgodnych identyfikatorach wskazuje film albo serial i sezon, przy innym błędzie odsyła do dziennika Kodi. Powiadomienie pojawia się raz na problem (do udanej synchronizacji albo restartu Kodi), nie w trakcie odtwarzania. Dotąd błąd było widać tylko w dzienniku i w oknie statusu.
+- Gdy synchronizacja stanie z powodu błędu, wtyczka pokazuje okno z informacją, że trzeba sprawdzić dziennik Kodi, z pełną ścieżką do pliku kodi.log na danym urządzeniu. Okno podpowiada też, że analizę dziennika można zlecić swojej SI albo przesłać dziennik autorowi wtyczki (zgłoszenie na GitHubie). Pojawia się raz, do najbliższej udanej synchronizacji albo restartu Kodi, i nigdy w trakcie odtwarzania. Dotąd błąd było widać tylko w dzienniku i w oknie statusu.
 
 KodiBridge by Sudoizm 2.3.3
 ===========================

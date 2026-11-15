@@ -14,6 +14,7 @@ import time
 
 import xbmc
 import xbmcgui
+import xbmcvfs
 
 from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_guard, ServiceGuardError
 from resources.lib.sudosync_conflicts import (
@@ -267,7 +268,7 @@ def _live_retry_delay_seconds(result, live_poll):
 # Problem summary already shown in a notification during this service run.
 _COVERAGE_NOTIFIED = {"key": None}
 _FOREIGN_SESSION_NOTIFIED = {"session_id": None}
-# Key of the sync failure already shown in a notification during this service run.
+# Set while the window about a stopped synchronization has been shown and no cycle has succeeded since.
 _SYNC_FAILURE_NOTIFIED = {"key": None}
 # True from the start of a video scan until the KodiBridge ID assignment after it.
 _ASSIGN_AFTER_SCAN = {"pending": False}
@@ -444,41 +445,45 @@ def _report_foreign_session(v2_runtime, recovery):
         pass
 
 
-def sync_failure_place(exc):
-    """Library item named by the error that stopped synchronization, if any.
-
-    The engine wraps snapshot errors, so the whole cause/context chain is searched.
-    """
-    seen = set()
-    current = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        place = getattr(current, "place", None)
-        if place:
-            return str(place)
-        current = current.__cause__ or current.__context__
-    return None
+SYNC_FAILURE_TITLE = "KodiBridge – synchronizacja wstrzymana"
+AUTHOR_ISSUES_URL = "https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/issues"
 
 
-def sync_failure_summary(exc):
-    """Return (key, message) for a notification about a stopped synchronization."""
-    place = sync_failure_place(exc)
-    if place:
-        return "place:" + place, "Synchronizacja wstrzymana. Niezgodne identyfikatory: {}".format(place)
-    return "other", "Synchronizacja wstrzymana. Szczegóły w dzienniku Kodi."
-
-
-def _report_sync_failure(exc):
-    """Tell the user that synchronization stopped, once per problem and service run.
-
-    Not shown during video playback; the next failed cycle after playback shows it.
-    """
-    key, message = sync_failure_summary(exc)
-    if key == _SYNC_FAILURE_NOTIFIED["key"] or _is_playing_video():
-        return
-    _SYNC_FAILURE_NOTIFIED["key"] = key
+def kodi_log_path():
+    """Full path of kodi.log on this device, or None when Kodi does not tell."""
     try:
-        xbmcgui.Dialog().notification("KodiBridge", message, xbmcgui.NOTIFICATION_ERROR, 10000)
+        folder = xbmcvfs.translatePath("special://logpath")
+    except Exception:
+        return None
+    if not isinstance(folder, str) or not folder.strip():
+        return None
+    folder = folder.strip().rstrip("/\\")
+    separator = "\\" if "\\" in folder else "/"
+    return folder + separator + "kodi.log"
+
+
+def sync_failure_message(log_path=None):
+    """Text of the window shown when synchronization stopped on an error."""
+    where = log_path or "plik kodi.log w folderze danych Kodi"
+    return (
+        "Synchronizacja zatrzymała się z powodu błędu. Do czasu jego usunięcia zmiany stanu "
+        "obejrzenia z tego Kodi nie trafiają do innych urządzeń.\n"
+        "Sprawdź dziennik Kodi: {}\n"
+        "Analizę dziennika możesz zlecić swojej SI albo przesłać dziennik autorowi wtyczki: {}"
+    ).format(where, AUTHOR_ISSUES_URL)
+
+
+def _report_sync_failure(exc=None):
+    """Tell the user that synchronization stopped, once until a cycle succeeds again.
+
+    The reason is in the log only. Never shown during video playback; the next
+    failed cycle after playback shows it.
+    """
+    if _SYNC_FAILURE_NOTIFIED["key"] or _is_playing_video():
+        return
+    _SYNC_FAILURE_NOTIFIED["key"] = "stopped"
+    try:
+        xbmcgui.Dialog().ok(SYNC_FAILURE_TITLE, sync_failure_message(kodi_log_path()))
     except Exception:
         pass
 
