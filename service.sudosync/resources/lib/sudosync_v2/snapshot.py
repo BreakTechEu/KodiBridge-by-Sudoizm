@@ -226,6 +226,14 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                 if base:
                     current_base_counts[base] = current_base_counts.get(base, 0) + 1
         current_bases = set(current_base_counts)
+        # Identifiers of the current item holding each KodiBridge ID (full value).
+        current_by_sudosync = {}
+        for item in source:
+            if isinstance(item, dict):
+                item_ids = _identifiers(item)
+                sid = item_ids.get("sudosync")
+                if sid:
+                    current_by_sudosync.setdefault(str(sid).strip().casefold(), []).append(item_ids)
         previous_bases = set()
         for alias in previous_by_identity[media_type]:
             if alias[1] == "sudosync":
@@ -344,6 +352,20 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                             prior.get("ids", {}).get("sudosync"),
                             ids.get("sudosync"),
                         )
+                    elif conflicting_kinds == ["sudosync"] and _prior_held_by_matching_item(
+                        prior, current_by_sudosync,
+                    ):
+                        # The previous record still belongs to another current item
+                        # with the same identifiers (e.g. the first file of an
+                        # episode whose second file just got its own KodiBridge ID).
+                        logger.info(
+                            "%s item %s shares external identifiers with item %s already in the library; "
+                            "treating it as a new item",
+                            media_type,
+                            ids.get("sudosync"),
+                            prior.get("ids", {}).get("sudosync"),
+                        )
+                        prior = None
                     else:
                         raise SnapshotBuildError(
                             "current {} item has conflicting identifiers with its previous snapshot: {} "
@@ -442,6 +464,22 @@ def _is_qualifier_dropped(old_value, new_value, current_base_counts):
     if not _sudosync_qualifier(old_value) or _sudosync_qualifier(new_value):
         return False
     return current_base_counts.get(old_base, 0) == 1
+
+
+def _prior_held_by_matching_item(prior, current_by_sudosync):
+    """True when exactly one current item carries the previous record's KodiBridge ID and agrees with it.
+
+    That item, not the one being matched, is the continuation of the
+    previous record. An item holding the old ID with other identifiers that
+    differ (IDs moved between videos) does not count.
+    """
+    prior_ids = prior.get("ids", {}) if isinstance(prior, dict) else {}
+    key = str(prior_ids.get("sudosync") or "").strip().casefold()
+    holders = current_by_sudosync.get(key) if key else None
+    if not holders or len(holders) != 1:
+        return False
+    holder = holders[0]
+    return all(holder[kind] == prior_ids[kind] for kind in set(holder).intersection(prior_ids))
 
 
 def _describe_ids(ids, kinds):

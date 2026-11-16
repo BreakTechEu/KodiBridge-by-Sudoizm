@@ -1,3 +1,10 @@
+KodiBridge by Sudoizm 2.4.4
+===========================
+
+Poprawka:
+
+- Synchronizacja nie staje już, gdy w bibliotece pojawi się drugi plik wideo, który jest już w bibliotece (te same identyfikatory IMDb/TMDb/TVDb/Trakt), i dostanie własny KodiBridge ID. Wtyczka łączyła go z zapisanym stanem pierwszego pliku i uznawała różnicę KodiBridge ID za konflikt, choć pierwszy plik nadal jest w bibliotece pod swoim ID. Teraz drugi plik jest nową pozycją, a pierwszy zachowuje swoją historię. KodiBridge ID przeniesiony na inne wideo nadal jest konfliktem.
+
 KodiBridge by Sudoizm 2.4.3
 ===========================
 

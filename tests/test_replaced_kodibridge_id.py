@@ -77,6 +77,27 @@ class ReplacedIdTests(unittest.TestCase):
                      _episode(2, 2, 5, {"sudosync": OTHER, "tvdb": "5001"})],
                 CLIENT, "Kodi", previous_snapshot=previous, logical_clock=2)
 
+    def test_second_file_with_a_new_id_is_a_new_item(self):
+        previous = _previous(
+            _episode(1, 2, 5, {"sudosync": OLD, "tvdb": "5001", "imdb": "tt9"}, playcount=1))
+        for order in (0, 1):
+            current = [_episode(1, 2, 5, {"sudosync": OLD, "tvdb": "5001", "imdb": "tt9"}, playcount=1),
+                       _episode(7, 2, 5, {"sudosync": NEW, "tvdb": "5001", "imdb": "tt9"})]
+            if order:
+                current.reverse()
+            snap = build_snapshot([], current, CLIENT, "Kodi", previous_snapshot=previous, logical_clock=2)
+            by_id = {r["ids"]["sudosync"]: r for r in snap["episodes"]}
+            self.assertEqual(by_id[OLD]["versions"], previous["episodes"][0]["versions"])
+            self.assertEqual(sorted(by_id), sorted([OLD, NEW]))
+
+    def test_old_id_moved_to_another_video_is_still_a_conflict(self):
+        previous = _previous(_episode(1, 2, 5, {"sudosync": OLD, "tvdb": "5001", "imdb": "tt9"}))
+        with self.assertRaises(SnapshotBuildError):
+            build_snapshot(
+                [], [_episode(1, 2, 5, {"sudosync": NEW, "tvdb": "5001", "imdb": "tt9"}),
+                     _episode(3, 2, 6, {"sudosync": OLD, "tvdb": "5002", "imdb": "tt9"})],
+                CLIENT, "Kodi", previous_snapshot=previous, logical_clock=2)
+
     def test_qualifier_dropped_when_id_is_no_longer_shared(self):
         # Previously two episodes shared OLD (qualified); one is gone, so the
         # remaining episode carries OLD without a qualifier.
