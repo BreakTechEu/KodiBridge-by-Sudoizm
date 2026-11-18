@@ -1,0 +1,6 @@
+--- a/xml/DialogButtonMenu.xml
++++ b/xml/DialogButtonMenu.xml
+@@ -1 +1,2 @@
+-						<onclick>Quit()</onclick>
++						<onclick condition="System.AddonIsEnabled(service.sudosync)">RunScript(service.sudosync,safequit)</onclick>
++						<onclick condition="!System.AddonIsEnabled(service.sudosync)">Quit()</onclick>

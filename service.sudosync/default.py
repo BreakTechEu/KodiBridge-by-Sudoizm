@@ -354,7 +354,10 @@ def main():
     install_v2_log_bridge()
     action = sys.argv[1].lower() if len(sys.argv) > 1 else "status"
     try:
-        if action == "bootstrap":
+        if action == "safequit":
+            from resources.lib.kodibridge_activity import safe_quit
+            safe_quit()
+        elif action == "bootstrap":
             from resources.lib.sudosync_bootstrap import run_bootstrap
             if run_bootstrap(force_select_path=True):
                 xbmcgui.Dialog().ok("KodiBridge", tr(32162))

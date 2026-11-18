@@ -108,6 +108,11 @@
         </setting>
       </group>
       <group id="2" label="32010">
+        <setting id="safe_quit" type="action" label="32805" help="">
+          <level>0</level>
+          <data>RunScript(service.sudosync,safequit)</data>
+          <control type="button" format="action"><close>true</close></control>
+        </setting>
         <setting id="show_status" type="action" label="32013" help="32014">
           <level>0</level>
           <data>RunScript(service.sudosync,status)</data>

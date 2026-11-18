@@ -1,3 +1,9 @@
+KodiBridge by Sudoizm 2.4.5
+===========================
+
+- Dodano informacje o pracy po skanowaniu biblioteki, podczas synchronizacji i zapisu snapshotu.
+- W ustawieniach można wybrać zamknięcie Kodi po zakończeniu pracy KodiBridge i anulować oczekiwanie. Integracja z przyciskiem Wyjdź w Estuary wymaga opcjonalnej zmiany skórki.
+
 KodiBridge by Sudoizm 2.4.4
 ===========================
 
