@@ -1,34 +1,21 @@
-name: Publish KodiBridge 2.4.5
+name: Update 2.4.5 release notes
 on:
   push:
     branches: [release/publish-2.4.5]
 permissions:
   contents: write
 jobs:
-  publish:
-    runs-on: ubuntu-22.04
+  notes:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: 979b8861867e4f3371f9a2f1b674269da1da9a17
-          persist-credentials: false
-      - name: Test and package
-        run: |
-          python3 -m unittest discover -s tests
-          git archive --format=zip --output=kodibridge-by-sudoizm-2.4.5.zip HEAD service.sudosync
-          python3 - <<'PY'
-          from zipfile import ZipFile
-          from xml.etree import ElementTree
-          with ZipFile('kodibridge-by-sudoizm-2.4.5.zip') as archive:
-              assert archive.testzip() is None
-              manifest = ElementTree.fromstring(archive.read('service.sudosync/addon.xml'))
-              assert (manifest.get('id'), manifest.get('version')) == ('service.sudosync', '2.4.5')
-              for path in ['service.py', 'default.py', 'resources/icon.png', 'resources/lib/kodibridge_activity.py']:
-                  assert archive.getinfo('service.sudosync/' + path).file_size > 0
-          PY
-          sha256sum kodibridge-by-sudoizm-2.4.5.zip > kodibridge-by-sudoizm-2.4.5.zip.sha256
-      - name: Publish verified assets
+      - name: Edit release notes
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create 2.4.5 --target 979b8861867e4f3371f9a2f1b674269da1da9a17 --title 'KodiBridge by Sudoizm 2.4.5' --notes 'Widoczna praca po skanowaniu biblioteki i podczas synchronizacji. Nowa akcja w ustawieniach pozwala zamknąć Kodi po zakończeniu pracy dodatku. Obsługa przycisku Wyjdź w Estuary wymaga opcjonalnej zmiany skórki (docs/estuary-safe-quit.patch). Przekazanie dla Claude: PR #2, wspólny kod dla wszystkich platform. Testy urządzeniowe pozostają otwarte: nowe pozycje i ponowne losowanie listy, anulowanie wyjścia, zachowanie po błędzie zapisu. Wcześniejszy problem w Windows 11 ustąpił po oczyszczeniu biblioteki i ponownym uruchomieniu Kodi.' --latest kodibridge-by-sudoizm-2.4.5.zip kodibridge-by-sudoizm-2.4.5.zip.sha256
+          gh release edit 2.4.5 --repo BreakTechEu/KodiBridge-by-Sudoizm --notes-file - <<'NOTES'
+          ### Polski
+          KodiBridge pokazuje komunikaty po skanowaniu biblioteki, podczas synchronizacji i zapisywania snapshotu. W ustawieniach dodatku można wybrać „Zamknij Kodi po zakończeniu pracy KodiBridge” i anulować oczekiwanie. Podłączenie tej akcji do przycisku „Wyjdź” w Estuary wymaga [opcjonalnej łatki skórki](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/blob/2.4.5/docs/estuary-safe-quit.patch).
+          
+          ### English
+          KodiBridge displays activity after a library scan, during synchronization and while saving a snapshot. In the add-on settings, choose “Exit Kodi when KodiBridge finishes” to wait for the current operation. You can cancel the wait. To use this action from Estuary’s Exit button, apply the [optional skin patch](https://github.com/BreakTechEu/KodiBridge-by-Sudoizm/blob/2.4.5/docs/estuary-safe-quit.patch).
+          NOTES
