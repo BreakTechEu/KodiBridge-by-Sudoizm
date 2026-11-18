@@ -1296,3 +1296,31 @@ msgstr "brak pliku .nfo"
 msgctxt "#32376"
 msgid "the .nfo file does not contain the ID {0} (the ID comes from the Kodi database)"
 msgstr "plik .nfo nie zawiera ID {0} (ID pochodzi z bazy Kodi)"
+
+msgctxt "#32800"
+msgid "Checking the library after the scan"
+msgstr "Sprawdzanie pozycji w bibliotece po skanowaniu"
+
+msgctxt "#32801"
+msgid "Synchronizing the video library"
+msgstr "Synchronizacja biblioteki wideo"
+
+msgctxt "#32802"
+msgid "Saving the library snapshot"
+msgstr "Zapisywanie snapshotu biblioteki"
+
+msgctxt "#32803"
+msgid "Waiting for KodiBridge to finish. Cancel to keep Kodi open."
+msgstr "KodiBridge kończy pracę. Anuluj, aby pozostawić Kodi otwarte."
+
+msgctxt "#32804"
+msgid "Synchronization failed. Exit Kodi anyway?"
+msgstr "Synchronizacja nie powiodła się. Mimo to zamknąć Kodi?"
+
+msgctxt "#32805"
+msgid "Exit Kodi when KodiBridge finishes"
+msgstr "Zamknij Kodi po zakończeniu pracy KodiBridge"
+
+msgctxt "#32806"
+msgid "Updating library entries after the scan"
+msgstr "Aktualizowanie wpisów biblioteki po skanowaniu"

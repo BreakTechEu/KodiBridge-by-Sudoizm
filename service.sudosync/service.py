@@ -16,6 +16,7 @@ import time
 import xbmc
 import xbmcgui
 import xbmcvfs
+from resources.lib import kodibridge_activity as activity
 
 from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_guard, ServiceGuardError
 from resources.lib.sudosync_i18n import tr
@@ -195,6 +196,13 @@ class SudoSyncMonitor(_MonitorBase):
 
 
 def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_client_id=None, init_completed=False):
+    result = _build_initial_snapshot(v2_runtime, abort_requested, base_client_id, init_completed)
+    if isinstance(result, dict):
+        activity.record_error(result.get("error") or result.get("status") in ("error", "blocked"))
+    return result
+
+
+def _build_initial_snapshot(v2_runtime, abort_requested, base_client_id, init_completed):
     """Run the v2 startup snapshot step when LIVE sync is not active (v2 engine only)."""
     if v2_runtime is None:
         log("V2 runtime unavailable; local snapshot not published.", xbmc.LOGERROR)
@@ -231,10 +239,10 @@ def _initial_snapshot_and_analyse(v2_runtime=None, abort_requested=None, base_cl
         return {"status": "not_initialized"}
 
     try:
-        v2_pub = v2_runtime.publish_local_snapshot(
-            abort_requested=abort_requested,
-            suppress_local_changes=False,
-        )
+        with activity.progress(32802, abort_requested, delay=2) as check:
+            v2_pub = v2_runtime.publish_local_snapshot(
+                abort_requested=check, suppress_local_changes=False,
+            )
         log("V2 initial snapshot status={}".format(v2_pub.get("status")), xbmc.LOGINFO)
         update_local_status_from_v2(
             published_snapshot=(v2_pub.get("snapshot") if isinstance(v2_pub, dict) else None),
@@ -362,7 +370,8 @@ def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
         return lease["lost"]
 
     try:
-        preview = preview_sudosync_ids(is_canceled=abort_requested)
+        with activity.progress(32800, abort_requested) as check:
+            preview = preview_sudosync_ids(is_canceled=check)
     except Exception as exc:
         log("Sprawdzanie KodiBridge ID po skanowaniu nieudane: {}".format(exc), xbmc.LOGWARNING)
         return None
@@ -370,10 +379,11 @@ def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
         return None
     collected = getattr(preview, "collected_items", None)
     if not preview:
-        return assign_sudosync_ids(
-            show_notification=False, auto_mode=True, silent=True, base_path=base_path,
-            collected_items=collected, is_canceled=abort_requested,
-        )
+        with activity.progress(32806, abort_requested, delay=1) as check:
+            return assign_sudosync_ids(
+                show_notification=False, auto_mode=True, silent=True, base_path=base_path,
+                collected_items=collected, is_canceled=check,
+            )
 
     dialog = xbmcgui.DialogProgress()
     title = tr(32076)
@@ -659,10 +669,12 @@ def _execute_integrated_live_cycle(
     one: the library is read before the snapshot is built.
     """
     try:
-        return _run_live_cycle(
+        result = _run_live_cycle(
             v2_runtime, monitor, show_notification, suppress_local_changes,
             collect_local, receiver_notification_delay_ms,
         )
+        activity.record_error(result.get("error") or result.get("blocked"))
+        return result
     finally:
         _record_coverage(v2_runtime)
 
@@ -690,11 +702,12 @@ def _run_live_cycle(
         except Exception as exc:
             log("V2 NFO cache invalidation failed: {}".format(exc), xbmc.LOGWARNING)
     try:
-        v2_result = v2_runtime.sync_cycle(
-            abort_requested=monitor.abortRequested,
-            suppress_local_changes=suppress_local_changes,
-            publish_local=collect_local,
-        )
+        with activity.progress(32801, monitor.abortRequested, delay=2) as check:
+            v2_result = v2_runtime.sync_cycle(
+                abort_requested=check,
+                suppress_local_changes=suppress_local_changes,
+                publish_local=collect_local,
+            )
     except Exception as exc:
         if sync_failure_is_transient(exc):
             # Not a failure: the library is being changed (e.g. the startup
@@ -755,6 +768,16 @@ def run_service_guarded(service_guard, runner):
 
 
 def _run_service():
+    window = xbmcgui.Window(10000)
+    window.clearProperty(activity.ERROR)
+    window.setProperty(activity.RUNNING, "1")
+    try:
+        _run_service_loop()
+    finally:
+        window.clearProperty(activity.RUNNING)
+
+
+def _run_service_loop():
     monitor = SudoSyncMonitor()
     settings = addon_settings()
     monitor.id_mode = bool(settings.get("sudosync_id_enabled"))
@@ -908,6 +931,8 @@ def _run_service():
             log("Startup synchronization failed: {}".format(exc), xbmc.LOGERROR)
 
         while not monitor.abortRequested():
+            if activity.quit_boundary(monitor):
+                break
             now = time.time()
             try:
                 settings = addon_settings()
@@ -1019,12 +1044,14 @@ def _run_service():
                                             kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
                                             if hasattr(kodi_adapter, "clear_nfo_cache"):
                                                 kodi_adapter.clear_nfo_cache()
-                                            pub_res = v2_runtime.publish_local_snapshot(
-                                                abort_requested=monitor.abortRequested,
-                                                suppress_local_changes=False,
-                                            )
+                                            with activity.progress(32802, monitor.abortRequested) as check:
+                                                pub_res = v2_runtime.publish_local_snapshot(
+                                                    abort_requested=check,
+                                                    suppress_local_changes=False,
+                                                )
                                             log("Przebudowano i opublikowano snapshot v2 po nadaniu nowych SudoSync ID (status={}).".format(pub_res.get("status")), xbmc.LOGINFO)
                                         except Exception as exc:
+                                            activity.record_error(True)
                                             log("Błąd publikacji snapshotu v2 po nadaniu ID: {}".format(exc), xbmc.LOGWARNING)
                         except Exception as exc:
                             log("Błąd automatycznego nadawania SudoSync ID w usłudze: {}".format(exc), xbmc.LOGERROR)
@@ -1067,6 +1094,7 @@ def _run_service():
                                         if user_event_due:
                                             log("V2 published local library change during playback.", xbmc.LOGINFO)
                                 except Exception as exc:
+                                    activity.record_error(True)
                                     log("V2 playback snapshot publish failed: {}".format(exc), xbmc.LOGWARNING)
                                     if not sync_failure_is_transient(exc):
                                         _report_sync_failure(exc)
