@@ -1,0 +1,34 @@
+name: Publish KodiBridge 2.4.5
+on:
+  push:
+    branches: [release/publish-2.4.5]
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 979b8861867e4f3371f9a2f1b674269da1da9a17
+          persist-credentials: false
+      - name: Test and package
+        run: |
+          python3 -m unittest discover -s tests
+          git archive --format=zip --output=kodibridge-by-sudoizm-2.4.5.zip HEAD service.sudosync
+          python3 - <<'PY'
+          from zipfile import ZipFile
+          from xml.etree import ElementTree
+          with ZipFile('kodibridge-by-sudoizm-2.4.5.zip') as archive:
+              assert archive.testzip() is None
+              manifest = ElementTree.fromstring(archive.read('service.sudosync/addon.xml'))
+              assert (manifest.get('id'), manifest.get('version')) == ('service.sudosync', '2.4.5')
+              for path in ['service.py', 'default.py', 'resources/icon.png', 'resources/lib/kodibridge_activity.py']:
+                  assert archive.getinfo('service.sudosync/' + path).file_size > 0
+          PY
+          sha256sum kodibridge-by-sudoizm-2.4.5.zip > kodibridge-by-sudoizm-2.4.5.zip.sha256
+      - name: Publish verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create 2.4.5 --target 979b8861867e4f3371f9a2f1b674269da1da9a17 --title 'KodiBridge by Sudoizm 2.4.5' --notes 'Widoczna praca po skanowaniu biblioteki i podczas synchronizacji. Nowa akcja w ustawieniach pozwala zamknąć Kodi po zakończeniu pracy dodatku. Obsługa przycisku Wyjdź w Estuary wymaga opcjonalnej zmiany skórki (docs/estuary-safe-quit.patch). Przekazanie dla Claude: PR #2, wspólny kod dla wszystkich platform. Testy urządzeniowe pozostają otwarte: nowe pozycje i ponowne losowanie listy, anulowanie wyjścia, zachowanie po błędzie zapisu. Wcześniejszy problem w Windows 11 ustąpił po oczyszczeniu biblioteki i ponownym uruchomieniu Kodi.' --latest kodibridge-by-sudoizm-2.4.5.zip kodibridge-by-sudoizm-2.4.5.zip.sha256
