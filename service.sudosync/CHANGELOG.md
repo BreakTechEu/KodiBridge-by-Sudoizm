@@ -1,3 +1,10 @@
+KodiBridge by Sudoizm 2.4.8 (w przygotowaniu)
+=============================================
+
+Poprawka:
+
+- Po skanowaniu biblioteki pliki `.nfo` są czytane z NAS tylko raz. Dotąd sprawdzanie pozycji po skanowaniu i pierwsza synchronizacja czytały je osobno, każde od nowa. Teraz sprawdzanie korzysta z identyfikatorów odczytanych raz i samo czyta tylko pliki `.nfo` bez identyfikatorów, a synchronizacja zaczyna od zapamiętanych wartości. Praca po skanowaniu skraca się o czas jednego pełnego odczytu `.nfo` (przy dużej bibliotece na NAS – o minutę lub dwie). Gdy wspólny odczyt się nie uda, sprawdzanie czyta pliki samo, jak dotąd.
+
 KodiBridge by Sudoizm 2.4.7
 ===========================
 

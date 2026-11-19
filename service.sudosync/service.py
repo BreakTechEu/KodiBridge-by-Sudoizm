@@ -17,6 +17,7 @@ import xbmc
 import xbmcgui
 import xbmcvfs
 from resources.lib import kodibridge_activity as activity
+from resources.lib.sudosync_v2.kodi_rpc import OperationAborted
 
 from resources.lib.sudosync_v2.local_service_guard import acquire_kodi_service_guard, ServiceGuardError
 from resources.lib.sudosync_i18n import tr
@@ -371,7 +372,37 @@ def coverage_problem_summary(coverage):
 ASSIGN_KEEP_ALIVE_SECONDS = 60
 
 
-def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
+def _read_nfo_once_for_scan(v2_runtime, abort_requested):
+    """Read every .nfo of the library once, through the v2 reader, after a scan.
+
+    Drops both caches of .nfo identifiers (the v2 reader's and the core
+    _NFO_ID_CACHE) and reads the library again with the v2 reader; every
+    identifier it reads is also put into _NFO_ID_CACHE (on_nfo_cached), so
+    the post-scan check reads only the .nfo files without identifiers and
+    the next sync cycle starts with a fresh cache. Returns True when the read
+    completed; False leaves the post-scan check to read the files itself.
+    """
+    kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
+    if kodi_adapter is None or not hasattr(kodi_adapter, "clear_nfo_cache"):
+        return False
+    from resources.lib.sudosync_core import _NFO_ID_CACHE
+    _NFO_ID_CACHE.clear()
+    kodi_adapter.clear_nfo_cache()
+    try:
+        kodi_adapter.get_movies(abort_requested=abort_requested)
+        kodi_adapter.get_episodes(abort_requested=abort_requested)
+    except OperationAborted:
+        raise
+    except Exception as exc:
+        log("Shared .nfo read after the scan failed, the check reads the files itself: {}".format(exc),
+            xbmc.LOGWARNING)
+        _NFO_ID_CACHE.clear()
+        kodi_adapter.clear_nfo_cache()
+        return False
+    return True
+
+
+def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None, v2_runtime=None, monitor=None):
     """Give KodiBridge IDs to library items that have none, after a video scan.
 
     Silent when no .nfo needs a new ID. Otherwise the progress window of the
@@ -407,10 +438,17 @@ def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
 
     try:
         with activity.progress(32800, abort_requested) as check:
+            shared_read = v2_runtime is not None and _read_nfo_once_for_scan(v2_runtime, check)
+            if shared_read and monitor is not None:
+                # The next sync cycle uses the identifiers read just now.
+                monitor.scan_nfo_stale = False
             preview = preview_sudosync_ids(
                 is_canceled=check,
                 collect_progress_callback=lambda done, total, _name="": check.report_progress(done, total),
+                keep_nfo_cache=shared_read,
             )
+    except OperationAborted:
+        return None
     except Exception as exc:
         log("Sprawdzanie KodiBridge ID po skanowaniu nieudane: {}".format(exc), xbmc.LOGWARNING)
         return None
@@ -1116,6 +1154,7 @@ def _run_service_loop():
                             assign_res = _assign_ids_after_scan(
                                 settings.get("base_path"), monitor.abortRequested,
                                 keep_alive=lambda: refresh_network_active_kodi_lease(lease_base),
+                                v2_runtime=v2_runtime, monitor=monitor,
                             )
                             if assign_res == 0:
                                 # Lock busy (another process/device is assigning IDs).

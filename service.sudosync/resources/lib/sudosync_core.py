@@ -2873,11 +2873,19 @@ class _PreviewResult(list):
         self.collected_items = None
 
 
-def preview_sudosync_ids(progress_callback=None, is_canceled=None, collect_progress_callback=None):
+def preview_sudosync_ids(progress_callback=None, is_canceled=None, collect_progress_callback=None,
+                         keep_nfo_cache=False):
+    """List library items whose .nfo has no KodiBridge ID.
+
+    ``keep_nfo_cache`` keeps the identifiers cached in _NFO_ID_CACHE: the
+    service fills it right before from a fresh read of every .nfo, so the
+    files are not read a second time.
+    """
     settings = addon_settings()
     if not settings.get("sudosync_id_enabled"):
         raise RuntimeError(tr(32353))
-    _NFO_ID_CACHE.clear()
+    if not keep_nfo_cache:
+        _NFO_ID_CACHE.clear()
     if is_canceled and is_canceled():
         res = _PreviewResult([])
         res.collected_items = ([], [])
