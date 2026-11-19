@@ -1,5 +1,5 @@
-KodiBridge by Sudoizm 2.4.7 (w przygotowaniu)
-=============================================
+KodiBridge by Sudoizm 2.4.7
+===========================
 
 Poprawki:
 
