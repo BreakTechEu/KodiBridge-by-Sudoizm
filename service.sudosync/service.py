@@ -90,7 +90,14 @@ class SudoSyncMonitor(_MonitorBase):
         # A scan started before the service (the startup scan of Kodi) sends
         # no OnScanStarted to this monitor; its OnScanFinished still arrives.
         self.scanning = _is_library_scanning()
+        # Video library clean in progress (Kodi cleans right after a scan).
+        self.cleaning = False
+        self.cleaning_since = 0.0
         self.scan_refresh_pending = False
+        # A scan or clean may have changed .nfo files: the next library read
+        # drops the cached identifiers once (not every cycle until the
+        # scan_refresh_pending quarantine ends).
+        self.scan_nfo_stale = False
         self.playback_dirty = False
         self.user_update_dirty = False
         self.scan_assign_pending = False
@@ -149,6 +156,7 @@ class SudoSyncMonitor(_MonitorBase):
         if str(library).lower() == "video":
             self.scanning = False
             self.scan_refresh_pending = True
+            self.scan_nfo_stale = True
             self._mark_dirty()
             try:
                 settings = addon_settings()
@@ -165,7 +173,37 @@ class SudoSyncMonitor(_MonitorBase):
                 _ASSIGN_AFTER_SCAN["pending"] = True
                 log("SudoSyncMonitor: onScanFinished('video') — zarejestrowano zakończenie skanowania wideo (debounce 3s).", xbmc.LOGINFO)
 
+    def onCleanStarted(self, library):
+        try:
+            super(SudoSyncMonitor, self).onCleanStarted(library)
+        except (AttributeError, TypeError):
+            pass
+        if str(library).lower() == "video":
+            self._clean_started()
+
+    def onCleanFinished(self, library):
+        try:
+            super(SudoSyncMonitor, self).onCleanFinished(library)
+        except (AttributeError, TypeError):
+            pass
+        if str(library).lower() == "video":
+            self._clean_finished()
+
+    def _clean_started(self):
+        self.cleaning = True
+        self.cleaning_since = time.monotonic()
+
+    def _clean_finished(self):
+        self.cleaning = False
+        self.scanning = False
+        self.scan_refresh_pending = True
+        self.scan_nfo_stale = True
+        self._mark_dirty()
+
     def onNotification(self, sender, method, data):
+        if method == "VideoLibrary.OnCleanStarted":
+            self._clean_started()
+            return
         if method == "VideoLibrary.OnScanStarted":
             self.scanning = True
             # New items have no KodiBridge ID until the assignment after the
@@ -176,9 +214,7 @@ class SudoSyncMonitor(_MonitorBase):
             self.onScanFinished("video")
             return
         if method == "VideoLibrary.OnCleanFinished":
-            self.scanning = False
-            self.scan_refresh_pending = True
-            self._mark_dirty()
+            self._clean_finished()
             return
         if method == "Player.OnStop":
             # Explicit playback activity always outranks a pending post-scan
@@ -493,16 +529,59 @@ def _is_library_scanning():
         return False
 
 
-def _library_busy(monitor):
-    """True while a video library scan runs; checked before every sync cycle.
+# A clean whose end notification never arrived stops counting after this time.
+CLEAN_MAX_SECONDS = 15 * 60
+# How often the abort check of a running sync cycle asks Kodi about a scan.
+SCAN_CHECK_INTERVAL = 1.0
 
-    The monitor learns about scans from Kodi notifications; Kodi itself is
-    asked as well, so a scan whose start notification was missed (e.g. the
-    startup scan) also postpones the cycle until it ends.
+
+def _library_cleaning(monitor):
+    if getattr(monitor, "cleaning", False) is not True:
+        return False
+    since = getattr(monitor, "cleaning_since", 0.0)
+    if isinstance(since, (int, float)) and time.monotonic() - since > CLEAN_MAX_SECONDS:
+        monitor.cleaning = False
+        log("Video library clean end was not reported; synchronization resumes.", xbmc.LOGWARNING)
+        return False
+    return True
+
+
+def _library_busy(monitor):
+    """True while a video library scan or clean runs; checked before every sync cycle.
+
+    The monitor learns about scans and cleans from Kodi notifications; Kodi
+    itself is asked about a scan as well, so a scan whose start notification
+    was missed (e.g. the startup scan) also postpones the cycle until it ends.
     """
     if getattr(monitor, "scanning", False) is True:
         return True
+    if _library_cleaning(monitor):
+        return True
     return _is_library_scanning()
+
+
+def _cycle_abort(monitor):
+    """Abort check of a sync cycle: Kodi is closing, or a library scan or clean started.
+
+    A cycle that started just before a scan (e.g. the startup scan of Kodi)
+    stops at the next item instead of reading the library while it changes;
+    the loop runs it again after the scan and the ID assignment. Kodi is
+    asked about the scan at most once per SCAN_CHECK_INTERVAL.
+    """
+    state = {"asked_at": None, "scanning": False}
+
+    def check():
+        if monitor.abortRequested() is True:
+            return True
+        if getattr(monitor, "scanning", False) is True or _library_cleaning(monitor):
+            return True
+        now = time.monotonic()
+        if state["asked_at"] is None or now - state["asked_at"] >= SCAN_CHECK_INTERVAL:
+            state["asked_at"] = now
+            state["scanning"] = _is_library_scanning()
+        return state["scanning"]
+
+    return check
 
 
 def _sync_must_wait(monitor):
@@ -696,8 +775,9 @@ def _run_live_cycle(
         return {"busy": True, "error": "v2_unavailable", "v2": None, "applied_items": 0}
 
     # NFO identifiers are cached between cycles; a finished library scan/clean
-    # may have changed sidecar files, so drop the cache before re-reading.
-    if getattr(monitor, "scan_refresh_pending", False) is True:
+    # may have changed sidecar files, so drop the cache once before re-reading.
+    if getattr(monitor, "scan_nfo_stale", False) is True:
+        monitor.scan_nfo_stale = False
         try:
             kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
             if hasattr(kodi_adapter, "clear_nfo_cache"):
@@ -705,7 +785,7 @@ def _run_live_cycle(
         except Exception as exc:
             log("V2 NFO cache invalidation failed: {}".format(exc), xbmc.LOGWARNING)
     try:
-        with activity.progress(32801, monitor.abortRequested, delay=2) as check:
+        with activity.progress(32801, _cycle_abort(monitor), delay=2) as check:
             v2_result = v2_runtime.sync_cycle(
                 abort_requested=check,
                 suppress_local_changes=suppress_local_changes,
@@ -730,6 +810,14 @@ def _run_live_cycle(
 
     v2_status = v2_result.get("status")
     v2_applied = int(v2_result.get("applied_count") or 0)
+    if v2_status == "aborted":
+        if monitor.abortRequested() is True:
+            log("V2 live sync stopped: Kodi is closing.", xbmc.LOGINFO)
+            return {"busy": True, "v2": None, "applied_items": 0}
+        if _library_busy(monitor):
+            # Not a failure: the cycle runs again after the scan and the ID assignment.
+            log("V2 live sync postponed: the video library is being scanned or cleaned.", xbmc.LOGINFO)
+            return {"busy": True, "library_changing": True, "v2": None, "applied_items": 0}
     if v2_status in ("committed", "no_changes"):
         _clear_sync_failure()
     if v2_status == "blocked":
@@ -1047,6 +1135,7 @@ def _run_service_loop():
                                             kodi_adapter = getattr(getattr(v2_runtime, "sync_engine", None), "_kodi", None)
                                             if hasattr(kodi_adapter, "clear_nfo_cache"):
                                                 kodi_adapter.clear_nfo_cache()
+                                                monitor.scan_nfo_stale = False
                                             with activity.progress(32802, monitor.abortRequested) as check:
                                                 pub_res = v2_runtime.publish_local_snapshot(
                                                     abort_requested=check,

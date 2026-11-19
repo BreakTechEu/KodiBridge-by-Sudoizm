@@ -147,6 +147,13 @@ class StageLogTests(ActivityTestBase):
         self.assertIn("Stage 'library snapshot' stopped after 3.0 s", self.logged()[-1])
         self.dialog.close.assert_called_once()
 
+    def test_a_stage_stopped_by_the_abort_check_is_logged_as_stopped(self):
+        state = {"abort": False}
+        with activity.progress(32801, lambda: state["abort"]) as work:
+            state["abort"] = True
+            work()
+        self.assertIn("Stage 'library synchronization' stopped after", self.logged()[-1])
+
 
 class LibraryReaderProgressTests(ActivityTestBase):
     def test_the_nfo_reader_reports_every_item_to_the_activity(self):

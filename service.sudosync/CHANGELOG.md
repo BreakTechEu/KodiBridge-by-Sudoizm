@@ -1,3 +1,13 @@
+KodiBridge by Sudoizm 2.4.7 (w przygotowaniu)
+=============================================
+
+Poprawki:
+
+- Synchronizacja nie biegnie już w trakcie skanowania biblioteki. Cykl, który ruszył tuż przed skanowaniem (np. przed skanowaniem przy starcie Kodi), przerywa się, gdy Kodi zaczyna skanować, i rusza ponownie po skanowaniu i nadaniu KodiBridge ID. Nie jest to błąd i nie pokazuje okna.
+- Wtyczka czeka także na koniec czyszczenia biblioteki, które Kodi robi zaraz po skanowaniu. Dotąd śledziła tylko jego koniec.
+- Po skanowaniu pliki `.nfo` są czytane z NAS od nowa tylko raz. Dotąd każdy cykl do uspokojenia biblioteki czytał je wszystkie ponownie, co przy dużej bibliotece dokładało kilka minut pracy.
+- Zamknięcie Kodi w trakcie synchronizacji nie zapisuje już w dzienniku błędu „non-ok status 'aborted'”. Krok przerwany w ten sposób albo przez skanowanie jest w dzienniku oznaczony jako „stopped”.
+
 KodiBridge by Sudoizm 2.4.6
 ===========================
 

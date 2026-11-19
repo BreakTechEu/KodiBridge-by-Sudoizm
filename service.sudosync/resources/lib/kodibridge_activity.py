@@ -55,11 +55,15 @@ class Activity(object):
         self._shown_at = 0.0
         self._totals = {}
         self._done = {}
+        self.aborted = False
 
     def __call__(self):
         self._open_if_due()
         self._show()
-        return bool(self._abort()) if callable(self._abort) else False
+        stop = bool(self._abort()) if callable(self._abort) else False
+        if stop:
+            self.aborted = True
+        return stop
 
     def _open_if_due(self):
         if self._attempted or time.monotonic() - self._start < self._delay:
@@ -125,7 +129,7 @@ class Activity(object):
         stage = STAGE_NAMES.get(self.label, str(self.label))
         counts = self.counts()
         _log("Stage '{}' {} after {:.1f} s{}".format(
-            stage, "stopped" if failed else "finished", elapsed, " ({})".format(counts) if counts else ""))
+            stage, "stopped" if failed or self.aborted else "finished", elapsed, " ({})".format(counts) if counts else ""))
         if self._dialog is not None:
             try:
                 self._dialog.close()
