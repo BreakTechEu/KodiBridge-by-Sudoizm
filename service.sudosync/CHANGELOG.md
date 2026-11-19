@@ -1,3 +1,11 @@
+KodiBridge by Sudoizm 2.4.6 (w przygotowaniu)
+=============================================
+
+Poprawki:
+
+- Pasek postępu w rogu ekranu nie stoi już na 0%. Po skanowaniu, podczas synchronizacji i zapisu snapshotu pokazuje, ile filmów i odcinków odczytano (np. „odcinki 800/1200”), i procent całości. Przy kolejnych krokach procent obejmuje od razu filmy i odcinki.
+- Dziennik Kodi podaje czas każdego kroku pracy po skanowaniu i synchronizacji („Stage '...' finished after ... s”) wraz z liczbą odczytanych pozycji. Kroki przerwane (np. zamknięciem Kodi) są oznaczone jako „stopped”.
+
 KodiBridge by Sudoizm 2.4.5
 ===========================
 

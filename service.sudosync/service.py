@@ -371,7 +371,10 @@ def _assign_ids_after_scan(base_path, abort_requested, keep_alive=None):
 
     try:
         with activity.progress(32800, abort_requested) as check:
-            preview = preview_sudosync_ids(is_canceled=check)
+            preview = preview_sudosync_ids(
+                is_canceled=check,
+                collect_progress_callback=lambda done, total, _name="": check.report_progress(done, total),
+            )
     except Exception as exc:
         log("Sprawdzanie KodiBridge ID po skanowaniu nieudane: {}".format(exc), xbmc.LOGWARNING)
         return None

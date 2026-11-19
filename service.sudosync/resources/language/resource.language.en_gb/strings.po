@@ -1324,3 +1324,15 @@ msgstr "Exit Kodi when KodiBridge finishes"
 msgctxt "#32806"
 msgid "Updating library entries after the scan"
 msgstr "Updating library entries after the scan"
+
+msgctxt "#32807"
+msgid "{0} – movies {1}/{2}"
+msgstr "{0} – movies {1}/{2}"
+
+msgctxt "#32808"
+msgid "{0} – episodes {1}/{2}"
+msgstr "{0} – episodes {1}/{2}"
+
+msgctxt "#32809"
+msgid "{0} ({1}/{2})"
+msgstr "{0} ({1}/{2})"

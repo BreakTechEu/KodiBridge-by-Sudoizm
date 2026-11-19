@@ -43,6 +43,18 @@ def is_aborted(abort_requested):
     return False
 
 
+def progress_listener(abort_requested):
+    """Progress report offered by the abort check, if any.
+
+    The service hands the readers an abort check that can also show progress
+    (kodibridge_activity.Activity); every other check has no such method.
+    """
+    method = getattr(type(abort_requested), "report_progress", None)
+    if not callable(method):
+        return None
+    return getattr(abort_requested, "report_progress", None)
+
+
 def accepts_abort_requested(fn):
     """Check if callable explicitly accepts abort_requested or **kwargs."""
     if not callable(fn):
@@ -490,6 +502,8 @@ class KodiJsonRpcAdapter(object):
                     item["uniqueid"] = internal_ids_from_external(item.get("uniqueid"))
                 mapped.append(item)
             return mapped
+        if progress_callback is None:
+            progress_callback = progress_listener(abort_requested)
         enriched = []
         total = len(items)
         try:

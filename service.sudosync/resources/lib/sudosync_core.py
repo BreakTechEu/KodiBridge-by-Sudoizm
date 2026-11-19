@@ -2873,7 +2873,7 @@ class _PreviewResult(list):
         self.collected_items = None
 
 
-def preview_sudosync_ids(progress_callback=None, is_canceled=None):
+def preview_sudosync_ids(progress_callback=None, is_canceled=None, collect_progress_callback=None):
     settings = addon_settings()
     if not settings.get("sudosync_id_enabled"):
         raise RuntimeError(tr(32353))
@@ -2883,7 +2883,9 @@ def preview_sudosync_ids(progress_callback=None, is_canceled=None):
         res.collected_items = ([], [])
         return res
 
-    movies, episodes = collect_library(first_import=False, is_canceled=is_canceled)
+    movies, episodes = collect_library(
+        first_import=False, progress_callback=collect_progress_callback, is_canceled=is_canceled,
+    )
     if is_canceled and is_canceled():
         res = _PreviewResult([])
         res.collected_items = (movies, episodes)

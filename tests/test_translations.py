@@ -25,6 +25,7 @@ UI_SOURCES = (
     "resources/lib/sudosync_bootstrap.py",
     "resources/lib/sudosync_conflicts.py",
     "resources/lib/sudosync_v2/foreign_session.py",
+    "resources/lib/kodibridge_activity.py",
 )
 POLISH_LETTERS = re.compile("[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]")
 PLACEHOLDER = re.compile(r"\{[^{}]*\}")
