@@ -296,6 +296,25 @@ def build_snapshot(movies, episodes, client_id, client_name, previous_snapshot=N
                     ]
                     if len(matching_sudosync) == 1:
                         prior_candidates = {id(matching_sudosync[0]): matching_sudosync[0]}
+                    elif not matching_sudosync and _sudosync_base(ids.get("sudosync")) not in previous_bases:
+                        resolved = _resolve_new_id_candidates(
+                            list(prior_candidates.values()), current_bases, replaced_priors,
+                        )
+                        if resolved is None:
+                            logger.info(
+                                "%s item %s has a new KodiBridge ID and shares external identifiers with "
+                                "%d previous records that cannot be told apart; treating it as a new item",
+                                media_type, ids.get("sudosync"), len(prior_candidates),
+                            )
+                        else:
+                            logger.info(
+                                "%s item %s has a new KodiBridge ID; of %d previous records with the same "
+                                "external identifiers only %s is no longer in the library",
+                                media_type, ids.get("sudosync"), len(prior_candidates),
+                                resolved.get("ids", {}).get("sudosync"),
+                            )
+                        prior_candidates = {id(resolved): resolved} if resolved is not None else {}
+                        candidate_count = len(prior_candidates)
                 if len(prior_candidates) > 1:
                     logger.warning(
                         "current %s item matches multiple records in previous snapshot; selecting first candidate",
@@ -464,6 +483,25 @@ def _is_qualifier_dropped(old_value, new_value, current_base_counts):
     if not _sudosync_qualifier(old_value) or _sudosync_qualifier(new_value):
         return False
     return current_base_counts.get(old_base, 0) == 1
+
+
+def _resolve_new_id_candidates(candidates, current_bases, replaced_priors):
+    """Previous record continued by an item with a new KodiBridge ID, or None.
+
+    Used when the item matches several previous records by external
+    identifiers (a multi-part episode, several files of one video) and none
+    of them carries its KodiBridge ID. Records whose ID is still held by a
+    current item belong to that item. When exactly one record is left and
+    no other item took it over yet, it is the record whose ID was replaced.
+    Otherwise the item is new: it starts with version 0, so it never
+    overwrites the state remembered by other devices.
+    """
+    free = [
+        rec for rec in candidates
+        if _sudosync_base(rec.get("ids", {}).get("sudosync")) not in current_bases
+        and id(rec) not in replaced_priors
+    ]
+    return free[0] if len(free) == 1 else None
 
 
 def _prior_held_by_matching_item(prior, current_by_sudosync):

@@ -1,3 +1,10 @@
+KodiBridge by Sudoizm 2.4.9 (w przygotowaniu)
+=============================================
+
+Poprawka:
+
+- Synchronizacja nie staje już z błędem „current episode item has conflicting identifiers with its previous snapshot: sudosync”, gdy plik z nowym KodiBridge ID ma te same identyfikatory zewnętrzne co kilka zapisanych wcześniej pozycji (np. kilka plików jednego odcinka albo odcinek w częściach). Gdy z tych pozycji w bibliotece brakuje tylko jednej, plik przejmuje jej historię. Gdy nie da się tego rozstrzygnąć, plik jest nową pozycją i przyjmuje stan z innych Kodi. Dotąd wtyczka brała pierwszą z zapisanych pozycji i wstrzymywała synchronizację.
+
 KodiBridge by Sudoizm 2.4.8
 ===========================
 
